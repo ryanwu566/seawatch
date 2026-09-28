@@ -1,0 +1,58 @@
+﻿# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Node / frontend
+node_modules/
+apps/web/node_modules/
+apps/web/dist/
+dist/
+.vite/
+
+# Playwright / testing
+playwright-report/
+test-results/
+.coverage
+htmlcov/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Large/raw project data
+data/raw/*
+!data/raw/.gitkeep
+
+data/processed/*
+!data/processed/.gitkeep
+
+# Generated models
+models/*
+!models/.gitkeep
+
+# Python model artifacts
+*.pkl
+*.pickle
+*.joblib
+
+# Logs / temp
+*.log
+tmp/
+temp/
