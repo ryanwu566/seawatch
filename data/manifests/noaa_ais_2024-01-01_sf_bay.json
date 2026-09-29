@@ -1,0 +1,145 @@
+{
+  "bbox_rows": 111179,
+  "content_length": 227181435,
+  "crs": "EPSG:4326",
+  "dataset_id": "noaa-ais-2024-01-01-sf-bay-cargo-smoke",
+  "download_utc": "2026-09-28T15:59:01.214665Z",
+  "filtered_rows": 5582,
+  "geographic_bbox": {
+    "east": -122.25,
+    "north": 37.9,
+    "south": 37.68,
+    "west": -122.55
+  },
+  "git_commit_or_version_reference": "phase1-v1",
+  "license_url": "https://github.com/ocm-marinecadastre/ais-vessel-traffic/blob/main/LICENSE.md",
+  "notes": [
+    "San Francisco Bay is an engineering smoke-test area, not an official challenge region.",
+    "AIS vessel type is self-reported and is not independently verified identity.",
+    "track_id is a deterministic display surrogate; hashing does not prevent re-identification by enumeration."
+  ],
+  "observed_license": "CC0 1.0 Universal",
+  "output_columns": [
+    "track_id",
+    "base_date_time",
+    "longitude",
+    "latitude",
+    "sog",
+    "cog",
+    "heading",
+    "vessel_type"
+  ],
+  "output_rows": 5581,
+  "processing_version": "phase1-v1",
+  "publisher": "NOAA Office for Coastal Management",
+  "sha256": "3124557f70bb216e3a4d5817cf019368a6ca47d86aec8d3d2aa8c8e6d1e92560",
+  "source_columns": [
+    {
+      "name": "mmsi",
+      "nullable": true,
+      "type": "int32"
+    },
+    {
+      "name": "base_date_time",
+      "nullable": true,
+      "type": "timestamp[ms]"
+    },
+    {
+      "name": "sog",
+      "nullable": true,
+      "type": "float"
+    },
+    {
+      "name": "cog",
+      "nullable": true,
+      "type": "float"
+    },
+    {
+      "name": "heading",
+      "nullable": true,
+      "type": "int32"
+    },
+    {
+      "name": "vessel_name",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "name": "imo",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "name": "call_sign",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "name": "vessel_type",
+      "nullable": true,
+      "type": "int32"
+    },
+    {
+      "name": "status",
+      "nullable": true,
+      "type": "int32"
+    },
+    {
+      "name": "length",
+      "nullable": true,
+      "type": "float"
+    },
+    {
+      "name": "width",
+      "nullable": true,
+      "type": "int32"
+    },
+    {
+      "name": "draft",
+      "nullable": true,
+      "type": "float"
+    },
+    {
+      "name": "cargo",
+      "nullable": true,
+      "type": "int32"
+    },
+    {
+      "name": "transceiver",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "name": "geometry",
+      "nullable": true,
+      "type": "binary"
+    }
+  ],
+  "source_date": "2024-01-01",
+  "source_readme_url": "https://github.com/ocm-marinecadastre/ais-vessel-traffic/blob/main/data/ais-broadcast-points-2024-readme.md",
+  "source_rows": 7293408,
+  "source_url": "https://ocmgeodatastor1.blob.core.windows.net/marinecadastre/ais2024/ais-2024-01-01.parquet",
+  "surrogate_id_method": "first 16 lowercase hexadecimal characters of SHA-256 over seawatch:noaa-ais:<source-date>:<normalized-source-identifier>",
+  "synthetic_fields": [
+    "track_id",
+    "longitude",
+    "latitude"
+  ],
+  "timezone": "UTC",
+  "vessel_type_filter": {
+    "codes": [
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79
+    ],
+    "description": "AIS cargo vessel type codes 70 through 79",
+    "field": "vessel_type"
+  }
+}

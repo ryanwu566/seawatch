@@ -1,0 +1,1 @@
+"""SeaWatch backend domain package."""

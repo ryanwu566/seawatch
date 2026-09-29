@@ -1,0 +1,9 @@
+{
+  "source_vessel_id": "mmsi",
+  "base_date_time": "base_date_time",
+  "geometry": "geometry",
+  "sog": "sog",
+  "cog": "cog",
+  "heading": "heading",
+  "vessel_type": "vessel_type"
+}
