@@ -144,6 +144,54 @@ npm run dev        # or: npm run build && npm run preview
 The dashboard then runs end to end (list → detail → map geometry) with no backend
 and no raw data on the machine.
 
+### Regions: benchmark vs demo context
+
+Two contexts are kept strictly separate and never blurred (`src/config/regions.ts`):
+
+| Context            | Region label        | Source label               | Data kind  | Map center        |
+|--------------------|---------------------|----------------------------|------------|-------------------|
+| Analytical benchmark | `SF Bay Benchmark`  | `NOAA MarineCadastre AIS`  | real       | SF Bay (−122.4, 37.75) |
+| Presentation layer   | `Taiwan Demo`       | `Synthetic Demo Scenario`  | synthetic  | Taiwan (120.6, 23.9)   |
+
+- Demo mode **off** → SF Bay benchmark, served by the FastAPI backend from the
+  validated NOAA real-AIS cohort.
+- Demo mode **on** → Taiwan demo, served from bundled **synthetic** fixtures.
+
+The header shows a context bar with **Region**, **Source**, **Candidates**
+(count), and **Method** (`empirical_percentile`). The Taiwan scenario is labeled
+**"Demo / Synthetic Scenario"** and is never presented as observed AIS or a
+model-validated result. `MapView` initializes on the active region's center/zoom,
+so Taiwan demo mode opens on Taiwan (civilian ports Keelung, Taichung, Kaohsiung).
+
+Taiwan data-source investigation (2026-09-30): Global Fishing Watch requires a
+personal API token and its data (fishing-effort/events/gridded presence) does not
+guarantee dense per-vessel trajectories; Taiwan TDX (MOTC) requires an auth key
+and exposes ferry/transit schedules, not raw AIS tracks. Neither yields
+license-clean dense Taiwan trajectories within this task without a token that must
+not be invented, so the shipped Taiwan context is **synthetic**. A token-gated GFW
+adapter seam exists at `apps/api/seawatch/adapters/gfw.py` (token read only from
+`GFW_API_TOKEN`, never committed) for a future real-data path.
+
+### Performance: slim, paginated review list
+
+The ranking frame holds ~28k window-level rows. The list must never ship whole.
+
+- The dashboard requests the **Top-20 track-level** candidates:
+  `method=empirical_percentile`, `shortlisted_only=true`, `dedupe_by_track=true`,
+  `limit=20`.
+- List items are slim (no `explanation_reasons`); full explanation, supporting
+  features, and data quality load lazily via `GET /alerts/{alert_id}` on select.
+- Track geometry loads lazily via `GET /tracks/{track_id}/geometry` after select.
+- Measured effect (see below).
+
+| Metric            | Before (full list) | After (dashboard default) |
+|-------------------|--------------------|---------------------------|
+| Records returned  | 28,060             | ≤ 20 (12 for the cohort)  |
+| Response size     | ~36.75 MB          | ~3.3 KB                   |
+| Endpoint latency  | ~8.9 s             | ~0.08 s                   |
+
+
+
 ## Local development
 
 ```bash

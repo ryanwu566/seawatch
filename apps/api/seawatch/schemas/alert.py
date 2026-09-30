@@ -110,9 +110,17 @@ class AlertSummary(BaseModel):
 
 
 class AlertListResponse(BaseModel):
-    """Envelope for the ranked review-candidate collection."""
+    """Envelope for the ranked review-candidate collection.
 
-    count: int = Field(..., description="Number of alerts returned.", ge=0)
+    ``count`` is the number of items returned in this page. ``total`` is the
+    number of candidates matching the filters before pagination. List items omit
+    heavy ``explanation_reasons``; load those via ``GET /alerts/{alert_id}``.
+    """
+
+    count: int = Field(..., description="Number of alerts returned in this page.", ge=0)
+    total: int = Field(..., description="Total candidates matching the filters.", ge=0)
+    limit: int = Field(..., description="Page size applied.", ge=0)
+    offset: int = Field(..., description="Offset applied.", ge=0)
     alerts: list[AlertSummary] = Field(default_factory=list)
 
 

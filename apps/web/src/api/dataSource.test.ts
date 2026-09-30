@@ -26,13 +26,14 @@ describe("dataSource demo mode", () => {
 
     const res = await mod.fetchAlerts();
     expect(res.count).toBeGreaterThan(0);
-    expect(res.alerts[0].alert_id).toContain("demo__");
+    expect(res.alerts[0].alert_id).toContain("demo-taiwan__");
+    expect(res.alerts[0].ranking_method).toBe("empirical_percentile");
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("fetchTrackGeometry returns a demo LineString for a known track", async () => {
+  it("fetchTrackGeometry returns a demo LineString for a known Taiwan track", async () => {
     const mod = await import("./dataSource");
-    const res = await mod.fetchTrackGeometry("demo-track-1");
+    const res = await mod.fetchTrackGeometry("demo-taiwan-keelung");
     expect(res.geometry.type).toBe("LineString");
     expect(res.geometry.coordinates.length).toBeGreaterThanOrEqual(2);
   });
@@ -64,12 +65,12 @@ describe("dataSource live mode", () => {
     vi.restoreAllMocks();
   });
 
-  it("delegates to the network when demo mode is off", async () => {
+  it("delegates to the network with primary method, dedupe, and limit when demo mode is off", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       statusText: "OK",
-      json: async () => ({ count: 0, alerts: [] }),
+      json: async () => ({ count: 0, total: 0, limit: 20, offset: 0, alerts: [] }),
     } as Response);
     vi.stubGlobal("fetch", fetchMock);
 
@@ -77,5 +78,10 @@ describe("dataSource live mode", () => {
     expect(mod.isDemoMode()).toBe(false);
     await mod.fetchAlerts();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain("method=empirical_percentile");
+    expect(url).toContain("shortlisted_only=true");
+    expect(url).toContain("dedupe_by_track=true");
+    expect(url).toContain("limit=20");
   });
 });

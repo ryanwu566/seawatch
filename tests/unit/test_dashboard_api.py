@@ -89,11 +89,15 @@ def test_health_endpoint_returns_ok_payload(client_without_artifacts: TestClient
     assert response.json() == {"status": "ok", "service": "seawatch-api"}
 
 
-def test_alerts_schema_shape_and_content(client_with_artifacts: TestClient) -> None:
+def test_alerts_schema_shape_and_slim_list(client_with_artifacts: TestClient) -> None:
     response = client_with_artifacts.get("/alerts")
     assert response.status_code == 200
     body = response.json()
+    # Paginated envelope.
+    assert set(body) >= {"count", "total", "limit", "offset", "alerts"}
     assert body["count"] == 3
+    assert body["total"] == 3
+    assert body["offset"] == 0
     # Ordered by descending review priority.
     scores = [alert["ranking_score"] for alert in body["alerts"]]
     assert scores == sorted(scores, reverse=True)
@@ -107,23 +111,50 @@ def test_alerts_schema_shape_and_content(client_with_artifacts: TestClient) -> N
         "ranking_method",
         "rank",
         "shortlisted",
-        "explanation_reasons",
     }
     assert top["alert_id"] == "2024-01-03__isolation_forest__trk-a__w-001"
     assert top["ranking_method"] == "isolation_forest"
-    reason = top["explanation_reasons"][0]
-    assert set(reason) >= {
-        "reason_code",
-        "feature_group",
-        "feature_name",
-        "observed_value",
-        "unit",
-        "reference_percentile",
-        "direction",
-        "severity",
-        "message",
-        "attribution_kind",
-    }
+    # List items are slim: explanation_reasons are NOT populated in the list;
+    # they are loaded via GET /alerts/{alert_id}.
+    assert top["explanation_reasons"] == []
+
+
+def test_method_filter(client_with_artifacts: TestClient) -> None:
+    response = client_with_artifacts.get("/alerts", params={"method": "isolation_forest"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 2
+    assert all(alert["ranking_method"] == "isolation_forest" for alert in body["alerts"])
+
+
+def test_limit_and_pagination(client_with_artifacts: TestClient) -> None:
+    page0 = client_with_artifacts.get("/alerts", params={"limit": 1, "offset": 0}).json()
+    page1 = client_with_artifacts.get("/alerts", params={"limit": 1, "offset": 1}).json()
+    assert page0["count"] == 1
+    assert page0["total"] == 3
+    assert page0["limit"] == 1
+    assert page1["offset"] == 1
+    # Disjoint, sequential pages.
+    assert page0["alerts"][0]["alert_id"] != page1["alerts"][0]["alert_id"]
+    assert page0["alerts"][0]["ranking_score"] >= page1["alerts"][0]["ranking_score"]
+
+
+def test_dedupe_by_track_keeps_highest_priority_window(client_with_artifacts: TestClient) -> None:
+    response = client_with_artifacts.get(
+        "/alerts", params={"method": "isolation_forest", "dedupe_by_track": "true"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    track_ids = [alert["track_id"] for alert in body["alerts"]]
+    assert len(track_ids) == len(set(track_ids))  # one row per track
+    # trk-a's highest isolation_forest window is the 87.4 one.
+    trk_a = next(alert for alert in body["alerts"] if alert["track_id"] == "trk-a")
+    assert trk_a["ranking_score"] == 87.4
+
+
+def test_limit_is_capped(client_with_artifacts: TestClient) -> None:
+    # Over-large limits are rejected by validation (<= 200).
+    assert client_with_artifacts.get("/alerts", params={"limit": 5000}).status_code == 422
 
 
 def test_alert_detail_round_trip_and_not_found(client_with_artifacts: TestClient) -> None:

@@ -64,6 +64,9 @@ export interface AlertSummary {
 
 export interface AlertListResponse {
   count: number;
+  total: number;
+  limit: number;
+  offset: number;
   alerts: AlertSummary[];
 }
 

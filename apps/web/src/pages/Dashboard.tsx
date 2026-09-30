@@ -6,7 +6,9 @@ import {
   fetchHealth,
   fetchTrackGeometry,
   isDemoMode,
+  PRIMARY_RANKING_METHOD,
 } from "../api/dataSource";
+import { activeRegion } from "../config/regions";
 import { AlertDetail } from "../components/AlertDetail";
 import { AlertList } from "../components/AlertList";
 import { MapView } from "../components/MapView";
@@ -26,9 +28,11 @@ type HealthState = "checking" | "online" | "offline";
  */
 export function Dashboard() {
   const demo = isDemoMode();
+  const region = activeRegion(demo);
 
   const [health, setHealth] = useState<HealthState>("checking");
   const [alerts, setAlerts] = useState<AlertSummary[]>([]);
+  const [total, setTotal] = useState(0);
   const [alertsLoading, setAlertsLoading] = useState(true);
   const [alertsError, setAlertsError] = useState<string | null>(null);
 
@@ -55,8 +59,11 @@ export function Dashboard() {
     const controller = new AbortController();
     setAlertsLoading(true);
     setAlertsError(null);
-    fetchAlerts(controller.signal)
-      .then((res) => setAlerts(res.alerts))
+    fetchAlerts({}, controller.signal)
+      .then((res) => {
+        setAlerts(res.alerts);
+        setTotal(res.total ?? res.alerts.length);
+      })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
         setAlertsError(describeError(err, "Failed to load review candidates."));
@@ -125,7 +132,7 @@ export function Dashboard() {
         </div>
         <div className="header-status">
           {demo && (
-            <span className="demo-badge" title="Showing bundled demo fixtures, not live data">
+            <span className="demo-badge" title="Showing a synthetic demo scenario, not observed AIS">
               Demo Mode
             </span>
           )}
@@ -133,10 +140,31 @@ export function Dashboard() {
         </div>
       </header>
 
+      <div className={`context-bar ${region.dataKind === "synthetic" ? "synthetic" : "real"}`}>
+        <span className="context-item">
+          <span className="context-label">Region</span>
+          <span className="context-value">{region.region}</span>
+        </span>
+        <span className="context-item">
+          <span className="context-label">Source</span>
+          <span className="context-value">{region.source}</span>
+        </span>
+        <span className="context-item">
+          <span className="context-label">Candidates</span>
+          <span className="context-value">
+            {alertsLoading ? "…" : `${alerts.length}${total > alerts.length ? ` of ${total}` : ""}`}
+          </span>
+        </span>
+        <span className="context-item">
+          <span className="context-label">Method</span>
+          <span className="context-value">{PRIMARY_RANKING_METHOD}</span>
+        </span>
+      </div>
+
       {demo && (
         <div className="banner demo">
-          Demo Mode is on. Data shown is bundled sample data for presentation, not
-          live backend results.
+          Demo / Synthetic Scenario — the Taiwan context is illustrative sample
+          data, not observed AIS and not a model-validated result.
         </div>
       )}
       {alertsError && <div className="banner error">{alertsError}</div>}
@@ -157,6 +185,8 @@ export function Dashboard() {
             selectedTrackId={selectedTrackId}
             loading={geometryLoading}
             error={geometryError}
+            center={region.center}
+            zoom={region.zoom}
           />
           <Timeline alert={detail} />
         </section>

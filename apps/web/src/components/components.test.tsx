@@ -70,6 +70,19 @@ describe("AlertList", () => {
     render(<AlertList alerts={[]} selectedId={null} onSelect={() => {}} />);
     expect(screen.getByText(/No review candidates/i)).toBeInTheDocument();
   });
+
+  it("renders only the candidates it is given (limited list)", () => {
+    const many: AlertSummary[] = Array.from({ length: 20 }, (_, i) => ({
+      ...sampleAlert,
+      alert_id: `id-${i}`,
+      track_id: `trk-${i}`,
+      rank: i + 1,
+    }));
+    render(<AlertList alerts={many} selectedId={null} onSelect={() => {}} />);
+    // One row per candidate (plus the header row).
+    const rows = document.querySelectorAll("tbody tr");
+    expect(rows.length).toBe(20);
+  });
 });
 
 describe("AlertDetail", () => {

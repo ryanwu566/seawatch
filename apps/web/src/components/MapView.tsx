@@ -9,12 +9,16 @@ interface MapViewProps {
   selectedTrackId: string | null;
   loading?: boolean;
   error?: string | null;
+  /** Initial map center [lng, lat] for the active region. */
+  center?: [number, number];
+  /** Initial map zoom for the active region. */
+  zoom?: number;
 }
 
 // MapLibre's public demo tiles need no API key — appropriate for a hackathon MVP.
 const STYLE_URL = "https://demotiles.maplibre.org/style.json";
-const INITIAL_CENTER: [number, number] = [-122.4, 37.75]; // San Francisco Bay cohort area
-const INITIAL_ZOOM = 8;
+const FALLBACK_CENTER: [number, number] = [-122.4, 37.75]; // San Francisco Bay cohort area
+const FALLBACK_ZOOM = 8;
 
 const TRACK_SOURCE = "selected-track";
 const TRACK_LINE_LAYER = "selected-track-line";
@@ -25,7 +29,7 @@ const TRACK_POINT_LAYER = "selected-track-endpoints";
  * geometry is available. Coordinates are never fabricated: with no geometry the
  * map shows the base map and an informative state.
  */
-export function MapView({ geometry, selectedTrackId, loading, error }: MapViewProps) {
+export function MapView({ geometry, selectedTrackId, loading, error, center, zoom }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const loadedRef = useRef(false);
@@ -38,8 +42,8 @@ export function MapView({ geometry, selectedTrackId, loading, error }: MapViewPr
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: STYLE_URL,
-      center: INITIAL_CENTER,
-      zoom: INITIAL_ZOOM,
+      center: center ?? FALLBACK_CENTER,
+      zoom: zoom ?? FALLBACK_ZOOM,
     });
     map.addControl(new maplibregl.NavigationControl(), "top-right");
     map.on("load", () => {

@@ -119,49 +119,55 @@ Response `200 OK`:
 
 ### `GET /alerts`
 
-Ranked review candidates ordered by descending review priority.
+Ranked review candidates ordered by descending review priority. The list is
+**paginated and slim**: items omit `explanation_reasons` (load those via
+`GET /alerts/{alert_id}`). This keeps the dashboard payload small — the ranking
+frame holds ~28k window-level rows, which must never be shipped whole.
 
 Query parameters:
 
-| Name              | Type    | Default | Description                                   |
-|-------------------|---------|---------|-----------------------------------------------|
-| `shortlisted_only`| boolean | `false` | Return only candidates within the review budget. |
+| Name               | Type    | Default | Description                                             |
+|--------------------|---------|---------|---------------------------------------------------------|
+| `method`           | string  | (all)   | Restrict to one ranking method (e.g. `empirical_percentile`). |
+| `shortlisted_only` | boolean | `false` | Return only candidates within the review budget.        |
+| `dedupe_by_track`  | boolean | `false` | Keep only the highest-priority window per track.        |
+| `limit`            | int     | `20`    | Page size (1–200).                                      |
+| `offset`           | int     | `0`     | Number of leading candidates to skip (pagination).      |
+
+The dashboard default combines these: `method=empirical_percentile`
+(the Phase 3B primary method), `shortlisted_only=true`, `dedupe_by_track=true`,
+`limit=20` — the Top-20 track-level review priorities.
 
 Response `200 OK`:
 
 ```json
 {
   "count": 1,
+  "total": 12,
+  "limit": 20,
+  "offset": 0,
   "alerts": [
     {
-      "alert_id": "2024-01-03__isolation_forest__t-000042__w-0007",
+      "alert_id": "2024-01-03__empirical_percentile__t-000042__w-0007",
       "track_id": "2024-01-03__t-000042",
       "date": "2024-01-03",
       "ranking_score": 87.42,
-      "ranking_method": "isolation_forest",
+      "ranking_method": "empirical_percentile",
       "rank": 3,
       "shortlisted": true,
-      "explanation_reasons": [
-        {
-          "reason_code": "speed_higher",
-          "feature_group": "speed",
-          "feature_name": "sog_mean",
-          "observed_value": 14.2,
-          "unit": "knots",
-          "reference_percentile": 0.985,
-          "direction": "higher",
-          "severity": 2.31,
-          "message": "Sog mean is at the 98.5th percentile of the January 1 background.",
-          "attribution_kind": "supporting_evidence"
-        }
-      ]
+      "explanation_reasons": []
     }
   ]
 }
 ```
 
+- `count` is the items on this page; `total` is the match count before pagination.
+- `explanation_reasons` is intentionally empty in the list; the field is retained
+  for a stable shape. Load full reasons via `GET /alerts/{alert_id}`.
 - `ranking_score` is a deterministic **review priority** value, not a probability
   or confidence measure.
+- Filtering, sorting, deduplication, and pagination run on a cached read-only copy
+  of the ranking frame (the Parquet artifact is not re-read per request).
 - `503 Service Unavailable` if no ranking artifact exists.
 
 ### `GET /alerts/{alert_id}`

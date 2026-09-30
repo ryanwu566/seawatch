@@ -6,6 +6,7 @@ alerts with feature-derived explanations. No ranking is recomputed here.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 
 import pandas as pd
@@ -96,7 +97,7 @@ def _method_of(row: dict) -> str:
     return str(row.get("method_id", row.get("ranking_method", "")))
 
 
-def _summary_from_row(row: dict) -> AlertSummary:
+def _summary_from_row(row: dict, *, include_reasons: bool = False) -> AlertSummary:
     date = str(row.get("source_date", ""))
     method = _method_of(row)
     track_id = str(row.get("track_id", ""))
@@ -109,12 +110,14 @@ def _summary_from_row(row: dict) -> AlertSummary:
         ranking_method=method,
         rank=max(1, _as_int(row.get("rank_within_date_method"), default=1)),
         shortlisted=bool(row.get("shortlisted", False)),
-        explanation_reasons=_parse_reasons(row.get("evidence_reasons")),
+        # List items are intentionally slim: full explanation_reasons are loaded
+        # only via GET /alerts/{alert_id}. Kept as an empty list for a stable shape.
+        explanation_reasons=_parse_reasons(row.get("evidence_reasons")) if include_reasons else [],
     )
 
 
 def _detail_from_row(row: dict) -> AlertDetail:
-    summary = _summary_from_row(row)
+    summary = _summary_from_row(row, include_reasons=True)
     supporting = [
         SupportingFeature(
             feature_name=reason.feature_name,
@@ -147,26 +150,70 @@ def _detail_from_row(row: dict) -> AlertDetail:
     )
 
 
-def _ordered_rows(*, use_cache: bool) -> list[dict]:
-    frame = load_ranking_frame(use_cache=use_cache)
-    sort_keys = [name for name in ("review_priority_score",) if name in frame.columns]
-    if sort_keys:
-        frame = frame.sort_values(sort_keys, ascending=False, kind="mergesort")
-    return frame.to_dict(orient="records")
+def _method_column(frame: pd.DataFrame) -> pd.Series:
+    if "method_id" in frame.columns:
+        return frame["method_id"].astype("string")
+    if "ranking_method" in frame.columns:
+        return frame["ranking_method"].astype("string")
+    return pd.Series([""] * len(frame), index=frame.index, dtype="string")
 
 
-def list_alerts(*, shortlisted_only: bool = False, use_cache: bool = True) -> list[AlertSummary]:
-    """Return ranked review candidates ordered by descending review priority.
+@dataclass(frozen=True)
+class AlertPage:
+    """A page of ranked review candidates plus the pre-pagination total."""
+
+    items: list[AlertSummary]
+    total: int
+
+
+def list_alerts(
+    *,
+    method: str | None = None,
+    shortlisted_only: bool = False,
+    dedupe_by_track: bool = False,
+    limit: int | None = None,
+    offset: int = 0,
+    use_cache: bool = True,
+) -> AlertPage:
+    """Return a page of ranked review candidates.
+
+    Filtering, sorting, deduplication, and pagination are performed on the cached
+    ranking frame (no re-read of the Parquet artifact). Only the returned page is
+    converted to schema objects, and list summaries omit explanation_reasons.
+
+    Args:
+        method: Restrict to a single ranking method (e.g. the primary method).
+        shortlisted_only: Keep only candidates within the review budget.
+        dedupe_by_track: Keep only the highest-priority window per track.
+        limit: Maximum items to return (None = all matching).
+        offset: Number of leading items to skip.
 
     Raises:
         MissingArtifactError: If no Phase 3B ranking artifact exists.
     """
 
-    rows = _ordered_rows(use_cache=use_cache)
-    summaries = [_summary_from_row(row) for row in rows]
-    if shortlisted_only:
-        summaries = [item for item in summaries if item.shortlisted]
-    return summaries
+    frame = load_ranking_frame(use_cache=use_cache)
+
+    if method:
+        frame = frame.loc[_method_column(frame) == str(method)]
+    if shortlisted_only and "shortlisted" in frame.columns:
+        frame = frame.loc[frame["shortlisted"].astype(bool)]
+
+    sort_keys = [name for name in ("review_priority_score",) if name in frame.columns]
+    if sort_keys:
+        frame = frame.sort_values(sort_keys, ascending=False, kind="mergesort")
+
+    if dedupe_by_track and "track_id" in frame.columns:
+        # Rows are already sorted by descending priority, so the first row per
+        # track is its highest-priority window.
+        frame = frame.drop_duplicates(subset="track_id", keep="first")
+
+    total = int(len(frame))
+
+    start = max(0, offset)
+    page = frame.iloc[start : start + limit] if limit is not None else frame.iloc[start:]
+    items = [_summary_from_row(row) for row in page.to_dict(orient="records")]
+    return AlertPage(items=items, total=total)
 
 
 def get_alert(alert_id: str, *, use_cache: bool = True) -> AlertDetail | None:
@@ -176,11 +223,12 @@ def get_alert(alert_id: str, *, use_cache: bool = True) -> AlertDetail | None:
         MissingArtifactError: If no Phase 3B ranking artifact exists.
     """
 
-    rows = _ordered_rows(use_cache=use_cache)
-    for row in rows:
+    frame = load_ranking_frame(use_cache=use_cache)
+    methods = _method_column(frame)
+    for position, row in enumerate(frame.to_dict(orient="records")):
         candidate_id = build_alert_id(
             str(row.get("source_date", "")),
-            _method_of(row),
+            str(methods.iloc[position]) if position < len(methods) else _method_of(row),
             str(row.get("track_id", "")),
             str(row.get("window_id", "")),
         )

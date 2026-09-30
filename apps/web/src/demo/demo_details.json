@@ -1,10 +1,10 @@
 {
-  "demo__isolation_forest__demo-track-1__w-0007": {
-    "alert_id": "demo__isolation_forest__demo-track-1__w-0007",
-    "track_id": "demo-track-1",
-    "date": "2024-01-03",
+  "demo-taiwan__empirical_percentile__demo-taiwan-keelung__w-0007": {
+    "alert_id": "demo-taiwan__empirical_percentile__demo-taiwan-keelung__w-0007",
+    "track_id": "demo-taiwan-keelung",
+    "date": "2024-06-01",
     "ranking_score": 99.0,
-    "ranking_method": "isolation_forest",
+    "ranking_method": "empirical_percentile",
     "rank": 1,
     "shortlisted": true,
     "review_status": "unreviewed",
@@ -19,7 +19,7 @@
         "direction": "higher",
         "severity": 2.9,
         "message": "Low-speed duration is above the background range.",
-        "attribution_kind": "supporting_evidence"
+        "attribution_kind": "exact_component"
       },
       {
         "reason_code": "maneuver_higher",
@@ -31,7 +31,7 @@
         "direction": "higher",
         "severity": 1.8,
         "message": "Movement pattern differs from the normal baseline.",
-        "attribution_kind": "supporting_evidence"
+        "attribution_kind": "exact_component"
       }
     ],
     "supporting_features": [
@@ -58,12 +58,12 @@
       "cog_valid_fraction": 0.95
     }
   },
-  "demo__robust_mad__demo-track-2__w-0003": {
-    "alert_id": "demo__robust_mad__demo-track-2__w-0003",
-    "track_id": "demo-track-2",
-    "date": "2024-01-03",
+  "demo-taiwan__empirical_percentile__demo-taiwan-taichung__w-0003": {
+    "alert_id": "demo-taiwan__empirical_percentile__demo-taiwan-taichung__w-0003",
+    "track_id": "demo-taiwan-taichung",
+    "date": "2024-06-01",
     "ranking_score": 84.0,
-    "ranking_method": "robust_mad",
+    "ranking_method": "empirical_percentile",
     "rank": 2,
     "shortlisted": true,
     "review_status": "unreviewed",
@@ -98,10 +98,10 @@
       "cog_valid_fraction": 0.9
     }
   },
-  "demo__empirical_percentile__demo-track-3__w-0011": {
-    "alert_id": "demo__empirical_percentile__demo-track-3__w-0011",
-    "track_id": "demo-track-3",
-    "date": "2024-01-03",
+  "demo-taiwan__empirical_percentile__demo-taiwan-kaohsiung__w-0011": {
+    "alert_id": "demo-taiwan__empirical_percentile__demo-taiwan-kaohsiung__w-0011",
+    "track_id": "demo-taiwan-kaohsiung",
+    "date": "2024-06-01",
     "ranking_score": 61.0,
     "ranking_method": "empirical_percentile",
     "rank": 3,

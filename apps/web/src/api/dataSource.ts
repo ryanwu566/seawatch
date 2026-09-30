@@ -25,6 +25,14 @@ export function isDemoMode(): boolean {
   return String(import.meta.env?.VITE_DEMO_MODE ?? "false").toLowerCase() === "true";
 }
 
+// The Phase 3B primary ranking method (from config/phase3b_review_ranking_v1.json
+// and the frozen calibration/evaluation outputs). Not a guess.
+export const PRIMARY_RANKING_METHOD = "empirical_percentile";
+
+// Default page size for the review-candidate list. The dashboard shows the
+// Top-20 track-level priorities and never requests the full frame.
+export const DEFAULT_ALERT_LIMIT = 20;
+
 const demoAlertList = demoAlerts as unknown as AlertListResponse;
 const demoDetailMap = demoDetails as unknown as Record<string, AlertDetail>;
 const demoGeometryMap = demoGeometry as unknown as Record<string, TrackGeometryResponse>;
@@ -41,11 +49,28 @@ export function fetchHealth(signal?: AbortSignal): Promise<HealthResponse> {
   return getHealth(signal);
 }
 
-export function fetchAlerts(signal?: AbortSignal): Promise<AlertListResponse> {
+/**
+ * Fetch the default review-candidate list: the primary ranking method,
+ * shortlisted candidates only, deduplicated to the highest-priority window per
+ * track, capped to the Top-N. Supports pagination via ``offset``.
+ */
+export function fetchAlerts(
+  options: { offset?: number; limit?: number } = {},
+  signal?: AbortSignal,
+): Promise<AlertListResponse> {
   if (isDemoMode()) {
     return delay(demoAlertList);
   }
-  return getAlerts({}, signal);
+  return getAlerts(
+    {
+      method: PRIMARY_RANKING_METHOD,
+      shortlistedOnly: true,
+      dedupeByTrack: true,
+      limit: options.limit ?? DEFAULT_ALERT_LIMIT,
+      offset: options.offset ?? 0,
+    },
+    signal,
+  );
 }
 
 export function fetchAlert(alertId: string, signal?: AbortSignal): Promise<AlertDetail> {

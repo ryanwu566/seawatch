@@ -7,6 +7,10 @@ import type { LineStringGeometry } from "../types";
 // test focuses on MapView's rendered states rather than actual tiles.
 vi.mock("maplibre-gl", () => {
   class FakeMap {
+    static lastOptions: Record<string, unknown> | null = null;
+    constructor(options: Record<string, unknown>) {
+      FakeMap.lastOptions = options;
+    }
     on() {}
     once() {}
     addControl() {}
@@ -36,6 +40,7 @@ vi.mock("maplibre-gl", () => {
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}));
 
 import { MapView } from "./MapView";
+import maplibregl from "maplibre-gl";
 
 const geometry: LineStringGeometry = {
   type: "LineString",
@@ -71,5 +76,17 @@ describe("MapView states", () => {
     render(<MapView geometry={geometry} selectedTrackId="trk-a" />);
     expect(screen.queryByText(/Select a review candidate/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Loading track geometry/i)).not.toBeInTheDocument();
+  });
+
+  it("initializes the map at the provided region center (Taiwan demo)", () => {
+    // Taiwan center from the region config.
+    render(
+      <MapView geometry={null} selectedTrackId={null} center={[120.6, 23.9]} zoom={7} />,
+    );
+    const options = (maplibregl as unknown as {
+      Map: { lastOptions: Record<string, unknown> | null };
+    }).Map.lastOptions;
+    expect(options?.center).toEqual([120.6, 23.9]);
+    expect(options?.zoom).toBe(7);
   });
 });

@@ -55,12 +55,26 @@ export function getTracks(signal?: AbortSignal): Promise<TrackListResponse> {
   return getJson<TrackListResponse>("/tracks", signal);
 }
 
+export interface AlertQuery {
+  method?: string;
+  shortlistedOnly?: boolean;
+  dedupeByTrack?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
 export function getAlerts(
-  options: { shortlistedOnly?: boolean } = {},
+  options: AlertQuery = {},
   signal?: AbortSignal,
 ): Promise<AlertListResponse> {
-  const query = options.shortlistedOnly ? "?shortlisted_only=true" : "";
-  return getJson<AlertListResponse>(`/alerts${query}`, signal);
+  const params = new URLSearchParams();
+  if (options.method) params.set("method", options.method);
+  if (options.shortlistedOnly) params.set("shortlisted_only", "true");
+  if (options.dedupeByTrack) params.set("dedupe_by_track", "true");
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.offset !== undefined) params.set("offset", String(options.offset));
+  const query = params.toString();
+  return getJson<AlertListResponse>(`/alerts${query ? `?${query}` : ""}`, signal);
 }
 
 export function getAlert(alertId: string, signal?: AbortSignal): Promise<AlertDetail> {

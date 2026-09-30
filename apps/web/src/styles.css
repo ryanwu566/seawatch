@@ -103,6 +103,41 @@ body {
   letter-spacing: 0.04em;
 }
 
+.context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding: 0.5rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+  font-size: 0.8rem;
+}
+
+.context-bar.synthetic {
+  border-left: 4px solid #f59e0b;
+}
+
+.context-bar.real {
+  border-left: 4px solid var(--ok);
+}
+
+.context-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.context-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+}
+
+.context-value {
+  font-weight: 600;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: 320px 1fr 360px;
