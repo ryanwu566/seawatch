@@ -1,37 +1,44 @@
-﻿# SeaWatch
+# SeaWatch
 
-## Explainable Maritime Intelligence & Resilience Decision Support
+**Explainable Maritime Intelligence & Resilience Decision Support**
 
-**TDTH 2026 — Maritime Track Anomaly & Grey-Zone Behavior Alerting**
+*TDTH 2026 — Maritime Track Anomaly & Grey-Zone Behavior Alerting*
 
 ---
 
 ## Overview
 
-SeaWatch is an AI-assisted geospatial decision-support system that analyzes maritime vessel trajectories and identifies behavior patterns requiring human review.
+SeaWatch is an **AI-assisted geospatial decision-support system** that analyzes
+maritime vessel trajectories and surfaces behavior patterns that warrant human
+review.
 
-By combining AIS data processing, trajectory analytics, and explainable ranking methods, SeaWatch helps analysts understand:
+By combining AIS data processing, trajectory analytics, and explainable ranking
+methods, SeaWatch helps analysts answer:
 
-- What changed?
-- Why is this trajectory different?
+- What changed in this trajectory?
+- Why is this behavior different from the baseline?
 - Which behaviors require further investigation?
 
-The system is designed as a **human-in-the-loop decision-support platform**, not an automated intent classifier.
+SeaWatch is a **human-in-the-loop decision-support platform** — not an autonomous
+system, threat classifier, or automatic judgement engine.
 
 ---
 
 ## Problem
 
-Modern maritime environments generate large-scale vessel movement data.
+Modern maritime environments generate large-scale vessel movement data. Within
+this data, a wide range of vessel behavior patterns coexist, and most of them are
+routine.
 
 The challenge is not only detecting unusual patterns, but also:
 
-- reducing unnecessary alerts
-- explaining behavioral differences
-- understanding uncertainty
-- supporting human decision-making
+- identifying behaviors that genuinely differ from the norm
+- explaining *why* a behavior stands out
+- reducing false alerts and analyst fatigue
+- supporting human decision-making rather than replacing it
 
-SeaWatch focuses on **explainable behavioral intelligence rather than black-box prediction**.
+SeaWatch focuses on **explainable behavioral intelligence rather than black-box
+prediction**.
 
 ---
 
@@ -39,26 +46,19 @@ SeaWatch focuses on **explainable behavioral intelligence rather than black-box 
 
 ```text
 AIS Historical Data
-
         ↓
-
 Trajectory Processing
-
         ↓
-
 Movement Feature Engineering
-
         ↓
-
 Explainable Anomaly Ranking
-
         ↓
-
 Human Investigation Dashboard
-
         ↓
-
 Emergency Logistics Simulation
+```
+
+---
 
 ## Core Capabilities
 
@@ -100,74 +100,65 @@ Emergency Logistics Simulation
 - Statistical anomaly ranking methods
 - Explainable feature-based analysis
 
-### Application Layer
+### Application Layer *(planned)*
 
-Planned:
+- FastAPI
+- React + TypeScript
+- MapLibre
 
-- FastAPI backend
-- React + TypeScript frontend
-- MapLibre geospatial visualization
+### Optimization *(planned)*
 
-### Optimization Layer
-
-Planned:
-
-- NetworkX-based logistics simulation
+- NetworkX
 
 ---
 
 ## Data
 
-Current prototype uses:
+The current prototype is built on:
 
 - NOAA MarineCadastre AIS GeoParquet
 - Historical AIS observations
 - WGS84 geospatial processing
 
-SeaWatch treats AIS data as behavioral observations.
-
-The system does not automatically determine intent or classify vessels.
+SeaWatch treats **AIS data as behavioral observations**. The system does not
+claim intent classification and does not automatically determine the purpose or
+identity of a vessel.
 
 ---
 
-## Development Progress
+## Development Status
 
 ### Completed
 
-✅ NOAA AIS data foundation  
-✅ GeoParquet ingestion pipeline  
-✅ Trajectory segmentation  
-✅ Geodesic movement features  
-✅ Multi-day AIS cohort preparation  
+- ✅ NOAA AIS data foundation
+- ✅ GeoParquet ingestion pipeline
+- ✅ Trajectory segmentation
+- ✅ Geodesic movement features
+- ✅ Multi-day AIS cohort preparation
 
-### Current Development
+### Current
 
-🚧 Explainable anomaly ranking  
-🚧 Statistical baseline comparison  
-🚧 Human review workflow  
+- 🚧 Explainable anomaly ranking
+- 🚧 Statistical baseline comparison
+- 🚧 Human review workflow
 
 ### Future
 
-⏳ Maritime investigation dashboard  
-⏳ Emergency logistics simulation  
-⏳ Edge deployment exploration  
+- ⏳ Maritime investigation dashboard
+- ⏳ Emergency logistics simulation
+- ⏳ Edge deployment exploration
 
 ---
 
-## Project Roadmap
+## Roadmap
 
 ### Phase 1 — Data Foundation ✅
 
-Completed:
-
 - Official AIS data acquisition
-- Data validation
-- Provenance tracking
+- Data validation and provenance tracking
 - Reproducible preprocessing
 
 ### Phase 2 — Trajectory Intelligence ✅
-
-Completed:
 
 - Track segmentation
 - Time-window generation
@@ -175,15 +166,11 @@ Completed:
 
 ### Phase 3 — Explainable Ranking 🚧
 
-Current:
-
 - Behavior deviation ranking
 - Statistical baseline evaluation
 - Explainable alert generation
 
 ### Phase 4 — Decision Dashboard ⏳
-
-Planned:
 
 - Interactive maritime map
 - Track investigation interface
@@ -191,16 +178,12 @@ Planned:
 
 ### Phase 5 — Resilience Extension ⏳
 
-Planned:
-
 - Emergency logistics simulation
 - Disruption scenario analysis
 
 ---
 
 ## Research Principles
-
-SeaWatch follows:
 
 - Explainability over black-box prediction
 - Human review over autonomous decisions
@@ -213,17 +196,21 @@ SeaWatch follows:
 
 ```text
 seawatch/
-
 ├── apps/
 │   ├── api/
 │   └── web/
-
 ├── data/
-
 ├── models/
-
 ├── tests/
-
 ├── docs/
-
 └── experiments/
+```
+
+---
+
+## Project Status
+
+SeaWatch is an active research and development project. The data foundation and
+trajectory intelligence layers are complete, and current work focuses on the
+explainable anomaly ranking and human review workflow. The decision dashboard and
+resilience extension are planned next stages.
