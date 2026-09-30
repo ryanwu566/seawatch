@@ -18,6 +18,7 @@ from apps.api.seawatch.adapters.noaa_ais import (
     read_download_record,
     sha256_file,
 )
+from apps.api.seawatch.datasets.source_catalog import load_phase3a_catalog
 from apps.api.seawatch.trajectories.preprocess import (
     BoundingBox,
     build_manifest,
@@ -34,12 +35,31 @@ DEFAULT_PREVIEW = Path("data/processed/noaa_ais_2024-01-01_sf_bay_preview.geojso
 DEFAULT_MANIFEST = Path("data/manifests/noaa_ais_2024-01-01_sf_bay.json")
 DEFAULT_REPORT = Path("docs/data-foundation-report.md")
 DEFAULT_COLUMN_MAP = Path("config/noaa_ais_2024_columns.json")
+DEFAULT_SOURCE_CATALOG = Path("config/noaa_ais_phase3a_dates.json")
 APPROVED_SOURCE_URL = (
     "https://ocmgeodatastor1.blob.core.windows.net/"
     "marinecadastre/ais2024/ais-2024-01-01.parquet"
 )
 DEFAULT_README_URL = "https://github.com/ocm-marinecadastre/ais-vessel-traffic/blob/main/data/ais-broadcast-points-2024-readme.md"
 SF_BAY = BoundingBox(-122.55, 37.68, -122.25, 37.90)
+
+
+def default_daily_paths(source_date: date) -> dict[str, Path]:
+    """Return isolated raw, processed, manifest, preview, and QA paths for a date."""
+
+    rendered = source_date.isoformat()
+    report = (
+        DEFAULT_REPORT
+        if source_date == date(2024, 1, 1)
+        else Path(f"docs/qa/noaa-ais-{rendered}-data-foundation.md")
+    )
+    return {
+        "source": Path(f"data/raw/ais-{rendered}.parquet"),
+        "processed": Path(f"data/processed/noaa_ais_{rendered}_sf_bay.parquet"),
+        "preview": Path(f"data/processed/noaa_ais_{rendered}_sf_bay_preview.geojson"),
+        "manifest": Path(f"data/manifests/noaa_ais_{rendered}_sf_bay.json"),
+        "report": report,
+    }
 
 
 def _write_text(path: Path, text: str, *, overwrite: bool) -> None:
@@ -99,13 +119,15 @@ def resolve_mapped_location_crs(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
+    parser.add_argument("--source-date", type=date.fromisoformat, default=date(2024, 1, 1))
+    parser.add_argument("--source-catalog", type=Path, default=DEFAULT_SOURCE_CATALOG)
+    parser.add_argument("--source", type=Path)
     parser.add_argument("--download-record", type=Path)
     parser.add_argument("--column-map", type=Path, default=DEFAULT_COLUMN_MAP)
-    parser.add_argument("--processed-output", type=Path, default=DEFAULT_PROCESSED)
-    parser.add_argument("--preview-output", type=Path, default=DEFAULT_PREVIEW)
-    parser.add_argument("--manifest-output", type=Path, default=DEFAULT_MANIFEST)
-    parser.add_argument("--report-output", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument("--processed-output", type=Path)
+    parser.add_argument("--preview-output", type=Path)
+    parser.add_argument("--manifest-output", type=Path)
+    parser.add_argument("--report-output", type=Path)
     parser.add_argument("--publisher", required=True)
     parser.add_argument("--observed-license", required=True)
     parser.add_argument("--license-url", required=True)
@@ -115,6 +137,19 @@ def main() -> int:
     parser.add_argument("--batch-size", type=int, default=250_000)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
+
+    try:
+        approved_source = load_phase3a_catalog(args.source_catalog).for_date(
+            args.source_date
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        parser.exit(1, f"error: {error}\n")
+    defaults = default_daily_paths(args.source_date)
+    args.source = args.source or defaults["source"]
+    args.processed_output = args.processed_output or defaults["processed"]
+    args.preview_output = args.preview_output or defaults["preview"]
+    args.manifest_output = args.manifest_output or defaults["manifest"]
+    args.report_output = args.report_output or defaults["report"]
 
     try:
         preflight_output_paths(
@@ -133,8 +168,11 @@ def main() -> int:
         args.source.name + ".download.json"
     )
     record = read_download_record(record_path)
-    if record.source_url != APPROVED_SOURCE_URL:
-        parser.exit(1, "error: download record URL is not the approved NOAA 2024-01-01 source\n")
+    if record.source_url != approved_source.source_url:
+        parser.exit(
+            1,
+            f"error: download record URL is not the approved NOAA {args.source_date.isoformat()} source\n",
+        )
     if args.source.stat().st_size != record.content_length:
         parser.exit(1, "error: source size does not match the download record\n")
     if sha256_file(args.source) != record.sha256:
@@ -160,7 +198,7 @@ def main() -> int:
             frames,
             column_map,
             source_crs=source_crs,
-            source_date=date(2024, 1, 1),
+            source_date=args.source_date,
             bbox=SF_BAY,
             max_observations=args.max_observations,
             gap_threshold_minutes=10,
@@ -178,14 +216,14 @@ def main() -> int:
         )
         manifest = build_manifest(
             result,
-            dataset_id="noaa-ais-2024-01-01-sf-bay-cargo-smoke",
+            dataset_id=f"noaa-ais-{args.source_date.isoformat()}-sf-bay-cargo-smoke",
             publisher=args.publisher,
             source_url=record.source_url,
             source_readme_url=DEFAULT_README_URL,
             observed_license=args.observed_license,
             license_url=args.license_url,
             download_utc=record.download_utc,
-            source_date=date(2024, 1, 1),
+            source_date=args.source_date,
             content_length=record.content_length,
             source_sha256=record.sha256,
             source_inspection=inspection.to_dict(),

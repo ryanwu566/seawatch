@@ -16,6 +16,7 @@ from apps.api.seawatch.trajectories.preprocess import (
     summarize_time_gaps,
     select_complete_tracks,
     surrogate_track_id,
+    validate_source_date_range,
     valid_coordinate_mask,
 )
 
@@ -36,6 +37,30 @@ def test_parse_utc_timestamps_marks_invalid_values_missing() -> None:
     result = parse_utc_timestamps(pd.Series(["not-a-time", None]))
 
     assert result.isna().tolist() == [True, True]
+
+
+def test_validate_source_date_range_accepts_only_the_selected_utc_day() -> None:
+    validate_source_date_range(
+        pd.Timestamp("2024-01-02T00:00:00Z"),
+        pd.Timestamp("2024-01-02T23:59:59.999999Z"),
+        date(2024, 1, 2),
+    )
+
+
+@pytest.mark.parametrize(
+    ("minimum", "maximum"),
+    [
+        ("2024-01-01T23:59:59Z", "2024-01-02T12:00:00Z"),
+        ("2024-01-02T12:00:00Z", "2024-01-03T00:00:00Z"),
+    ],
+)
+def test_validate_source_date_range_rejects_observations_outside_selected_day(
+    minimum: str, maximum: str
+) -> None:
+    with pytest.raises(ValueError, match="outside selected source date 2024-01-02"):
+        validate_source_date_range(
+            pd.Timestamp(minimum), pd.Timestamp(maximum), date(2024, 1, 2)
+        )
 
 
 def test_valid_coordinate_mask_rejects_null_nonfinite_and_out_of_range() -> None:

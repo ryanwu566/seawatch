@@ -94,6 +94,25 @@ def parse_utc_timestamps(values: pd.Series) -> pd.Series:
     return pd.to_datetime(values, errors="coerce", utc=True, format="mixed")
 
 
+def validate_source_date_range(
+    minimum: pd.Timestamp, maximum: pd.Timestamp, source_date: date
+) -> None:
+    """Require all valid source timestamps to fall within one selected UTC day."""
+
+    if minimum.tzinfo is None or maximum.tzinfo is None:
+        raise ValueError("source timestamp range must be timezone-aware")
+    observed_minimum = minimum.tz_convert("UTC")
+    observed_maximum = maximum.tz_convert("UTC")
+    day_start = pd.Timestamp(source_date, tz="UTC")
+    day_end = day_start + pd.Timedelta(days=1)
+    if observed_minimum < day_start or observed_maximum >= day_end:
+        raise ValueError(
+            "source timestamp range is outside selected source date "
+            f"{source_date.isoformat()}: {observed_minimum.isoformat()} to "
+            f"{observed_maximum.isoformat()}"
+        )
+
+
 def valid_coordinate_mask(longitude: pd.Series, latitude: pd.Series) -> pd.Series:
     lon = pd.to_numeric(longitude, errors="coerce")
     lat = pd.to_numeric(latitude, errors="coerce")
@@ -281,6 +300,8 @@ def prepare_smoke_dataset_batches(
     filtered_rows = 0
     source_columns: tuple[str, ...] | None = None
     cargo_batches: list[pd.DataFrame] = []
+    source_timestamp_minimum: pd.Timestamp | None = None
+    source_timestamp_maximum: pd.Timestamp | None = None
 
     for frame in frames:
         current_columns = tuple(str(name) for name in frame.columns)
@@ -292,6 +313,20 @@ def prepare_smoke_dataset_batches(
         canonical = canonicalize_observations(
             frame, column_map, source_crs=source_crs
         )
+        valid_timestamps = canonical["base_date_time"].dropna()
+        if len(valid_timestamps):
+            batch_minimum = valid_timestamps.min()
+            batch_maximum = valid_timestamps.max()
+            source_timestamp_minimum = (
+                batch_minimum
+                if source_timestamp_minimum is None
+                else min(source_timestamp_minimum, batch_minimum)
+            )
+            source_timestamp_maximum = (
+                batch_maximum
+                if source_timestamp_maximum is None
+                else max(source_timestamp_maximum, batch_maximum)
+            )
         coordinate_valid = valid_coordinate_mask(
             canonical["longitude"], canonical["latitude"]
         )
@@ -317,6 +352,11 @@ def prepare_smoke_dataset_batches(
 
     if source_columns is None:
         raise ValueError("at least one source batch is required")
+    if source_timestamp_minimum is None or source_timestamp_maximum is None:
+        raise ValueError("source contains no valid UTC timestamps")
+    validate_source_date_range(
+        source_timestamp_minimum, source_timestamp_maximum, source_date
+    )
     cargo_all = pd.concat(cargo_batches, ignore_index=True)
     ordered, duplicate_stats = order_and_deduplicate(cargo_all)
     time_gap_stats = summarize_time_gaps(

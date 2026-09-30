@@ -91,3 +91,14 @@ outside normal tests:
 Generated segmented, summary, and feature Parquet files remain ignored and
 local. Only aggregate provenance and QA documentation are committed. See
 `docs/trajectory-feature-spec.md` for the exact feature and quality contract.
+
+## Phase 3A Multi-Day AIS Cohort
+
+Phase 3A adds only 2024-01-02 and 2024-01-03 as independent daily lineages.
+The fixed date roles are January 1 train/reference, January 2 calibration, and
+January 3 held-out test. No merged feature dataset or anomaly model is created.
+
+The explicit download, inspection, preparation, feature-generation, cohort,
+and audit commands are in `docs/phase3a-data-expansion-runbook.md`. Generated
+raw, Parquet, and GeoJSON artifacts remain ignored; the committed cohort
+manifest contains aggregate lineage and QA only.

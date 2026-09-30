@@ -1,0 +1,286 @@
+{
+  "accepted_window_count": 3335,
+  "artifacts": {
+    "segmented": {
+      "path": "data\\processed\\features\\noaa_ais_2024-01-02_sf_bay_segmented.parquet",
+      "row_count": 6651,
+      "sha256": "8dc8b060c1efeb73fd6aacc7b777753dc3d34ae4c917a4432d0567f5ecc70f4a",
+      "size_bytes": 123385
+    },
+    "segments": {
+      "path": "data\\processed\\features\\noaa_ais_2024-01-02_sf_bay_segments.parquet",
+      "row_count": 19,
+      "sha256": "815c45b56e57f491f332f99fb1a21e3bdd06c2c9ec7d3157ef6efe8cd2f61812",
+      "size_bytes": 16467
+    },
+    "windows": {
+      "path": "data\\processed\\features\\noaa_ais_2024-01-02_sf_bay_windows.parquet",
+      "row_count": 3785,
+      "sha256": "3a4bed3bf04cc7e46c7f1474b011d86e6a6fd2685cd41606b71f0206fea70b74",
+      "size_bytes": 242427
+    }
+  },
+  "candidate_window_count": 3785,
+  "configuration": {
+    "path": "config\\trajectory_features_v1.json",
+    "sha256": "70aa8dd26c6f438c5122b48a497aad426fc5e4661829ff54611a266048f92a02",
+    "values": {
+      "course_min_speed_knots": 1.0,
+      "low_speed_threshold_knots": 3.0,
+      "minimum_displacement_for_ratio_m": 50.0,
+      "minimum_observed_span_seconds": 1200.0,
+      "minimum_valid_fraction": 0.8,
+      "minimum_window_observations": 10,
+      "segment_gap_seconds": 600.0,
+      "window_duration_seconds": 1800.0,
+      "window_stride_seconds": 300.0
+    }
+  },
+  "dataset_id": "noaa-ais-2024-01-02-sf-bay-cargo-smoke-trajectory-features",
+  "distributions": {
+    "course_change_abs_p95_deg": {
+      "count": 3785,
+      "maximum": 29.930001831054685,
+      "median": 10.989999771118155,
+      "minimum": 2.100006103515625,
+      "missing_count": 3711,
+      "missing_rate": 0.980449141347424,
+      "p25": 8.355011749267575,
+      "p75": 13.119996261596679,
+      "p95": 23.845999450683582
+    },
+    "course_change_abs_sum_deg": {
+      "count": 3785,
+      "maximum": 167.0,
+      "median": 77.79997634887695,
+      "minimum": 5.199981689453125,
+      "missing_count": 3711,
+      "missing_rate": 0.980449141347424,
+      "p25": 51.14997863769531,
+      "p75": 116.74998760223389,
+      "p95": 146.7
+    },
+    "displacement_m": {
+      "count": 3785,
+      "maximum": 12810.073474595105,
+      "median": 5.284509823132714,
+      "minimum": 0.0,
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001,
+      "p25": 2.2198518307857906,
+      "p75": 17.946388144538986,
+      "p95": 186.56532366288158
+    },
+    "input_sog_knots": {
+      "count": 6651,
+      "maximum": 16.799999237060547,
+      "median": 0.0,
+      "minimum": 0.0,
+      "missing_count": 0,
+      "missing_rate": 0.0,
+      "p25": 0.0,
+      "p75": 0.0,
+      "p95": 0.5
+    },
+    "low_speed_duration_seconds": {
+      "count": 3785,
+      "maximum": 1799.0,
+      "median": 1620.0,
+      "minimum": 0.0,
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001,
+      "p25": 1620.0,
+      "p75": 1620.0,
+      "p95": 1624.0
+    },
+    "low_speed_fraction": {
+      "count": 3785,
+      "maximum": 1.0,
+      "median": 1.0,
+      "minimum": 0.0,
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001,
+      "p25": 1.0,
+      "p75": 1.0,
+      "p95": 1.0
+    },
+    "max_gap_seconds": {
+      "count": 3785,
+      "maximum": 540.0,
+      "median": 181.0,
+      "minimum": 70.0,
+      "missing_count": 0,
+      "missing_rate": 0.0,
+      "p25": 180.0,
+      "p75": 183.0,
+      "p95": 360.0
+    },
+    "observations_per_segment": {
+      "count": 19,
+      "maximum": 553.0,
+      "median": 470.0,
+      "minimum": 1.0,
+      "missing_count": 0,
+      "missing_rate": 0.0,
+      "p25": 155.0,
+      "p75": 476.0,
+      "p95": 548.5
+    },
+    "path_displacement_ratio": {
+      "count": 3785,
+      "maximum": 31.967704048019137,
+      "median": 1.0819821177535887,
+      "minimum": 1.0008902055316293,
+      "missing_count": 3370,
+      "missing_rate": 0.8903566710700133,
+      "p25": 1.0381392912397092,
+      "p75": 1.173448279657397,
+      "p95": 1.5781952282477987
+    },
+    "path_distance_m": {
+      "count": 3785,
+      "maximum": 13236.292584232386,
+      "median": 29.36472212960058,
+      "minimum": 0.0,
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001,
+      "p25": 17.064067388272637,
+      "p75": 48.9347369159181,
+      "p95": 217.75931325989401
+    },
+    "segment_duration_seconds": {
+      "count": 19,
+      "maximum": 86324.0,
+      "median": 85500.0,
+      "minimum": 0.0,
+      "missing_count": 0,
+      "missing_rate": 0.0,
+      "p25": 21414.5,
+      "p75": 86220.0,
+      "p95": 86241.2
+    },
+    "segments_per_track": {
+      "count": 16,
+      "maximum": 2.0,
+      "median": 1.0,
+      "minimum": 1.0,
+      "missing_count": 0,
+      "missing_rate": 0.0,
+      "p25": 1.0,
+      "p75": 1.0,
+      "p95": 2.0
+    },
+    "windows_per_segment": {
+      "count": 19,
+      "maximum": 282.0,
+      "median": 280.0,
+      "minimum": 0.0,
+      "missing_count": 0,
+      "missing_rate": 0.0,
+      "p25": 68.0,
+      "p75": 282.0,
+      "p95": 282.0
+    },
+    "windows_per_track": {
+      "count": 16,
+      "maximum": 282.0,
+      "median": 282.0,
+      "minimum": 0.0,
+      "missing_count": 0,
+      "missing_rate": 0.0,
+      "p25": 276.75,
+      "p75": 282.0,
+      "p95": 282.0
+    }
+  },
+  "feature_columns": [
+    "sog_median_knots",
+    "sog_p95_knots",
+    "low_speed_fraction",
+    "low_speed_duration_seconds",
+    "path_distance_m",
+    "displacement_m",
+    "path_displacement_ratio",
+    "course_change_abs_sum_deg",
+    "course_change_abs_p95_deg",
+    "heading_cog_abs_median_deg"
+  ],
+  "feature_missingness": {
+    "course_change_abs_p95_deg": {
+      "missing_count": 3711,
+      "missing_rate": 0.980449141347424
+    },
+    "course_change_abs_sum_deg": {
+      "missing_count": 3711,
+      "missing_rate": 0.980449141347424
+    },
+    "displacement_m": {
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001
+    },
+    "heading_cog_abs_median_deg": {
+      "missing_count": 3738,
+      "missing_rate": 0.9875825627476883
+    },
+    "low_speed_duration_seconds": {
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001
+    },
+    "low_speed_fraction": {
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001
+    },
+    "path_displacement_ratio": {
+      "missing_count": 3370,
+      "missing_rate": 0.8903566710700133
+    },
+    "path_distance_m": {
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001
+    },
+    "sog_median_knots": {
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001
+    },
+    "sog_p95_knots": {
+      "missing_count": 450,
+      "missing_rate": 0.11889035667107001
+    }
+  },
+  "input_rows": 6651,
+  "input_track_count": 16,
+  "minimum_recommended_expansion": "Acquire at least two additional separately approved dates as independent calibration and test partitions, then reassess vessel diversity and feature coverage.",
+  "notes": [
+    "Quality metadata is not behavioral evidence.",
+    "Overlapping windows share observations and are not independent samples.",
+    "The deterministic track surrogate is a display control, not anonymization.",
+    "Statistical extremes are not labeled as anomalies."
+  ],
+  "phase3_gate": "B. EXPAND DATA BEFORE MODELING",
+  "rejected_window_count": 450,
+  "rejection_reasons": {
+    "insufficient_observations": 450
+  },
+  "schema_version": "trajectory-features-v1",
+  "segment_count": 19,
+  "segmentation_rule": "new segment when UTC gap is strictly greater than 600 seconds",
+  "source_artifact": {
+    "path": "data\\processed\\noaa_ais_2024-01-02_sf_bay.parquet",
+    "sha256": "c10d753555a049bd8a5bb5fb69961045f781ba772ad184c5f95ffff529a9b12d",
+    "size_bytes": 113059
+  },
+  "source_dataset_id": "noaa-ais-2024-01-02-sf-bay-cargo-smoke",
+  "source_date": "2024-01-02",
+  "source_manifest": {
+    "path": "data\\manifests\\noaa_ais_2024-01-02_sf_bay.json",
+    "sha256": "65148f05db9f2be095817b4fd96d97b9d4257e20670aa6d26831af5a1d8fe74e"
+  },
+  "validation": {
+    "input_out_of_order_pairs": 0,
+    "input_rows": 6651,
+    "invalid_cog_rows": 0,
+    "invalid_heading_rows": 0,
+    "invalid_sog_rows": 0
+  },
+  "window_rule": "1800-second half-open windows, 300-second stride, anchored per segment"
+}

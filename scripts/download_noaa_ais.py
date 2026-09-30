@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from apps.api.seawatch.adapters.noaa_ais import (
     download_file,
     write_download_record,
 )
+from apps.api.seawatch.datasets.source_catalog import load_phase3a_catalog
 
 
 DEFAULT_SOURCE_URL = (
@@ -20,25 +22,34 @@ DEFAULT_SOURCE_URL = (
     "marinecadastre/ais2024/ais-2024-01-01.parquet"
 )
 DEFAULT_DESTINATION = Path("data/raw/ais-2024-01-01.parquet")
+DEFAULT_CATALOG = Path("config/noaa_ais_phase3a_dates.json")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default=DEFAULT_SOURCE_URL)
-    parser.add_argument("--destination", type=Path, default=DEFAULT_DESTINATION)
+    parser.add_argument("--date", default="2024-01-01")
+    parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+    parser.add_argument("--url")
+    parser.add_argument("--destination", type=Path)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
 
-    if args.url != DEFAULT_SOURCE_URL:
-        parser.exit(1, "error: URL is not the approved NOAA 2024-01-01 source\n")
-
     try:
-        sidecar = args.destination.with_name(args.destination.name + ".download.json")
+        source_date = date.fromisoformat(args.date)
+        entry = load_phase3a_catalog(args.catalog).for_date(source_date)
+        if args.url is not None and args.url != entry.source_url:
+            raise ValueError(
+                f"URL is not the approved NOAA {source_date.isoformat()} source"
+            )
+        destination = args.destination or Path("data/raw") / entry.raw_filename
+        sidecar = destination.with_name(destination.name + ".download.json")
         if sidecar.exists() and not args.force:
             raise FileExistsError(f"download record already exists: {sidecar}")
-        record = download_file(args.url, args.destination, overwrite=args.force)
+        record = download_file(
+            entry.source_url, destination, overwrite=args.force
+        )
         write_download_record(record, sidecar, overwrite=args.force)
-    except (DownloadError, FileExistsError) as error:
+    except (DownloadError, FileExistsError, ValueError) as error:
         parser.exit(1, f"error: {error}\n")
 
     print(f"destination: {record.destination}")

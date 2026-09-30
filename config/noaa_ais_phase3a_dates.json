@@ -1,0 +1,23 @@
+{
+  "schema_version": "phase3a-source-catalog-v1",
+  "entries": [
+    {
+      "date": "2024-01-01",
+      "source_url": "https://ocmgeodatastor1.blob.core.windows.net/marinecadastre/ais2024/ais-2024-01-01.parquet",
+      "raw_filename": "ais-2024-01-01.parquet",
+      "split_role": "train"
+    },
+    {
+      "date": "2024-01-02",
+      "source_url": "https://ocmgeodatastor1.blob.core.windows.net/marinecadastre/ais2024/ais-2024-01-02.parquet",
+      "raw_filename": "ais-2024-01-02.parquet",
+      "split_role": "calibration"
+    },
+    {
+      "date": "2024-01-03",
+      "source_url": "https://ocmgeodatastor1.blob.core.windows.net/marinecadastre/ais2024/ais-2024-01-03.parquet",
+      "raw_filename": "ais-2024-01-03.parquet",
+      "split_role": "test"
+    }
+  ]
+}

@@ -1,0 +1,866 @@
+{
+  "cohort_id": "noaa-ais-2024-01-01-to-2024-01-03-sf-bay-phase3a",
+  "comparability": {
+    "failed_checks": [],
+    "passed": true
+  },
+  "dates": [
+    {
+      "feature_artifacts": {
+        "segmented": {
+          "path": "data\\processed\\features\\noaa_ais_2024-01-01_sf_bay_segmented.parquet",
+          "row_count": 5581,
+          "sha256": "d339c411cccde0557241dd2e3942c9b172a0dd07fdeebc4d453c2f13c4d228d8",
+          "size_bytes": 100967
+        },
+        "segments": {
+          "path": "data\\processed\\features\\noaa_ais_2024-01-01_sf_bay_segments.parquet",
+          "row_count": 15,
+          "sha256": "b89a1d49fa792abada8f8c1763cc5db58135a26a8b4e90227ed06eeca009aefc",
+          "size_bytes": 16091
+        },
+        "windows": {
+          "path": "data\\processed\\features\\noaa_ais_2024-01-01_sf_bay_windows.parquet",
+          "row_count": 3216,
+          "sha256": "b569823f5965c7dedd77b02a5daeda14a03bdd69c0a3edee3ec277610dcde3d8",
+          "size_bytes": 205758
+        }
+      },
+      "feature_manifest": {
+        "path": "data\\manifests\\noaa_ais_2024-01-01_sf_bay_trajectory_features.json",
+        "sha256": "7f19a80df3285fc2a829fa52a8406b56069d0a5df28a462ad87172c3b496e858"
+      },
+      "phase1_manifest": {
+        "path": "data\\manifests\\noaa_ais_2024-01-01_sf_bay.json",
+        "sha256": "0069298235e854781b43d17bdd46cd72576a64338c5977e8ec06f0e4b8e9dcd1"
+      },
+      "qa": {
+        "accepted_windows": 2829,
+        "approximate_non_overlapping_windows": 471,
+        "candidate_windows": 3216,
+        "distributions": {
+          "course_change_abs_p95_deg": {
+            "count": 3216,
+            "maximum": 15.5,
+            "median": 12.599999999999994,
+            "minimum": 6.680003356933586,
+            "missing_count": 3183,
+            "missing_rate": 0.9897388059701493,
+            "p25": 9.6550048828125,
+            "p75": 14.0,
+            "p95": 15.184003601074217
+          },
+          "course_change_abs_sum_deg": {
+            "count": 3216,
+            "maximum": 116.0,
+            "median": 85.5999984741211,
+            "minimum": 11.0,
+            "missing_count": 3183,
+            "missing_rate": 0.9897388059701493,
+            "p25": 58.29997253417969,
+            "p75": 102.0,
+            "p95": 110.23999938964843
+          },
+          "displacement_m": {
+            "count": 3216,
+            "maximum": 13516.90517209429,
+            "median": 4.526223793443764,
+            "minimum": 0.0,
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239,
+            "p25": 2.08173288150605,
+            "p75": 11.66074174866992,
+            "p95": 97.13022437156226
+          },
+          "input_sog_knots": {
+            "count": 5581,
+            "maximum": 17.200000762939453,
+            "median": 0.0,
+            "minimum": 0.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 0.0,
+            "p75": 0.0,
+            "p95": 0.30000001192092896
+          },
+          "low_speed_duration_seconds": {
+            "count": 3216,
+            "maximum": 1799.0,
+            "median": 1620.0,
+            "minimum": 0.0,
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239,
+            "p25": 1620.0,
+            "p75": 1620.0,
+            "p95": 1624.0
+          },
+          "low_speed_fraction": {
+            "count": 3216,
+            "maximum": 1.0,
+            "median": 1.0,
+            "minimum": 0.0,
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239,
+            "p25": 1.0,
+            "p75": 1.0,
+            "p95": 1.0
+          },
+          "max_gap_seconds": {
+            "count": 3216,
+            "maximum": 364.0,
+            "median": 181.0,
+            "minimum": 67.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 180.0,
+            "p75": 184.0,
+            "p95": 360.0
+          },
+          "observations_per_segment": {
+            "count": 15,
+            "maximum": 509.0,
+            "median": 476.0,
+            "minimum": 17.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 368.0,
+            "p75": 477.5,
+            "p95": 487.99999999999994
+          },
+          "path_displacement_ratio": {
+            "count": 3216,
+            "maximum": 5.524681142180362,
+            "median": 1.0656017091986083,
+            "minimum": 1.0010792840479634,
+            "missing_count": 3004,
+            "missing_rate": 0.9340796019900498,
+            "p25": 1.0363763243668296,
+            "p75": 1.1175049131264327,
+            "p95": 1.5149212649011377
+          },
+          "path_distance_m": {
+            "count": 3216,
+            "maximum": 14032.897717834268,
+            "median": 25.959631358159946,
+            "minimum": 0.0,
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239,
+            "p25": 14.693775841929048,
+            "p75": 42.616170748565615,
+            "p95": 128.97758879897808
+          },
+          "segment_duration_seconds": {
+            "count": 15,
+            "maximum": 86226.0,
+            "median": 86220.0,
+            "minimum": 1049.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 61230.5,
+            "p75": 86220.5,
+            "p95": 86223.2
+          },
+          "segments_per_track": {
+            "count": 15,
+            "maximum": 1.0,
+            "median": 1.0,
+            "minimum": 1.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 1.0,
+            "p75": 1.0,
+            "p95": 1.0
+          },
+          "windows_per_segment": {
+            "count": 15,
+            "maximum": 282.0,
+            "median": 282.0,
+            "minimum": 0.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 198.5,
+            "p75": 282.0,
+            "p95": 282.0
+          },
+          "windows_per_track": {
+            "count": 15,
+            "maximum": 282.0,
+            "median": 282.0,
+            "minimum": 0.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 198.5,
+            "p75": 282.0,
+            "p95": 282.0
+          }
+        },
+        "feature_missingness": {
+          "course_change_abs_p95_deg": {
+            "missing_count": 3183,
+            "missing_rate": 0.9897388059701493
+          },
+          "course_change_abs_sum_deg": {
+            "missing_count": 3183,
+            "missing_rate": 0.9897388059701493
+          },
+          "displacement_m": {
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239
+          },
+          "heading_cog_abs_median_deg": {
+            "missing_count": 3192,
+            "missing_rate": 0.9925373134328358
+          },
+          "low_speed_duration_seconds": {
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239
+          },
+          "low_speed_fraction": {
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239
+          },
+          "path_displacement_ratio": {
+            "missing_count": 3004,
+            "missing_rate": 0.9340796019900498
+          },
+          "path_distance_m": {
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239
+          },
+          "sog_median_knots": {
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239
+          },
+          "sog_p95_knots": {
+            "missing_count": 387,
+            "missing_rate": 0.12033582089552239
+          }
+        },
+        "maximum_accepted_window_track_share": 0.0975609756097561,
+        "nominal_overlap_factor": 6.0,
+        "observations": 5581,
+        "rejected_windows": 387,
+        "rejection_reasons": {
+          "insufficient_observations": 387
+        },
+        "segments": 15,
+        "tracks": 15,
+        "validation": {
+          "input_out_of_order_pairs": 0,
+          "input_rows": 5581,
+          "invalid_cog_rows": 0,
+          "invalid_heading_rows": 0,
+          "invalid_sog_rows": 0
+        }
+      },
+      "source_artifact": {
+        "path": "data\\processed\\noaa_ais_2024-01-01_sf_bay.parquet",
+        "row_count": 5581,
+        "sha256": "e1633892604d85854dca6445bf6dba9ce70ea1b29625682db926b6962c5f5307",
+        "size_bytes": 91702
+      },
+      "source_date": "2024-01-01",
+      "split_role": "train"
+    },
+    {
+      "feature_artifacts": {
+        "segmented": {
+          "path": "data\\processed\\features\\noaa_ais_2024-01-02_sf_bay_segmented.parquet",
+          "row_count": 6651,
+          "sha256": "8dc8b060c1efeb73fd6aacc7b777753dc3d34ae4c917a4432d0567f5ecc70f4a",
+          "size_bytes": 123385
+        },
+        "segments": {
+          "path": "data\\processed\\features\\noaa_ais_2024-01-02_sf_bay_segments.parquet",
+          "row_count": 19,
+          "sha256": "815c45b56e57f491f332f99fb1a21e3bdd06c2c9ec7d3157ef6efe8cd2f61812",
+          "size_bytes": 16467
+        },
+        "windows": {
+          "path": "data\\processed\\features\\noaa_ais_2024-01-02_sf_bay_windows.parquet",
+          "row_count": 3785,
+          "sha256": "3a4bed3bf04cc7e46c7f1474b011d86e6a6fd2685cd41606b71f0206fea70b74",
+          "size_bytes": 242427
+        }
+      },
+      "feature_manifest": {
+        "path": "data\\manifests\\noaa_ais_2024-01-02_sf_bay_trajectory_features.json",
+        "sha256": "dad963a22af200a1bfdaecbf0457646758043318524443cc54fb2436b5198f13"
+      },
+      "phase1_manifest": {
+        "path": "data\\manifests\\noaa_ais_2024-01-02_sf_bay.json",
+        "sha256": "65148f05db9f2be095817b4fd96d97b9d4257e20670aa6d26831af5a1d8fe74e"
+      },
+      "qa": {
+        "accepted_windows": 3335,
+        "approximate_non_overlapping_windows": 555,
+        "candidate_windows": 3785,
+        "distributions": {
+          "course_change_abs_p95_deg": {
+            "count": 3785,
+            "maximum": 29.930001831054685,
+            "median": 10.989999771118155,
+            "minimum": 2.100006103515625,
+            "missing_count": 3711,
+            "missing_rate": 0.980449141347424,
+            "p25": 8.355011749267575,
+            "p75": 13.119996261596679,
+            "p95": 23.845999450683582
+          },
+          "course_change_abs_sum_deg": {
+            "count": 3785,
+            "maximum": 167.0,
+            "median": 77.79997634887695,
+            "minimum": 5.199981689453125,
+            "missing_count": 3711,
+            "missing_rate": 0.980449141347424,
+            "p25": 51.14997863769531,
+            "p75": 116.74998760223389,
+            "p95": 146.7
+          },
+          "displacement_m": {
+            "count": 3785,
+            "maximum": 12810.073474595105,
+            "median": 5.284509823132714,
+            "minimum": 0.0,
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001,
+            "p25": 2.2198518307857906,
+            "p75": 17.946388144538986,
+            "p95": 186.56532366288158
+          },
+          "input_sog_knots": {
+            "count": 6651,
+            "maximum": 16.799999237060547,
+            "median": 0.0,
+            "minimum": 0.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 0.0,
+            "p75": 0.0,
+            "p95": 0.5
+          },
+          "low_speed_duration_seconds": {
+            "count": 3785,
+            "maximum": 1799.0,
+            "median": 1620.0,
+            "minimum": 0.0,
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001,
+            "p25": 1620.0,
+            "p75": 1620.0,
+            "p95": 1624.0
+          },
+          "low_speed_fraction": {
+            "count": 3785,
+            "maximum": 1.0,
+            "median": 1.0,
+            "minimum": 0.0,
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001,
+            "p25": 1.0,
+            "p75": 1.0,
+            "p95": 1.0
+          },
+          "max_gap_seconds": {
+            "count": 3785,
+            "maximum": 540.0,
+            "median": 181.0,
+            "minimum": 70.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 180.0,
+            "p75": 183.0,
+            "p95": 360.0
+          },
+          "observations_per_segment": {
+            "count": 19,
+            "maximum": 553.0,
+            "median": 470.0,
+            "minimum": 1.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 155.0,
+            "p75": 476.0,
+            "p95": 548.5
+          },
+          "path_displacement_ratio": {
+            "count": 3785,
+            "maximum": 31.967704048019137,
+            "median": 1.0819821177535887,
+            "minimum": 1.0008902055316293,
+            "missing_count": 3370,
+            "missing_rate": 0.8903566710700133,
+            "p25": 1.0381392912397092,
+            "p75": 1.173448279657397,
+            "p95": 1.5781952282477987
+          },
+          "path_distance_m": {
+            "count": 3785,
+            "maximum": 13236.292584232386,
+            "median": 29.36472212960058,
+            "minimum": 0.0,
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001,
+            "p25": 17.064067388272637,
+            "p75": 48.9347369159181,
+            "p95": 217.75931325989401
+          },
+          "segment_duration_seconds": {
+            "count": 19,
+            "maximum": 86324.0,
+            "median": 85500.0,
+            "minimum": 0.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 21414.5,
+            "p75": 86220.0,
+            "p95": 86241.2
+          },
+          "segments_per_track": {
+            "count": 16,
+            "maximum": 2.0,
+            "median": 1.0,
+            "minimum": 1.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 1.0,
+            "p75": 1.0,
+            "p95": 2.0
+          },
+          "windows_per_segment": {
+            "count": 19,
+            "maximum": 282.0,
+            "median": 280.0,
+            "minimum": 0.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 68.0,
+            "p75": 282.0,
+            "p95": 282.0
+          },
+          "windows_per_track": {
+            "count": 16,
+            "maximum": 282.0,
+            "median": 282.0,
+            "minimum": 0.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 276.75,
+            "p75": 282.0,
+            "p95": 282.0
+          }
+        },
+        "feature_missingness": {
+          "course_change_abs_p95_deg": {
+            "missing_count": 3711,
+            "missing_rate": 0.980449141347424
+          },
+          "course_change_abs_sum_deg": {
+            "missing_count": 3711,
+            "missing_rate": 0.980449141347424
+          },
+          "displacement_m": {
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001
+          },
+          "heading_cog_abs_median_deg": {
+            "missing_count": 3738,
+            "missing_rate": 0.9875825627476883
+          },
+          "low_speed_duration_seconds": {
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001
+          },
+          "low_speed_fraction": {
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001
+          },
+          "path_displacement_ratio": {
+            "missing_count": 3370,
+            "missing_rate": 0.8903566710700133
+          },
+          "path_distance_m": {
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001
+          },
+          "sog_median_knots": {
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001
+          },
+          "sog_p95_knots": {
+            "missing_count": 450,
+            "missing_rate": 0.11889035667107001
+          }
+        },
+        "maximum_accepted_window_track_share": 0.08125937031484258,
+        "nominal_overlap_factor": 6.0,
+        "observations": 6651,
+        "rejected_windows": 450,
+        "rejection_reasons": {
+          "insufficient_observations": 450
+        },
+        "segments": 19,
+        "tracks": 16,
+        "validation": {
+          "input_out_of_order_pairs": 0,
+          "input_rows": 6651,
+          "invalid_cog_rows": 0,
+          "invalid_heading_rows": 0,
+          "invalid_sog_rows": 0
+        }
+      },
+      "source_artifact": {
+        "path": "data\\processed\\noaa_ais_2024-01-02_sf_bay.parquet",
+        "row_count": 6651,
+        "sha256": "c10d753555a049bd8a5bb5fb69961045f781ba772ad184c5f95ffff529a9b12d",
+        "size_bytes": 113059
+      },
+      "source_date": "2024-01-02",
+      "split_role": "calibration"
+    },
+    {
+      "feature_artifacts": {
+        "segmented": {
+          "path": "data\\processed\\features\\noaa_ais_2024-01-03_sf_bay_segmented.parquet",
+          "row_count": 8385,
+          "sha256": "887916d0c5063b2ac443fc416060702f9b052d4d6aff4b6b0d27714e0d506956",
+          "size_bytes": 158002
+        },
+        "segments": {
+          "path": "data\\processed\\features\\noaa_ais_2024-01-03_sf_bay_segments.parquet",
+          "row_count": 23,
+          "sha256": "b998e5f707002acfc0f0a7ea23b9f468c9ff26497cdcd35576efe72974068c12",
+          "size_bytes": 16846
+        },
+        "windows": {
+          "path": "data\\processed\\features\\noaa_ais_2024-01-03_sf_bay_windows.parquet",
+          "row_count": 4435,
+          "sha256": "802c7a689f5f76f293d79999d1785cbc0b5cc70dbd6e9758e7c9e2cdac3af9de",
+          "size_bytes": 286909
+        }
+      },
+      "feature_manifest": {
+        "path": "data\\manifests\\noaa_ais_2024-01-03_sf_bay_trajectory_features.json",
+        "sha256": "a2355e639c7b7711b8a5308bb74af41e5aea1dddc55749c12eefb54ac99241e4"
+      },
+      "phase1_manifest": {
+        "path": "data\\manifests\\noaa_ais_2024-01-03_sf_bay.json",
+        "sha256": "51de72e758e8f0696ec1c13e4d68967bbcec5d94b68f6b230b0ff7239bf30043"
+      },
+      "qa": {
+        "accepted_windows": 3680,
+        "approximate_non_overlapping_windows": 613,
+        "candidate_windows": 4435,
+        "distributions": {
+          "course_change_abs_p95_deg": {
+            "count": 4435,
+            "maximum": 50.65000534057617,
+            "median": 11.600000381469727,
+            "minimum": 0.09500579833984374,
+            "missing_count": 4248,
+            "missing_rate": 0.9578354002254792,
+            "p25": 8.739996337890624,
+            "p75": 15.830014038085931,
+            "p95": 24.07500278472899
+          },
+          "course_change_abs_sum_deg": {
+            "count": 4435,
+            "maximum": 276.70003509521484,
+            "median": 80.20003509521484,
+            "minimum": 0.100006103515625,
+            "missing_count": 4248,
+            "missing_rate": 0.9578354002254792,
+            "p25": 50.450016021728516,
+            "p75": 100.60001373291016,
+            "p95": 156.08999677896495
+          },
+          "displacement_m": {
+            "count": 4435,
+            "maximum": 13284.205918164222,
+            "median": 5.730851205277535,
+            "minimum": 0.0,
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823,
+            "p25": 2.21985161063682,
+            "p75": 30.121006987298724,
+            "p95": 353.18065395828575
+          },
+          "input_sog_knots": {
+            "count": 8385,
+            "maximum": 19.799999237060547,
+            "median": 0.0,
+            "minimum": 0.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 0.0,
+            "p75": 0.10000000149011612,
+            "p95": 9.399999618530273
+          },
+          "low_speed_duration_seconds": {
+            "count": 4435,
+            "maximum": 1799.0,
+            "median": 1620.0,
+            "minimum": 0.0,
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823,
+            "p25": 1620.0,
+            "p75": 1620.0,
+            "p95": 1701.3999999999978
+          },
+          "low_speed_fraction": {
+            "count": 4435,
+            "maximum": 1.0,
+            "median": 1.0,
+            "minimum": 0.0,
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823,
+            "p25": 1.0,
+            "p75": 1.0,
+            "p95": 1.0
+          },
+          "max_gap_seconds": {
+            "count": 4435,
+            "maximum": 541.0,
+            "median": 181.0,
+            "minimum": 70.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 180.0,
+            "p75": 184.0,
+            "p95": 360.0
+          },
+          "observations_per_segment": {
+            "count": 23,
+            "maximum": 590.0,
+            "median": 463.0,
+            "minimum": 4.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 243.0,
+            "p75": 477.5,
+            "p95": 527.5
+          },
+          "path_displacement_ratio": {
+            "count": 4435,
+            "maximum": 6.630724770320019,
+            "median": 1.1284660069355537,
+            "minimum": 1.0001461562573746,
+            "missing_count": 3727,
+            "missing_rate": 0.8403607666290868,
+            "p25": 1.0497294529021017,
+            "p75": 1.391051362022363,
+            "p95": 2.08216271164437
+          },
+          "path_distance_m": {
+            "count": 4435,
+            "maximum": 13819.739516151156,
+            "median": 39.34943791270213,
+            "minimum": 0.0,
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823,
+            "p25": 20.74864580981703,
+            "p75": 76.65680958972803,
+            "p95": 425.3785853438718
+          },
+          "segment_duration_seconds": {
+            "count": 23,
+            "maximum": 86297.0,
+            "median": 84275.0,
+            "minimum": 1080.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 36187.5,
+            "p75": 86046.5,
+            "p95": 86234.0
+          },
+          "segments_per_track": {
+            "count": 22,
+            "maximum": 2.0,
+            "median": 1.0,
+            "minimum": 1.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 1.0,
+            "p75": 1.0,
+            "p95": 1.0
+          },
+          "windows_per_segment": {
+            "count": 23,
+            "maximum": 282.0,
+            "median": 275.0,
+            "minimum": 0.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 115.5,
+            "p75": 281.0,
+            "p95": 282.0
+          },
+          "windows_per_track": {
+            "count": 22,
+            "maximum": 282.0,
+            "median": 278.0,
+            "minimum": 5.0,
+            "missing_count": 0,
+            "missing_rate": 0.0,
+            "p25": 125.0,
+            "p75": 281.0,
+            "p95": 282.0
+          }
+        },
+        "feature_missingness": {
+          "course_change_abs_p95_deg": {
+            "missing_count": 4248,
+            "missing_rate": 0.9578354002254792
+          },
+          "course_change_abs_sum_deg": {
+            "missing_count": 4248,
+            "missing_rate": 0.9578354002254792
+          },
+          "displacement_m": {
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823
+          },
+          "heading_cog_abs_median_deg": {
+            "missing_count": 4298,
+            "missing_rate": 0.9691093573844419
+          },
+          "low_speed_duration_seconds": {
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823
+          },
+          "low_speed_fraction": {
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823
+          },
+          "path_displacement_ratio": {
+            "missing_count": 3727,
+            "missing_rate": 0.8403607666290868
+          },
+          "path_distance_m": {
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823
+          },
+          "sog_median_knots": {
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823
+          },
+          "sog_p95_knots": {
+            "missing_count": 755,
+            "missing_rate": 0.17023675310033823
+          }
+        },
+        "maximum_accepted_window_track_share": 0.07336956521739131,
+        "nominal_overlap_factor": 6.0,
+        "observations": 8385,
+        "rejected_windows": 755,
+        "rejection_reasons": {
+          "insufficient_observations": 755
+        },
+        "segments": 23,
+        "tracks": 22,
+        "validation": {
+          "input_out_of_order_pairs": 0,
+          "input_rows": 8385,
+          "invalid_cog_rows": 0,
+          "invalid_heading_rows": 0,
+          "invalid_sog_rows": 0
+        }
+      },
+      "source_artifact": {
+        "path": "data\\processed\\noaa_ais_2024-01-03_sf_bay.parquet",
+        "row_count": 8385,
+        "sha256": "e0c426023e404e15335c62116f473184639757e2a340d2be93f0ec1a307d9928",
+        "size_bytes": 144426
+      },
+      "source_date": "2024-01-03",
+      "split_role": "test"
+    }
+  ],
+  "notes": [
+    "Dates are processed independently; no merged observation or feature dataset exists.",
+    "Overlapping windows share observations and are not independent samples.",
+    "Date-scoped track surrogates are display controls, not anonymization.",
+    "Movement distributions are descriptive data QA and are not anomaly labels."
+  ],
+  "phase3b_readiness": {
+    "decision": "A. DATA SUFFICIENT FOR BASELINE ANOMALY EXPERIMENTS",
+    "failed_criteria": []
+  },
+  "schema_version": "phase3a-multiday-v1",
+  "shared_contract": {
+    "column_map_path": "config/noaa_ais_2024_columns.json",
+    "column_map_sha256": "506898f1b233d625f53afed86d43d2214ce6a987b44bcadd02639da02b0eac2f",
+    "crs": "EPSG:4326",
+    "feature_columns": [
+      "sog_median_knots",
+      "sog_p95_knots",
+      "low_speed_fraction",
+      "low_speed_duration_seconds",
+      "path_distance_m",
+      "displacement_m",
+      "path_displacement_ratio",
+      "course_change_abs_sum_deg",
+      "course_change_abs_p95_deg",
+      "heading_cog_abs_median_deg"
+    ],
+    "feature_config_path": "config/trajectory_features_v1.json",
+    "feature_config_sha256": "70aa8dd26c6f438c5122b48a497aad426fc5e4661829ff54611a266048f92a02",
+    "feature_config_values": {
+      "course_min_speed_knots": 1.0,
+      "low_speed_threshold_knots": 3.0,
+      "minimum_displacement_for_ratio_m": 50.0,
+      "minimum_observed_span_seconds": 1200.0,
+      "minimum_valid_fraction": 0.8,
+      "minimum_window_observations": 10,
+      "segment_gap_seconds": 600.0,
+      "window_duration_seconds": 1800.0,
+      "window_stride_seconds": 300.0
+    },
+    "feature_schema_version": "trajectory-features-v1",
+    "geographic_bbox": {
+      "east": -122.25,
+      "north": 37.9,
+      "south": 37.68,
+      "west": -122.55
+    },
+    "observed_license": "CC0 1.0 Universal",
+    "output_columns": [
+      "track_id",
+      "base_date_time",
+      "longitude",
+      "latitude",
+      "sog",
+      "cog",
+      "heading",
+      "vessel_type"
+    ],
+    "processing_version": "phase1-v1",
+    "publisher": "NOAA Office for Coastal Management",
+    "timezone": "UTC",
+    "vessel_type_filter": {
+      "codes": [
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79
+      ],
+      "description": "AIS cargo vessel type codes 70 through 79",
+      "field": "vessel_type"
+    }
+  },
+  "totals": {
+    "accepted_windows": 9844,
+    "candidate_windows": 11436,
+    "observations": 20617,
+    "rejected_windows": 1592,
+    "segments": 57,
+    "tracks": 53
+  }
+}
