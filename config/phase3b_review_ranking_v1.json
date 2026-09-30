@@ -1,0 +1,27 @@
+{
+  "schema_version": "phase3b-review-ranking-config-v1",
+  "primary_method": "empirical_percentile",
+  "split_dates": {"train": "2024-01-01", "calibration": "2024-01-02", "test": "2024-01-03"},
+  "tier_a": ["sog_median_knots", "sog_p95_knots", "low_speed_fraction", "low_speed_duration_seconds", "path_distance_m", "displacement_m"],
+  "tier_b": ["path_displacement_ratio", "course_change_abs_sum_deg", "course_change_abs_p95_deg"],
+  "tier_c": ["heading_cog_abs_median_deg"],
+  "feature_groups": {
+    "speed": ["sog_median_knots", "sog_p95_knots"],
+    "low_speed_persistence": ["low_speed_fraction", "low_speed_duration_seconds"],
+    "movement_progress": ["path_distance_m", "displacement_m"],
+    "movement_irregularity": ["path_displacement_ratio"],
+    "turning": ["course_change_abs_sum_deg", "course_change_abs_p95_deg"]
+  },
+  "feature_units": {
+    "sog_median_knots": "knots", "sog_p95_knots": "knots",
+    "low_speed_fraction": "fraction", "low_speed_duration_seconds": "seconds",
+    "path_distance_m": "metres", "displacement_m": "metres",
+    "path_displacement_ratio": "ratio", "course_change_abs_sum_deg": "degrees",
+    "course_change_abs_p95_deg": "degrees", "heading_cog_abs_median_deg": "degrees"
+  },
+  "reference": {"clip_low_quantile": 0.01, "clip_high_quantile": 0.99},
+  "support": {"tier_a_min_fraction": 0.95, "tier_b_min_fraction": 0.8, "tier_b_min_windows": 200, "tier_b_min_tracks": 10, "tier_b_max_role_gap": 0.1},
+  "rules": {"low_quantile": 0.05, "high_quantile": 0.95, "max_reasons": 3},
+  "calibration": {"review_budget": 20, "budgets": [10, 20, 50], "bootstrap_replicates": 100, "bootstrap_seed": 42, "minimum_tracks": 3, "maximum_track_share": 0.5, "minimum_jaccard": 0.5, "tie_tolerance": 0.05},
+  "isolation_forest": {"n_estimators": 256, "max_samples": "auto", "max_features": 1.0, "bootstrap": false, "contamination": "auto", "random_state": 42, "n_jobs": 1}
+}

@@ -1,104 +1,229 @@
 ﻿# SeaWatch
 
-SeaWatch is a geospatial decision-support prototype for TDTH 2026.
+## Explainable Maritime Intelligence & Resilience Decision Support
 
-## Core Direction
+**TDTH 2026 — Maritime Track Anomaly & Grey-Zone Behavior Alerting**
 
-Challenge #07 — Maritime Track Anomaly & Grey-Zone Behavior Alerting
+---
 
-Planned capabilities:
+## Overview
 
-- Historical vessel-track replay
-- Interpretable trajectory anomaly detection
-- Behavioral reason codes
-- Data-quality and uncertainty indicators
-- Alert-threshold comparison
-- Human false-positive review
+SeaWatch is an AI-assisted geospatial decision-support system that analyzes maritime vessel trajectories and identifies behavior patterns requiring human review.
 
-## Optional Extension
+By combining AIS data processing, trajectory analytics, and explainable ranking methods, SeaWatch helps analysts understand:
 
-Challenge #10 — Emergency Logistics Under Network & Transport Disruption
+- What changed?
+- Why is this trajectory different?
+- Which behaviors require further investigation?
 
-The logistics module is designed to remain independent from the core #07 system.
+The system is designed as a **human-in-the-loop decision-support platform**, not an automated intent classifier.
 
-## Architecture
+---
 
-- Frontend: React + TypeScript + MapLibre
-- Backend: FastAPI
-- Data: Parquet + SQLite
-- Analysis: Python + scikit-learn
-- Optional optimization: NetworkX
+## Problem
 
-## Project Status
+Modern maritime environments generate large-scale vessel movement data.
 
-Initial project structure established.
+The challenge is not only detecting unusual patterns, but also:
 
-## Phase 1 Data Foundation Setup
+- reducing unnecessary alerts
+- explaining behavioral differences
+- understanding uncertainty
+- supporting human decision-making
 
-Create the project-local environment with the approved Python 3.12.7
-interpreter. These commands do not modify the global Python installation:
+SeaWatch focuses on **explainable behavioral intelligence rather than black-box prediction**.
 
-```powershell
-& 'C:\wu\python.exe' -m venv .venv
-& '.\.venv\Scripts\python.exe' -m pip install -r requirements.txt
-& '.\.venv\Scripts\python.exe' -m pytest
-```
+---
 
-The NOAA AIS download and smoke-dataset commands are documented with the
-Phase 1 implementation. Real raw and processed data remain local and are
-ignored by Git.
+## System Architecture
 
-Download and inspect only the approved 2024-01-01 source:
+```text
+AIS Historical Data
 
-```powershell
-& '.\.venv\Scripts\python.exe' scripts/download_noaa_ais.py
-& '.\.venv\Scripts\python.exe' scripts/inspect_noaa_ais.py `
-  data/raw/ais-2024-01-01.parquet
-```
+        ↓
 
-Preparation requires an explicit JSON mapping from the inspected source
-columns to the canonical fields. The verified mapping is committed at
-`config/noaa_ais_2024_columns.json`. Run the explicit real-data smoke workflow
-with:
+Trajectory Processing
 
-```powershell
-& '.\.venv\Scripts\python.exe' scripts/prepare_smoke_dataset.py `
-  --publisher 'NOAA Office for Coastal Management' `
-  --observed-license 'CC0 1.0 Universal' `
-  --license-url 'https://github.com/ocm-marinecadastre/ais-vessel-traffic/blob/main/LICENSE.md' `
-  --force
-```
+        ↓
 
-`--force` explicitly regenerates the committed measured manifest and QA report
-as well as the ignored local data artifacts. Without it, the command preflights
-all destinations and exits before processing if any output already exists.
+Movement Feature Engineering
 
-The smoke workflow is not part of the automated test suite. See
-`docs/data-provenance.md` and `docs/data-foundation-report.md` for the source
-and measured results.
+        ↓
 
-## Phase 2 Trajectory Features
+Explainable Anomaly Ranking
 
-Phase 2 deterministically segments and windows the existing local Phase 1
-Parquet and computes neutral movement features. It does not download data or
-perform anomaly detection. The real-data workflow is explicit and remains
-outside normal tests:
+        ↓
 
-```powershell
-& '.\.venv\Scripts\python.exe' scripts/prepare_trajectory_features.py --force
-```
+Human Investigation Dashboard
 
-Generated segmented, summary, and feature Parquet files remain ignored and
-local. Only aggregate provenance and QA documentation are committed. See
-`docs/trajectory-feature-spec.md` for the exact feature and quality contract.
+        ↓
 
-## Phase 3A Multi-Day AIS Cohort
+Emergency Logistics Simulation
 
-Phase 3A adds only 2024-01-02 and 2024-01-03 as independent daily lineages.
-The fixed date roles are January 1 train/reference, January 2 calibration, and
-January 3 held-out test. No merged feature dataset or anomaly model is created.
+## Core Capabilities
 
-The explicit download, inspection, preparation, feature-generation, cohort,
-and audit commands are in `docs/phase3a-data-expansion-runbook.md`. Generated
-raw, Parquet, and GeoJSON artifacts remain ignored; the committed cohort
-manifest contains aggregate lineage and QA only.
+### Maritime Trajectory Intelligence
+
+- AIS historical data ingestion
+- Vessel trajectory preprocessing
+- Temporal and geospatial analysis
+- Movement behavior modeling
+
+### Explainable Anomaly Ranking
+
+- Behavior deviation scoring
+- Feature-based explanations
+- Transparent ranking logic
+- Human-in-the-loop review workflow
+
+### Resilience Decision Support
+
+- Maritime situation awareness
+- Disruption scenario simulation
+- Emergency logistics extension
+
+---
+
+## Technology Stack
+
+### Data & Geospatial Processing
+
+- Python
+- Pandas
+- PyArrow
+- PyProj
+- Shapely
+
+### Machine Learning
+
+- Scikit-learn
+- Statistical anomaly ranking methods
+- Explainable feature-based analysis
+
+### Application Layer
+
+Planned:
+
+- FastAPI backend
+- React + TypeScript frontend
+- MapLibre geospatial visualization
+
+### Optimization Layer
+
+Planned:
+
+- NetworkX-based logistics simulation
+
+---
+
+## Data
+
+Current prototype uses:
+
+- NOAA MarineCadastre AIS GeoParquet
+- Historical AIS observations
+- WGS84 geospatial processing
+
+SeaWatch treats AIS data as behavioral observations.
+
+The system does not automatically determine intent or classify vessels.
+
+---
+
+## Development Progress
+
+### Completed
+
+✅ NOAA AIS data foundation  
+✅ GeoParquet ingestion pipeline  
+✅ Trajectory segmentation  
+✅ Geodesic movement features  
+✅ Multi-day AIS cohort preparation  
+
+### Current Development
+
+🚧 Explainable anomaly ranking  
+🚧 Statistical baseline comparison  
+🚧 Human review workflow  
+
+### Future
+
+⏳ Maritime investigation dashboard  
+⏳ Emergency logistics simulation  
+⏳ Edge deployment exploration  
+
+---
+
+## Project Roadmap
+
+### Phase 1 — Data Foundation ✅
+
+Completed:
+
+- Official AIS data acquisition
+- Data validation
+- Provenance tracking
+- Reproducible preprocessing
+
+### Phase 2 — Trajectory Intelligence ✅
+
+Completed:
+
+- Track segmentation
+- Time-window generation
+- Movement feature engineering
+
+### Phase 3 — Explainable Ranking 🚧
+
+Current:
+
+- Behavior deviation ranking
+- Statistical baseline evaluation
+- Explainable alert generation
+
+### Phase 4 — Decision Dashboard ⏳
+
+Planned:
+
+- Interactive maritime map
+- Track investigation interface
+- Human feedback workflow
+
+### Phase 5 — Resilience Extension ⏳
+
+Planned:
+
+- Emergency logistics simulation
+- Disruption scenario analysis
+
+---
+
+## Research Principles
+
+SeaWatch follows:
+
+- Explainability over black-box prediction
+- Human review over autonomous decisions
+- Reproducibility over hidden pipelines
+- Decision support over automated judgement
+
+---
+
+## Project Structure
+
+```text
+seawatch/
+
+├── apps/
+│   ├── api/
+│   └── web/
+
+├── data/
+
+├── models/
+
+├── tests/
+
+├── docs/
+
+└── experiments/
