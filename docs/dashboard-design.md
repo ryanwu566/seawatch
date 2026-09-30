@@ -36,7 +36,7 @@ apps/web/
     │   ├── client.ts         # Typed fetch wrapper for the backend
     │   └── client.test.ts
     ├── components/
-    │   ├── MapView.tsx        # MapLibre base map + alert markers
+    │   ├── MapView.tsx        # MapLibre base map + selected track LineString
     │   ├── AlertList.tsx      # Ranked candidates table (selectable)
     │   ├── AlertDetail.tsx    # Investigation panel
     │   ├── Timeline.tsx       # Trajectory time summary
@@ -71,7 +71,7 @@ A header shows the app title and a live API health indicator.
 |---------------|--------------------------------------------------------------------------------|
 | `Dashboard`   | Fetches `/health` and `/alerts`; holds the selected `alert_id`; fetches `/alerts/{id}` on selection; passes data down. |
 | `AlertList`   | Renders ranked rows (rank, track, score, method); emits selection. Empty/loading states. |
-| `MapView`     | Renders a MapLibre base map. Plots alert markers when coordinates are available; otherwise shows an informative overlay (the current API is position-free). |
+| `MapView`     | Renders a MapLibre base map and draws the selected track as a GeoJSON LineString (with endpoint markers) when geometry is available; shows loading / error / no-geometry / select placeholders otherwise. Never fabricates coordinates. |
 | `AlertDetail` | Shows review priority (%), alert/track ids, score, method, rank, review status, explanation reasons, supporting features, and data quality. |
 | `Timeline`    | Compact static trajectory time summary (date, observed duration, observations, average cadence). No animation. |
 | `format.ts`   | Pure presentation helpers (priority %, duration, percentile, fraction).        |
@@ -81,23 +81,68 @@ A header shows the app title and a live API health indicator.
 
 The dashboard consumes these existing endpoints only:
 
-| Endpoint             | Used by      | Purpose                                  |
-|----------------------|--------------|------------------------------------------|
-| `GET /health`        | Dashboard    | Header health indicator.                 |
-| `GET /alerts`        | Dashboard    | Ranked review candidates for the list.   |
-| `GET /alerts/{id}`   | Dashboard    | Full detail for the selected candidate.  |
-| `GET /tracks`        | client.ts    | Available (client method provided for future track views). |
+| Endpoint                      | Used by     | Purpose                                   |
+|-------------------------------|-------------|-------------------------------------------|
+| `GET /health`                 | Dashboard   | Header health indicator.                  |
+| `GET /alerts`                 | Dashboard   | Ranked review candidates for the list.    |
+| `GET /alerts/{id}`            | Dashboard   | Full detail for the selected candidate.   |
+| `GET /tracks/{id}/geometry`   | Dashboard   | Privacy-safe track LineString for the map.|
+| `GET /tracks`                 | client.ts   | Track metadata (client method available). |
 
 The API base URL is configured via `VITE_API_BASE_URL` (see `.env.example`,
 default `http://localhost:8000`). No backend logic is duplicated on the client.
 
-### A note on the map
+All network access goes through `src/api/dataSource.ts`, which selects between
+the live client (`src/api/client.ts`) and bundled demo fixtures based on
+`VITE_DEMO_MODE`.
 
-The Phase 4 API exposes **privacy-safe metadata only** and does not return vessel
-coordinates. `MapView` therefore renders a base map and an explanatory overlay
-rather than fabricating positions. It is written to plot markers automatically if
-the API is later extended with optional `longitude`/`latitude` fields, so no
-rewrite is needed when geographic data becomes available.
+### Track geometry flow
+
+The map draws the selected track's real trajectory. Coordinates are never
+fabricated — they come from existing Phase 1 processed observations via a
+read-only backend endpoint.
+
+```text
+AlertList: user clicks a candidate
+        ↓
+Dashboard: fetchAlert(alert_id)  → detail (includes track_id)
+        ↓
+Dashboard: fetchTrackGeometry(track_id)  → GeoJSON LineString
+        ↓
+MapView: draws the LineString + endpoints, fits bounds
+```
+
+- The endpoint returns a `LineString` (≥ 2 coordinate pairs) or `404` when a
+  track has no available geometry. `MapView` shows a clear placeholder for the
+  loading, error, and no-geometry states, and never invents positions.
+- The geometry contains coordinates only; no vessel identity is present.
+
+### Offline demo mode
+
+`VITE_DEMO_MODE` guards a fully offline presentation path so a demo never fails
+if the backend or data is unavailable:
+
+- `VITE_DEMO_MODE=false` (default) — the dashboard uses the FastAPI backend.
+- `VITE_DEMO_MODE=true` — the dashboard reads bundled fixtures from `src/demo/`
+  (`demo_alerts.json`, `demo_details.json`, `demo_geometry.json`) and performs no
+  network requests.
+
+Demo data is **clearly labeled** and never presented as live: the header shows a
+"Demo Mode" badge and a banner states the data is bundled sample data. The demo
+health status reports `seawatch-demo`.
+
+#### Offline presentation workflow
+
+```bash
+cd apps/web
+cp .env.example .env
+# set VITE_DEMO_MODE=true in .env
+npm install
+npm run dev        # or: npm run build && npm run preview
+```
+
+The dashboard then runs end to end (list → detail → map geometry) with no backend
+and no raw data on the machine.
 
 ## Local development
 
@@ -118,17 +163,19 @@ to consume.
 - `src/api/client.test.ts` — API client: base URL resolution, request URLs, the
   `shortlisted_only` filter, id encoding, and `ApiError` on error responses
   (fetch is mocked; fully offline).
+- `src/api/dataSource.test.ts` — demo mode serves bundled fixtures with no
+  network, returns a demo `LineString`, 404s unknown demo tracks, reports the
+  `seawatch-demo` health service, and delegates to the network when demo mode is
+  off.
 - `src/components/components.test.tsx` — `AlertList` rendering/selection/empty
   state and `AlertDetail` rendering, including a guard that prohibited vocabulary
   (threat/hostile/illegal) never appears.
-
-`MapView` is intentionally excluded from the render tests because MapLibre
-requires a WebGL context that jsdom does not provide; it is covered by the
-production `npm run build` typecheck instead.
+- `src/components/MapView.test.tsx` — `MapView` states (select / loading / error /
+  has-geometry) with `maplibre-gl` mocked (jsdom has no WebGL context).
 
 ## Future extensions
 
-- Plot real vessel tracks and alert positions once the API exposes geometry.
+- Alert-window markers along the track once the API exposes per-window positions.
 - Track-centric view backed by `GET /tracks`.
 - Filter/sort controls (by method, shortlisted-only, score threshold).
 - Human review actions (mark relevant / false positive) if the backend adds write endpoints.

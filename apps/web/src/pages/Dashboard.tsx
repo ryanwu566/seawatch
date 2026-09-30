@@ -1,18 +1,32 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, getAlert, getAlerts, getHealth } from "../api/client";
+import { ApiError } from "../api/client";
+import {
+  fetchAlert,
+  fetchAlerts,
+  fetchHealth,
+  fetchTrackGeometry,
+  isDemoMode,
+} from "../api/dataSource";
 import { AlertDetail } from "../components/AlertDetail";
 import { AlertList } from "../components/AlertList";
 import { MapView } from "../components/MapView";
 import { Timeline } from "../components/Timeline";
-import type { AlertDetail as AlertDetailData, AlertSummary } from "../types";
+import type {
+  AlertDetail as AlertDetailData,
+  AlertSummary,
+  LineStringGeometry,
+} from "../types";
 
 type HealthState = "checking" | "online" | "offline";
 
 /**
- * Investigation dashboard. Loads the ranked review candidates, tracks the
- * selected candidate, and fetches its full detail on demand.
+ * Investigation dashboard. Loads ranked review candidates, tracks the selected
+ * candidate, and fetches its detail and track geometry on demand. In demo mode
+ * it reads bundled fixtures and clearly labels the data as non-live.
  */
 export function Dashboard() {
+  const demo = isDemoMode();
+
   const [health, setHealth] = useState<HealthState>("checking");
   const [alerts, setAlerts] = useState<AlertSummary[]>([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
@@ -23,10 +37,14 @@ export function Dashboard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
+  const [geometry, setGeometry] = useState<LineStringGeometry | null>(null);
+  const [geometryLoading, setGeometryLoading] = useState(false);
+  const [geometryError, setGeometryError] = useState<string | null>(null);
+
   // Health check.
   useEffect(() => {
     const controller = new AbortController();
-    getHealth(controller.signal)
+    fetchHealth(controller.signal)
       .then((res) => setHealth(res.status === "ok" ? "online" : "offline"))
       .catch(() => setHealth("offline"));
     return () => controller.abort();
@@ -37,52 +55,66 @@ export function Dashboard() {
     const controller = new AbortController();
     setAlertsLoading(true);
     setAlertsError(null);
-    getAlerts({}, controller.signal)
+    fetchAlerts(controller.signal)
       .then((res) => setAlerts(res.alerts))
       .catch((err: unknown) => {
-        if (controller.signal.aborted) {
-          return;
-        }
+        if (controller.signal.aborted) return;
         setAlertsError(describeError(err, "Failed to load review candidates."));
       })
       .finally(() => {
-        if (!controller.signal.aborted) {
-          setAlertsLoading(false);
-        }
+        if (!controller.signal.aborted) setAlertsLoading(false);
       });
     return () => controller.abort();
   }, []);
 
-  // Load detail for the selected alert.
+  // Load detail + geometry for the selected alert.
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
       setDetailError(null);
+      setGeometry(null);
+      setGeometryError(null);
       return;
     }
     const controller = new AbortController();
     setDetailLoading(true);
     setDetailError(null);
-    getAlert(selectedId, controller.signal)
-      .then((res) => setDetail(res))
+    setGeometry(null);
+    setGeometryError(null);
+
+    fetchAlert(selectedId, controller.signal)
+      .then((res) => {
+        setDetail(res);
+        // Chain the geometry fetch once we know the track id.
+        setGeometryLoading(true);
+        return fetchTrackGeometry(res.track_id, controller.signal)
+          .then((geo) => setGeometry(geo.geometry))
+          .catch((err: unknown) => {
+            if (controller.signal.aborted) return;
+            setGeometry(null);
+            setGeometryError(describeError(err, "No track geometry available."));
+          })
+          .finally(() => {
+            if (!controller.signal.aborted) setGeometryLoading(false);
+          });
+      })
       .catch((err: unknown) => {
-        if (controller.signal.aborted) {
-          return;
-        }
+        if (controller.signal.aborted) return;
         setDetail(null);
         setDetailError(describeError(err, "Failed to load review candidate."));
       })
       .finally(() => {
-        if (!controller.signal.aborted) {
-          setDetailLoading(false);
-        }
+        if (!controller.signal.aborted) setDetailLoading(false);
       });
+
     return () => controller.abort();
   }, [selectedId]);
 
   const handleSelect = useCallback((alertId: string) => {
     setSelectedId(alertId);
   }, []);
+
+  const selectedTrackId = detail?.track_id ?? null;
 
   return (
     <div className="dashboard">
@@ -91,9 +123,22 @@ export function Dashboard() {
           <h1>SeaWatch</h1>
           <p className="tagline">Maritime Investigation Dashboard</p>
         </div>
-        <span className={`health health-${health}`}>API: {health}</span>
+        <div className="header-status">
+          {demo && (
+            <span className="demo-badge" title="Showing bundled demo fixtures, not live data">
+              Demo Mode
+            </span>
+          )}
+          <span className={`health health-${health}`}>API: {health}</span>
+        </div>
       </header>
 
+      {demo && (
+        <div className="banner demo">
+          Demo Mode is on. Data shown is bundled sample data for presentation, not
+          live backend results.
+        </div>
+      )}
       {alertsError && <div className="banner error">{alertsError}</div>}
 
       <div className="dashboard-grid">
@@ -107,7 +152,12 @@ export function Dashboard() {
         </section>
 
         <section className="col col-map">
-          <MapView alerts={alerts} selectedId={selectedId} />
+          <MapView
+            geometry={geometry}
+            selectedTrackId={selectedTrackId}
+            loading={geometryLoading}
+            error={geometryError}
+          />
           <Timeline alert={detail} />
         </section>
 

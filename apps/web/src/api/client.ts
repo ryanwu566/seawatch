@@ -5,6 +5,7 @@ import type {
   AlertDetail,
   AlertListResponse,
   HealthResponse,
+  TrackGeometryResponse,
   TrackListResponse,
 } from "../types";
 
@@ -64,4 +65,14 @@ export function getAlerts(
 
 export function getAlert(alertId: string, signal?: AbortSignal): Promise<AlertDetail> {
   return getJson<AlertDetail>(`/alerts/${encodeURIComponent(alertId)}`, signal);
+}
+
+export function getTrackGeometry(
+  trackId: string,
+  signal?: AbortSignal,
+): Promise<TrackGeometryResponse> {
+  return getJson<TrackGeometryResponse>(
+    `/tracks/${encodeURIComponent(trackId)}/geometry`,
+    signal,
+  );
 }

@@ -1,0 +1,141 @@
+{
+  "demo__isolation_forest__demo-track-1__w-0007": {
+    "alert_id": "demo__isolation_forest__demo-track-1__w-0007",
+    "track_id": "demo-track-1",
+    "date": "2024-01-03",
+    "ranking_score": 99.0,
+    "ranking_method": "isolation_forest",
+    "rank": 1,
+    "shortlisted": true,
+    "review_status": "unreviewed",
+    "explanation_reasons": [
+      {
+        "reason_code": "speed_lower",
+        "feature_group": "speed",
+        "feature_name": "low_speed_duration_seconds",
+        "observed_value": 2400.0,
+        "unit": "s",
+        "reference_percentile": 0.99,
+        "direction": "higher",
+        "severity": 2.9,
+        "message": "Low-speed duration is above the background range.",
+        "attribution_kind": "supporting_evidence"
+      },
+      {
+        "reason_code": "maneuver_higher",
+        "feature_group": "maneuver",
+        "feature_name": "path_displacement_ratio",
+        "observed_value": 6.4,
+        "unit": "ratio",
+        "reference_percentile": 0.97,
+        "direction": "higher",
+        "severity": 1.8,
+        "message": "Movement pattern differs from the normal baseline.",
+        "attribution_kind": "supporting_evidence"
+      }
+    ],
+    "supporting_features": [
+      {
+        "feature_name": "low_speed_duration_seconds",
+        "feature_group": "speed",
+        "observed_value": 2400.0,
+        "unit": "s",
+        "reference_percentile": 0.99
+      },
+      {
+        "feature_name": "path_displacement_ratio",
+        "feature_group": "maneuver",
+        "observed_value": 6.4,
+        "unit": "ratio",
+        "reference_percentile": 0.97
+      }
+    ],
+    "data_quality": {
+      "observation_count": 214,
+      "observed_duration_seconds": 3600.0,
+      "max_gap_seconds": 90.0,
+      "sog_valid_fraction": 0.99,
+      "cog_valid_fraction": 0.95
+    }
+  },
+  "demo__robust_mad__demo-track-2__w-0003": {
+    "alert_id": "demo__robust_mad__demo-track-2__w-0003",
+    "track_id": "demo-track-2",
+    "date": "2024-01-03",
+    "ranking_score": 84.0,
+    "ranking_method": "robust_mad",
+    "rank": 2,
+    "shortlisted": true,
+    "review_status": "unreviewed",
+    "explanation_reasons": [
+      {
+        "reason_code": "speed_higher",
+        "feature_group": "speed",
+        "feature_name": "sog_p95_knots",
+        "observed_value": 16.1,
+        "unit": "knots",
+        "reference_percentile": 0.96,
+        "direction": "higher",
+        "severity": 2.1,
+        "message": "Peak speed shows an unusual pattern versus the background.",
+        "attribution_kind": "exact_component"
+      }
+    ],
+    "supporting_features": [
+      {
+        "feature_name": "sog_p95_knots",
+        "feature_group": "speed",
+        "observed_value": 16.1,
+        "unit": "knots",
+        "reference_percentile": 0.96
+      }
+    ],
+    "data_quality": {
+      "observation_count": 132,
+      "observed_duration_seconds": 3600.0,
+      "max_gap_seconds": 150.0,
+      "sog_valid_fraction": 0.97,
+      "cog_valid_fraction": 0.9
+    }
+  },
+  "demo__empirical_percentile__demo-track-3__w-0011": {
+    "alert_id": "demo__empirical_percentile__demo-track-3__w-0011",
+    "track_id": "demo-track-3",
+    "date": "2024-01-03",
+    "ranking_score": 61.0,
+    "ranking_method": "empirical_percentile",
+    "rank": 3,
+    "shortlisted": false,
+    "review_status": "unreviewed",
+    "explanation_reasons": [
+      {
+        "reason_code": "path_higher",
+        "feature_group": "path",
+        "feature_name": "path_distance_m",
+        "observed_value": 13200.0,
+        "unit": "m",
+        "reference_percentile": 0.92,
+        "direction": "higher",
+        "severity": 1.2,
+        "message": "Path distance shows a behavior deviation from typical windows.",
+        "attribution_kind": "exact_component"
+      }
+    ],
+    "supporting_features": [
+      {
+        "feature_name": "path_distance_m",
+        "feature_group": "path",
+        "observed_value": 13200.0,
+        "unit": "m",
+        "reference_percentile": 0.92
+      }
+    ],
+    "data_quality": {
+      "observation_count": 88,
+      "observed_duration_seconds": 3600.0,
+      "max_gap_seconds": 240.0,
+      "sog_valid_fraction": 0.9,
+      "cog_valid_fraction": 0.82
+    }
+  }
+}

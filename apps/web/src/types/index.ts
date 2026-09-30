@@ -80,3 +80,14 @@ export interface AlertDetail {
   supporting_features: SupportingFeature[];
   data_quality: DataQuality;
 }
+
+export interface LineStringGeometry {
+  type: "LineString";
+  /** Ordered [longitude, latitude] pairs (EPSG:4326). */
+  coordinates: [number, number][];
+}
+
+export interface TrackGeometryResponse {
+  track_id: string;
+  geometry: LineStringGeometry;
+}

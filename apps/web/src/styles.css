@@ -81,6 +81,28 @@ body {
   color: var(--error);
 }
 
+.banner.demo {
+  background: #78350f;
+  color: #fde68a;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.demo-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #04121f;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: 320px 1fr 360px;

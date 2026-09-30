@@ -91,6 +91,32 @@ Response `200 OK`:
 - `duration` is the observed trajectory-window duration in seconds.
 - `503 Service Unavailable` if no ranking artifact exists.
 
+### `GET /tracks/{track_id}/geometry`
+
+Privacy-safe trajectory geometry for a track as a GeoJSON LineString. Geometry is
+read from the existing Phase 1 processed observations (coordinates only; no vessel
+identity) and is not recalculated.
+
+Response `200 OK`:
+
+```json
+{
+  "track_id": "2024-01-03__t-000042",
+  "geometry": {
+    "type": "LineString",
+    "coordinates": [
+      [-122.4, 37.7],
+      [-122.3, 37.8]
+    ]
+  }
+}
+```
+
+- Coordinates are ordered by observation time; EPSG:4326 `[longitude, latitude]`.
+- `404 Not Found` when the track has no available geometry (unknown track or
+  fewer than two valid coordinates).
+- `503 Service Unavailable` if no Phase 1 observation artifact exists.
+
 ### `GET /alerts`
 
 Ranked review candidates ordered by descending review priority.
