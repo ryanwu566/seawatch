@@ -1,0 +1,65 @@
+{
+  "evaluation_hash": "f1d15b775465ef22cf6d1e8e6e3f7b75d3b4a7fbcdf714619415d4676f9d76a9",
+  "frozen_protocol_hash": "46fde3541ebaeaceae770679df5716f27dea2263c03b07dbe04ac41e5db934a9",
+  "limitations": [
+    "January 3 aggregate QA was visible during Phase 3A.",
+    "No anomaly labels or ground truth exist.",
+    "Windows and tracks are dependent."
+  ],
+  "methods": {
+    "empirical_percentile": {
+      "calibration_cutoff_exceedance_count": 58,
+      "exact_review_workload": 20,
+      "score_summary": {
+        "maximum": 99.97879109225875,
+        "median": 75.80593849416755,
+        "minimum": 17.971014492753625
+      },
+      "top20_distinct_tracks": 9,
+      "top20_maximum_track_share": 0.3,
+      "top20_reason_coverage": 1.0
+    },
+    "isolation_forest": {
+      "calibration_cutoff_exceedance_count": 158,
+      "exact_review_workload": 20,
+      "score_summary": {
+        "maximum": 100.0,
+        "median": 59.79144574054436,
+        "minimum": 0.0
+      },
+      "top20_distinct_tracks": 3,
+      "top20_maximum_track_share": 0.9,
+      "top20_reason_coverage": 1.0
+    },
+    "robust_mad": {
+      "calibration_cutoff_exceedance_count": 180,
+      "exact_review_workload": 20,
+      "score_summary": {
+        "maximum": 100.0,
+        "median": 48.9280141343795,
+        "minimum": 0.15913280310201225
+      },
+      "top20_distinct_tracks": 2,
+      "top20_maximum_track_share": 0.95,
+      "top20_reason_coverage": 1.0
+    },
+    "rule": {
+      "calibration_cutoff_exceedance_count": 83,
+      "exact_review_workload": 20,
+      "score_summary": {
+        "maximum": 95.40473665606221,
+        "median": 0.0,
+        "minimum": 0.0
+      },
+      "top20_distinct_tracks": 2,
+      "top20_maximum_track_share": 0.65,
+      "top20_reason_coverage": 1.0
+    }
+  },
+  "schema_version": "phase3b-evaluation-v1",
+  "selected_method": "empirical_percentile",
+  "split_roles_read_after_freeze": [
+    "test"
+  ],
+  "test_artifact_sha256": "802c7a689f5f76f293d79999d1785cbc0b5cc70dbd6e9758e7c9e2cdac3af9de"
+}

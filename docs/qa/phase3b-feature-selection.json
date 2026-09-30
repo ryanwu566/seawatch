@@ -1,0 +1,169 @@
+{
+  "active_features": [
+    "sog_median_knots",
+    "sog_p95_knots",
+    "low_speed_fraction",
+    "low_speed_duration_seconds",
+    "path_distance_m",
+    "displacement_m"
+  ],
+  "config_sha256": "a48a2a1935cae89cf71703c5b53ad47f5468c843ca1ba57913fd62c4158ea7a1",
+  "disabled_features": {
+    "course_change_abs_p95_deg": "conditional_support_gate_failed",
+    "course_change_abs_sum_deg": "conditional_support_gate_failed",
+    "heading_cog_abs_median_deg": "tier_c_excluded",
+    "path_displacement_ratio": "conditional_support_gate_failed"
+  },
+  "input_hashes": {
+    "calibration": "3a4bed3bf04cc7e46c7f1474b011d86e6a6fd2685cd41606b71f0206fea70b74",
+    "train": "b569823f5965c7dedd77b02a5daeda14a03bdd69c0a3edee3ec277610dcde3d8"
+  },
+  "policy_hash": "2e840bef79d6a9ce0876a58c0b687fba98d15e3fdb1dd431c48555a4a080b702",
+  "schema_version": "phase3b-feature-policy-v1",
+  "split_roles_read": [
+    "train",
+    "calibration"
+  ],
+  "support": {
+    "course_change_abs_p95_deg": {
+      "calibration": {
+        "distinct_count": 61,
+        "finite_count": 74,
+        "finite_fraction": 0.022188905547226388,
+        "track_count": 4
+      },
+      "train": {
+        "distinct_count": 25,
+        "finite_count": 33,
+        "finite_fraction": 0.01166489925768823,
+        "track_count": 2
+      }
+    },
+    "course_change_abs_sum_deg": {
+      "calibration": {
+        "distinct_count": 72,
+        "finite_count": 74,
+        "finite_fraction": 0.022188905547226388,
+        "track_count": 4
+      },
+      "train": {
+        "distinct_count": 29,
+        "finite_count": 33,
+        "finite_fraction": 0.01166489925768823,
+        "track_count": 2
+      }
+    },
+    "displacement_m": {
+      "calibration": {
+        "distinct_count": 2496,
+        "finite_count": 3335,
+        "finite_fraction": 1.0,
+        "track_count": 14
+      },
+      "train": {
+        "distinct_count": 2009,
+        "finite_count": 2829,
+        "finite_fraction": 1.0,
+        "track_count": 12
+      }
+    },
+    "heading_cog_abs_median_deg": {
+      "calibration": {
+        "distinct_count": 28,
+        "finite_count": 47,
+        "finite_fraction": 0.014092953523238382,
+        "track_count": 4
+      },
+      "train": {
+        "distinct_count": 11,
+        "finite_count": 24,
+        "finite_fraction": 0.008483563096500531,
+        "track_count": 2
+      }
+    },
+    "low_speed_duration_seconds": {
+      "calibration": {
+        "distinct_count": 89,
+        "finite_count": 3335,
+        "finite_fraction": 1.0,
+        "track_count": 14
+      },
+      "train": {
+        "distinct_count": 42,
+        "finite_count": 2829,
+        "finite_fraction": 1.0,
+        "track_count": 12
+      }
+    },
+    "low_speed_fraction": {
+      "calibration": {
+        "distinct_count": 31,
+        "finite_count": 3335,
+        "finite_fraction": 1.0,
+        "track_count": 14
+      },
+      "train": {
+        "distinct_count": 13,
+        "finite_count": 2829,
+        "finite_fraction": 1.0,
+        "track_count": 12
+      }
+    },
+    "path_displacement_ratio": {
+      "calibration": {
+        "distinct_count": 415,
+        "finite_count": 415,
+        "finite_fraction": 0.12443778110944528,
+        "track_count": 8
+      },
+      "train": {
+        "distinct_count": 212,
+        "finite_count": 212,
+        "finite_fraction": 0.07493814068575469,
+        "track_count": 6
+      }
+    },
+    "path_distance_m": {
+      "calibration": {
+        "distinct_count": 3191,
+        "finite_count": 3335,
+        "finite_fraction": 1.0,
+        "track_count": 14
+      },
+      "train": {
+        "distinct_count": 2692,
+        "finite_count": 2829,
+        "finite_fraction": 1.0,
+        "track_count": 12
+      }
+    },
+    "sog_median_knots": {
+      "calibration": {
+        "distinct_count": 72,
+        "finite_count": 3335,
+        "finite_fraction": 1.0,
+        "track_count": 14
+      },
+      "train": {
+        "distinct_count": 40,
+        "finite_count": 2829,
+        "finite_fraction": 1.0,
+        "track_count": 12
+      }
+    },
+    "sog_p95_knots": {
+      "calibration": {
+        "distinct_count": 89,
+        "finite_count": 3335,
+        "finite_fraction": 1.0,
+        "track_count": 14
+      },
+      "train": {
+        "distinct_count": 44,
+        "finite_count": 2829,
+        "finite_fraction": 1.0,
+        "track_count": 12
+      }
+    }
+  }
+}

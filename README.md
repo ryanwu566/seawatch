@@ -1,104 +1,223 @@
-﻿# SeaWatch
+# SeaWatch
 
-SeaWatch is a geospatial decision-support prototype for TDTH 2026.
+**Explainable Maritime Intelligence & Resilience Decision Support**
 
-## Core Direction
+*TDTH 2026 — Maritime Track Anomaly & Grey-Zone Behavior Alerting*
 
-Challenge #07 — Maritime Track Anomaly & Grey-Zone Behavior Alerting
+---
 
-Planned capabilities:
+## Overview
 
-- Historical vessel-track replay
-- Interpretable trajectory anomaly detection
-- Behavioral reason codes
-- Data-quality and uncertainty indicators
-- Alert-threshold comparison
-- Human false-positive review
+SeaWatch is an **AI-assisted geospatial decision-support system** that analyzes
+maritime vessel trajectories and surfaces behavior patterns that warrant human
+review.
 
-## Optional Extension
+By combining AIS data processing, trajectory analytics, and explainable ranking
+methods, SeaWatch helps analysts answer:
 
-Challenge #10 — Emergency Logistics Under Network & Transport Disruption
+- What changed in this trajectory?
+- Why is this behavior different from the baseline?
+- Which behaviors require further investigation?
 
-The logistics module is designed to remain independent from the core #07 system.
+SeaWatch is a **human-in-the-loop decision-support platform** — not an autonomous
+system, threat classifier, or automatic judgement engine.
 
-## Architecture
+---
 
-- Frontend: React + TypeScript + MapLibre
-- Backend: FastAPI
-- Data: Parquet + SQLite
-- Analysis: Python + scikit-learn
-- Optional optimization: NetworkX
+## Problem
+
+Modern maritime environments generate large-scale vessel movement data. Within
+this data, a wide range of vessel behavior patterns coexist, and most of them are
+routine.
+
+The challenge is not only detecting unusual patterns, but also:
+
+- identifying behaviors that genuinely differ from the norm
+- explaining *why* a behavior stands out
+- reducing false alerts and analyst fatigue
+- supporting human decision-making rather than replacing it
+
+SeaWatch focuses on **explainable behavioral intelligence rather than black-box
+prediction**.
+
+---
+
+## System Architecture
+
+```text
+AIS Historical Data
+        ↓
+Trajectory Processing
+        ↓
+Movement Feature Engineering
+        ↓
+Explainable Anomaly Ranking
+        ↓
+Human Investigation Dashboard
+        ↓
+Emergency Logistics Simulation
+```
+
+---
+
+## Core Capabilities
+
+### Maritime Trajectory Intelligence
+
+- AIS historical data ingestion
+- Vessel trajectory preprocessing
+- Temporal and geospatial analysis
+- Movement behavior modeling
+
+### Explainable Anomaly Ranking
+
+- Behavior deviation scoring
+- Feature-based explanations
+- Transparent ranking logic
+- Human-in-the-loop review workflow
+
+### Resilience Decision Support
+
+- Maritime situation awareness
+- Disruption scenario simulation
+- Emergency logistics extension
+
+---
+
+## Technology Stack
+
+### Data & Geospatial Processing
+
+- Python
+- Pandas
+- PyArrow
+- PyProj
+- Shapely
+
+### Machine Learning
+
+- Scikit-learn
+- Statistical anomaly ranking methods
+- Explainable feature-based analysis
+
+### Application Layer *(planned)*
+
+- FastAPI
+- React + TypeScript
+- MapLibre
+
+### Optimization *(planned)*
+
+- NetworkX
+
+---
+
+## Data
+
+The current prototype is built on:
+
+- NOAA MarineCadastre AIS GeoParquet
+- Historical AIS observations
+- WGS84 geospatial processing
+
+SeaWatch treats **AIS data as behavioral observations**. The system does not
+claim intent classification and does not automatically determine the purpose or
+identity of a vessel.
+
+---
+
+## Development Status
+
+### Completed
+
+- ✅ NOAA AIS data foundation
+- ✅ GeoParquet ingestion pipeline
+- ✅ Trajectory segmentation
+- ✅ Geodesic movement features
+- ✅ Multi-day AIS cohort preparation
+- ✅ Explainable anomaly ranking baseline
+- ✅ Statistical baseline comparison
+
+### Current
+
+- 🚧 Human review workflow
+
+### Future
+
+- ⏳ Maritime investigation dashboard
+- ⏳ Emergency logistics simulation
+- ⏳ Edge deployment exploration
+
+---
+
+## Roadmap
+
+### Phase 1 — Data Foundation ✅
+
+- Official AIS data acquisition
+- Data validation and provenance tracking
+- Reproducible preprocessing
+
+### Phase 2 — Trajectory Intelligence ✅
+
+- Track segmentation
+- Time-window generation
+- Movement feature engineering
+
+### Phase 3 — Explainable Ranking 🚧
+
+- Behavior deviation ranking
+- Statistical baseline evaluation
+- Explainable alert generation
+
+### Phase 4 — Decision Dashboard ⏳
+
+- Interactive maritime map
+- Track investigation interface
+- Human feedback workflow
+
+### Phase 5 — Resilience Extension ⏳
+
+- Emergency logistics simulation
+- Disruption scenario analysis
+
+---
+
+## Research Principles
+
+- Explainability over black-box prediction
+- Human review over autonomous decisions
+- Reproducibility over hidden pipelines
+- Decision support over automated judgement
+
+---
+
+## Project Structure
+
+```text
+seawatch/
+├── apps/
+│   ├── api/
+│   └── web/
+├── data/
+├── models/
+├── tests/
+├── docs/
+└── experiments/
+```
+
+---
 
 ## Project Status
 
-Initial project structure established.
+SeaWatch is an active research and development project. The data foundation and
+trajectory intelligence and offline review-ranking layers are complete. The
+decision dashboard, human review workflow, and resilience extension remain
+planned stages.
 
-## Phase 1 Data Foundation Setup
+### Phase 3B documentation
 
-Create the project-local environment with the approved Python 3.12.7
-interpreter. These commands do not modify the global Python installation:
-
-```powershell
-& 'C:\wu\python.exe' -m venv .venv
-& '.\.venv\Scripts\python.exe' -m pip install -r requirements.txt
-& '.\.venv\Scripts\python.exe' -m pytest
-```
-
-The NOAA AIS download and smoke-dataset commands are documented with the
-Phase 1 implementation. Real raw and processed data remain local and are
-ignored by Git.
-
-Download and inspect only the approved 2024-01-01 source:
-
-```powershell
-& '.\.venv\Scripts\python.exe' scripts/download_noaa_ais.py
-& '.\.venv\Scripts\python.exe' scripts/inspect_noaa_ais.py `
-  data/raw/ais-2024-01-01.parquet
-```
-
-Preparation requires an explicit JSON mapping from the inspected source
-columns to the canonical fields. The verified mapping is committed at
-`config/noaa_ais_2024_columns.json`. Run the explicit real-data smoke workflow
-with:
-
-```powershell
-& '.\.venv\Scripts\python.exe' scripts/prepare_smoke_dataset.py `
-  --publisher 'NOAA Office for Coastal Management' `
-  --observed-license 'CC0 1.0 Universal' `
-  --license-url 'https://github.com/ocm-marinecadastre/ais-vessel-traffic/blob/main/LICENSE.md' `
-  --force
-```
-
-`--force` explicitly regenerates the committed measured manifest and QA report
-as well as the ignored local data artifacts. Without it, the command preflights
-all destinations and exits before processing if any output already exists.
-
-The smoke workflow is not part of the automated test suite. See
-`docs/data-provenance.md` and `docs/data-foundation-report.md` for the source
-and measured results.
-
-## Phase 2 Trajectory Features
-
-Phase 2 deterministically segments and windows the existing local Phase 1
-Parquet and computes neutral movement features. It does not download data or
-perform anomaly detection. The real-data workflow is explicit and remains
-outside normal tests:
-
-```powershell
-& '.\.venv\Scripts\python.exe' scripts/prepare_trajectory_features.py --force
-```
-
-Generated segmented, summary, and feature Parquet files remain ignored and
-local. Only aggregate provenance and QA documentation are committed. See
-`docs/trajectory-feature-spec.md` for the exact feature and quality contract.
-
-## Phase 3A Multi-Day AIS Cohort
-
-Phase 3A adds only 2024-01-02 and 2024-01-03 as independent daily lineages.
-The fixed date roles are January 1 train/reference, January 2 calibration, and
-January 3 held-out test. No merged feature dataset or anomaly model is created.
-
-The explicit download, inspection, preparation, feature-generation, cohort,
-and audit commands are in `docs/phase3a-data-expansion-runbook.md`. Generated
-raw, Parquet, and GeoJSON artifacts remain ignored; the committed cohort
-manifest contains aggregate lineage and QA only.
+- [Offline review-ranking runbook](docs/phase3b-review-ranking-runbook.md)
+- [Measured baseline comparison](docs/phase3b-baseline-comparison-report.md)
+- [Design specification](docs/superpowers/specs/2026-09-30-phase3b-explainable-review-ranking-design.md)
+- [Implementation plan](docs/superpowers/plans/2026-09-30-phase3b-explainable-review-ranking.md)
