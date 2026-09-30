@@ -1,0 +1,11 @@
+{
+  "segment_gap_seconds": 600.0,
+  "window_duration_seconds": 1800.0,
+  "window_stride_seconds": 300.0,
+  "minimum_window_observations": 10,
+  "minimum_observed_span_seconds": 1200.0,
+  "minimum_valid_fraction": 0.8,
+  "low_speed_threshold_knots": 3.0,
+  "course_min_speed_knots": 1.0,
+  "minimum_displacement_for_ratio_m": 50.0
+}

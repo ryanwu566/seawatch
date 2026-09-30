@@ -76,3 +76,18 @@ all destinations and exits before processing if any output already exists.
 The smoke workflow is not part of the automated test suite. See
 `docs/data-provenance.md` and `docs/data-foundation-report.md` for the source
 and measured results.
+
+## Phase 2 Trajectory Features
+
+Phase 2 deterministically segments and windows the existing local Phase 1
+Parquet and computes neutral movement features. It does not download data or
+perform anomaly detection. The real-data workflow is explicit and remains
+outside normal tests:
+
+```powershell
+& '.\.venv\Scripts\python.exe' scripts/prepare_trajectory_features.py --force
+```
+
+Generated segmented, summary, and feature Parquet files remain ignored and
+local. Only aggregate provenance and QA documentation are committed. See
+`docs/trajectory-feature-spec.md` for the exact feature and quality contract.
