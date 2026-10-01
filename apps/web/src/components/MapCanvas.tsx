@@ -109,7 +109,7 @@ export function MapCanvas({
       loadedRef.current = true;
       installOverlays(map);
       applyVessels(map, vesselsRef.current, selectedIdRef.current);
-      applyLayerVisibility(map, layers);
+      applyLayerVisibility(map, layers, selectedIdRef.current);
       applyPorts(map, layers);
       applyAirspace(map, layers);
       emitViewport(map, onViewportChange);
@@ -176,7 +176,7 @@ export function MapCanvas({
     map.once("styledata", () => {
       installOverlays(map);
       applyVessels(map, vesselsRef.current, selectedIdRef.current);
-      applyLayerVisibility(map, layers);
+      applyLayerVisibility(map, layers, selectedIdRef.current);
       applyPorts(map, layers);
       applyAirspace(map, layers);
     });
@@ -188,7 +188,7 @@ export function MapCanvas({
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     applyVessels(map, vessels, selectedId);
-    applyLayerVisibility(map, layers);
+    applyLayerVisibility(map, layers, selectedId);
     applyPorts(map, layers);
     applyAirspace(map, layers);
   }, [vessels, layers, selectedId]);
@@ -527,10 +527,11 @@ function escapeHtml(s: string): string {
   );
 }
 
-function applyLayerVisibility(map: maplibregl.Map, layers: LayerState) {
+function applyLayerVisibility(map: maplibregl.Map, layers: LayerState, selectedId: string | null) {
   setVisible(map, VESSEL_LAYER, layers.liveVessels);
   setVisible(map, HALO_LAYER, layers.liveVessels);
-  setVisible(map, TRACK_LAYER, layers.vesselTracks);
+  // Trails are off by default, but the selected vessel's trail is always shown.
+  setVisible(map, TRACK_LAYER, layers.vesselTracks || selectedId !== null);
   setVisible(map, PORT_LAYER, layers.ports);
   setVisible(map, PORT_LABEL, layers.ports);
   setVisible(map, AIRSPACE_FILL, layers.restrictedAirspace || layers.publicAirspace);

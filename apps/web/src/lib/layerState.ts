@@ -13,12 +13,14 @@ export interface LayerState {
   reviewCandidates: boolean;
 }
 
-// Default: keep the initial map simple. Live vessels + tracks + ports on;
-// airspace and analysis overlays off until the user opts in.
+// Default live-mode state: the map must not look empty, so live vessels are ON.
+// Commercial ports are ON for geographic context. Vessel trails stay OFF until a
+// vessel is selected (the selected vessel's trail is shown regardless of this
+// toggle). Airspace and analysis overlays are OFF until the user opts in.
 export const DEFAULT_LAYER_STATE: LayerState = {
   baseMap: "nlsc-emap",
   liveVessels: true,
-  vesselTracks: true,
+  vesselTracks: false,
   ports: true,
   navReference: false,
   restrictedAirspace: false,
