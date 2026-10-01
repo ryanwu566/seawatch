@@ -43,31 +43,33 @@ in-memory state satisfies Phase 8 without migration and locking complexity.
 ## 3. Component and module diagram
 
 ```text
-INTERNET
-Open Waters -> existing AisIngestConsumer -> Cloud LiveVesselStore -----+
-                                                                        |
-LOCAL RF                                                                v
-RTL-SDR -> AIS-catcher -> UDP 127.0.0.1:10110 -> LocalNmeaAisProvider   |
-                                                    |                   |
-                                                    v                   |
-                                           Edge LiveVesselStore --------+
-                                                    |
-                                                    v
-                                         ResilienceModeManager
-                                                    |
-                                                    v
-                                           ActiveVesselView
-                                      + identity + transition cache
-                                                    |
-                     +------------------------------+----------------+
-                     v                              v                v
-                 /live/*                  /resilience/status   /edge/health
-                     |
-                     v
-             React mode/provenance UI
-                     |
-                     v
-       NLSC -> local PMTiles -> emergency local map
+CLOUD MODE (existing deployment remains the default)
+
+Browser -> Vercel frontend -> Render FastAPI -> Open Waters
+                                   |
+                                   v
+                         Cloud LiveVesselStore
+
+EDGE MODE (zero-Internet, same-origin local application)
+
+Browser -> http://127.0.0.1:8000 -> localhost FastAPI
+                                      |  |  |
+                   pre-built Vite dist   |  +-> /live/*, /resilience/*, /edge/*
+                   local assets          |
+                                         +-> /offline/taiwan.pmtiles
+                                             or emergency local map
+
+VHF antenna -> RTL-SDR -> AIS-catcher -> UDP 127.0.0.1:10110
+                                             |
+                                             v
+                                  LocalNmeaAisProvider
+                                             |
+                                             v
+                                   Edge LiveVesselStore
+
+Cloud LiveVesselStore ----+
+                          +-> ResilienceModeManager -> ActiveVesselView -> APIs
+Edge LiveVesselStore -----+       identity + transition cache
 ```
 
 Planned modules:
@@ -80,6 +82,7 @@ Planned modules:
 | `live/identity.py` | Internal MMSI matching and keyed opaque public IDs. |
 | `live/active_view.py` | Select active data, cache transitions, resolve tracks. |
 | `api/resilience.py` | `/resilience/status` and `/edge/health`. |
+| `web/serving.py` | Optionally serve the pre-built frontend, fixed PMTiles URL, and SPA fallback. |
 
 The existing `open_waters.py` parsing and `AisIngestConsumer` WebSocket
 behavior remain. Wiring changes only to give them the dedicated cloud store.
@@ -273,8 +276,17 @@ describe the active view. Additive fields include `mode`, `coverage`,
 `/live/vessels` remains GeoJSON and retains existing properties while adding
 Section 10 provenance. Attribution reflects actual returned sources rather
 than being hard-coded. `/live/vessels/{public_id}/track` resolves the opaque ID
-and reads only measured retained points from the owning active store; unknown
-or expired IDs return `404`.
+and the source ownership retained with that public feature. Track lookup follows
+provenance, not merely the current operating mode:
+
+- an active Cloud vessel reads its measured Cloud-store track;
+- an active Edge vessel reads its measured Edge-store track;
+- a cached/stale Cloud vessel retained during Edge mode continues reading its
+  measured Cloud-store track;
+- a cached/stale Edge vessel retained after Cloud recovery continues reading
+  its measured Edge-store track;
+- Cloud and Edge tracks are never spliced in Phase 8;
+- an expired cached identity or track returns `404`.
 
 New `GET /resilience/status` example:
 
@@ -336,7 +348,40 @@ Power status is configured as `external` or `battery_ups` and displayed as
 > 韌性運作需要筆電電池或 UPS。
 > Power resilience requires laptop battery or UPS.
 
-## 13. Offline map fallback
+## 13. Fully local offline application and map fallback
+
+Offline resilience covers the application shell as well as the map. Edge mode
+must not depend on Vercel, Render, an npm development server, a CDN, a remote
+font, sprite, glyph endpoint, JavaScript file, stylesheet, or any other
+Internet resource needed to render or operate the local UI.
+
+### 13.1 Local application serving
+
+Vite builds the React application before the disconnected demonstration. With
+`SEAWATCH_SERVE_WEB=true`, the local FastAPI process serves that prepared
+`dist` directory at `http://127.0.0.1:8000`. API routes remain registered and
+reachable at the same origin; a final SPA fallback returns local `index.html`
+only for non-file, non-API client routes. API, health, offline-file, and asset
+routes take precedence over the fallback. If local serving is enabled but
+`dist` is missing or invalid, FastAPI and its APIs remain available, one
+actionable error is logged, and the web root returns a clear local `503`; it
+never redirects to a remote deployment.
+
+Cloud/Render behavior remains unchanged because local serving defaults off.
+Normal cloud operation can continue using Vercel for the frontend and Render
+for FastAPI. Edge operation needs neither. The operator must run `npm run build`
+before disconnecting or install a previously prepared `dist`; Node and the Vite
+dev server are not required during the outage.
+
+### 13.2 Offline frontend asset integrity
+
+The pre-built application contains the React bundle, MapLibre JavaScript/CSS,
+PMTiles protocol library, icons, and application styles. It uses bundled or
+system fonts. The emergency style contains no remote tile, glyph, sprite, font,
+or attribution-resource URL. Rendering its shell and emergency map generates
+zero network requests outside `127.0.0.1`.
+
+### 13.3 Runtime PMTiles path and map fallback
 
 ```text
 NLSC online raster
@@ -354,9 +399,14 @@ bundled emergency local style
   - zero Internet requests
 ```
 
-The frontend registers PMTiles before constructing MapLibre. The URL is
-configurable; no archive is committed. Windows-compatible preparation/install
-instructions place an operator-created archive outside Git.
+The browser always requests the stable same-origin URL
+`/offline/taiwan.pmtiles`. FastAPI resolves that URL to the local filesystem
+path configured by `SEAWATCH_PMTILES_FILE`. Moving or installing an archive
+therefore changes only backend runtime configuration and never requires a Vite
+rebuild. The route supports the byte-range requests PMTiles needs. If the
+configured file is absent, the route returns not found and the browser selects
+the emergency style. No archive is committed. Windows-compatible preparation
+and install instructions place an operator-created archive outside Git.
 
 Once NLSC is marked failed or the app clearly enters disconnected Edge
 operation, the browser session stops selecting NLSC URLs. It does not retry on
@@ -454,10 +504,27 @@ AIS-catcher, PMTiles archive, or secret.
 | Identity | Same MMSI dedupes; uncertain identity does not; opaque test ID. |
 | Privacy | No MMSI, IMO, callsign, secret, or raw Edge ID in API text. |
 | Active view | Source selection, freshness, cache provenance/expiry. |
-| Tracks | 30-minute Edge rolling track using decoded points only. |
+| Tracks | 30-minute Edge track; cached Cloud/Edge provenance lookup; expired cache `404`. |
 | API | Existing `/live/*` schema compatibility and new health schemas. |
 | UI | All modes, coverage explanation, power copy, transition banners. |
 | Map | NLSC → PMTiles → emergency; no endless dead-source retry. |
+| Local serving | Disabled by default; enabled serves `dist`; API remains reachable; SPA fallback works. |
+| Offline shell | Browser with outbound network blocked renders local app shell and emergency map. |
+| Runtime PMTiles | Stable relative URL resolves configured local file without a Vite rebuild. |
+
+Required assertions explicitly include:
+
+- local static serving is disabled by default and enabled only by configuration;
+- enabled serving returns local `index.html` and bundled assets;
+- `/live/*`, `/resilience/*`, and `/edge/*` remain reachable when serving is on;
+- a local client-side route receives the SPA fallback without swallowing APIs;
+- a browser with outbound network blocked renders the app shell and emergency
+  map and makes no non-loopback request;
+- a cached Cloud vessel in `EDGE_LIVE` resolves its Cloud-store track;
+- a cached Edge vessel in `CLOUD_LIVE` resolves its Edge-store track;
+- an expired cached identity/track returns `404`;
+- the fixed PMTiles URL serves a runtime-configured archive, including range
+  requests, without rebuilding Vite.
 
 Backend verification:
 
@@ -485,9 +552,12 @@ npm run build
 6. Connect the real manager to the active view and test transitions with mocked
    health before frontend changes.
 7. Extend `/live/*` additively; migrate frontend to mode/provenance fields.
-8. Add PMTiles and emergency style without removing NLSC choices.
-9. Add drill, measurement harness, and Windows runbooks.
-10. Run full offline verification, an explicitly requested Cloud smoke check
+8. Add disabled-by-default local static serving and SPA fallback, keeping API
+   route precedence and existing cloud deployment behavior.
+9. Add the fixed PMTiles route and emergency style without removing NLSC.
+10. Add drill, measurement harness, and Windows runbooks.
+11. Run full offline verification, including a browser run with outbound
+    network blocked, and an explicitly requested Cloud smoke check
     only when Internet is available, measurements, privacy scans, and
     `git diff --check`.
 
@@ -511,12 +581,17 @@ SEAWATCH_IDENTITY_KEY=<backend-only secret>
 SEAWATCH_POWER_MODE=external
 SEAWATCH_OFFLINE_DEMO=false
 SEAWATCH_RESILIENCE_DRILL_ENABLED=false
-VITE_OFFLINE_PMTILES_URL=/offline/taiwan.pmtiles
+SEAWATCH_SERVE_WEB=false
+SEAWATCH_WEB_DIST=apps/web/dist
+SEAWATCH_PMTILES_FILE=<local filesystem path to taiwan.pmtiles>
 ```
 
 Cloud and Edge can be enabled independently. Replay additionally needs its
 enable flag. Drill and Offline Demo cannot be inferred from missing network or
-hardware.
+hardware. Cloud/Render uses `SEAWATCH_SERVE_WEB=false`. The Edge laptop uses
+`SEAWATCH_SERVE_WEB=true`; its browser URL remains
+`http://127.0.0.1:8000` and its PMTiles URL remains
+`/offline/taiwan.pmtiles` regardless of the configured archive location.
 
 ## 21. Documentation deliverables
 
@@ -528,6 +603,19 @@ hardware.
   Edge verification, changing local positions, and offline map verification.
 - `docs/phase8-edge-resilience-report.md`: tests, measurements, limitations,
   and mandatory Cloud/Edge/Demo/Power reality check.
+
+The Windows disconnected-startup contract is exact:
+
+1. Power the Windows laptop from its battery or UPS.
+2. Start AIS-catcher with the RTL-SDR and suitable VHF/AIS antenna.
+3. Send AIS-catcher UDP NMEA to `127.0.0.1:10110`.
+4. Start SeaWatch FastAPI with local web serving enabled.
+5. FastAPI serves the prepared frontend, APIs, PMTiles route, and emergency map.
+6. Open `http://127.0.0.1:8000` in the local browser.
+7. Disconnect Wi-Fi and Ethernet completely.
+8. Confirm the local PMTiles or emergency map remains visible.
+9. Confirm local Edge AIS observations continue changing when RF is received.
+10. Confirm `/edge/health` and `/resilience/status` remain available locally.
 
 ## 22. Completion criteria
 
@@ -553,3 +641,7 @@ Phase 8 is complete only when:
 16. Windows-first hardware/offline runbooks are complete.
 17. No military tracking, logistics, deployment change, huge tile archive, or
     secret enters Phase 8.
+18. A completely disconnected Windows laptop can open SeaWatch from localhost
+    without Vercel, Render, NLSC, CDN resources, an npm dev server, or Internet,
+    and can display the local offline map plus real AIS observations received
+    through AIS-catcher when RF hardware is available.
