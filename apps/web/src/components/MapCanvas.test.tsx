@@ -9,24 +9,30 @@ const state: {
   handlers: Record<string, (e?: any) => void>;
   layerHandlers: Record<string, (e?: any) => void>;
   images: string[];
+  layers: Array<{ id: string; type: string }>;
+  sources: string[];
   layoutProps: Array<{ layer: string; prop: string; value: unknown }>;
   featureStates: Array<{ id: unknown; state: Record<string, unknown> }>;
   flyToCalls: any[];
   easeToCalls: any[];
   queryHits: any[];
   popupHtml: string[];
+  styledataCb: ((e?: any) => void) | null;
 } = {
   options: null,
   setDataPayloads: [],
   handlers: {},
   layerHandlers: {},
   images: [],
+  layers: [],
+  sources: [],
   layoutProps: [],
   featureStates: [],
   flyToCalls: [],
   easeToCalls: [],
   queryHits: [],
   popupHtml: [],
+  styledataCb: null,
 };
 
 vi.mock("maplibre-gl", () => {
@@ -40,11 +46,17 @@ vi.mock("maplibre-gl", () => {
         state.handlers[event] = layerOrCb;
         if (event === "load") layerOrCb();
       } else {
-        state.layerHandlers[`${event}:${layerOrCb}`] = cb;
+        // Support array of layer ids (click/hover bound to multiple layers).
+        const ids = Array.isArray(layerOrCb) ? layerOrCb : [layerOrCb];
+        for (const id of ids) state.layerHandlers[`${event}:${id}`] = cb;
       }
     }
-    once(_event: string, cb?: any) {
-      if (typeof cb === "function") cb();
+    once(event: string, cb?: any) {
+      if (event === "styledata") {
+        state.styledataCb = cb;
+      } else if (typeof cb === "function") {
+        cb();
+      }
     }
     hasImage(id: string) {
       return state.images.includes(id);
@@ -53,24 +65,37 @@ vi.mock("maplibre-gl", () => {
       state.images.push(id);
     }
     getSource(id: string) {
+      if (!state.sources.includes(id)) return undefined;
       return {
         setData: (data: any) => {
           state.setDataPayloads.push({ id, data });
         },
       };
     }
-    addSource() {}
-    getLayer() {
-      return true;
+    addSource(id: string) {
+      state.sources.push(id);
     }
-    addLayer() {}
+    getLayer(id: string) {
+      return state.layers.find((l) => l.id === id);
+    }
+    addLayer(layer: { id: string; type: string }) {
+      state.layers.push({ id: layer.id, type: layer.type });
+    }
     setLayoutProperty(layer: string, prop: string, value: unknown) {
       state.layoutProps.push({ layer, prop, value });
     }
     setFeatureState(id: unknown, s: Record<string, unknown>) {
       state.featureStates.push({ id, state: s });
     }
-    setStyle() {}
+    // setStyle wipes custom sources, layers, and images (real MapLibre behavior).
+    setStyle() {
+      state.layers = [];
+      state.sources = [];
+      state.images = [];
+    }
+    getStyle() {
+      return { layers: state.layers };
+    }
     flyTo(opts: any) {
       state.flyToCalls.push(opts);
     }
@@ -117,7 +142,11 @@ vi.mock("maplibre-gl", () => {
   };
 });
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}));
-vi.mock("../lib/shipIcon", () => ({ makeShipIcon: () => null }));
+// Return a lightweight stub ImageData so the addImage registration path runs
+// (jsdom has no canvas 2d; the real icon is verified in the browser harness).
+vi.mock("../lib/shipIcon", () => ({
+  makeShipIcon: () => ({ width: 48, height: 48, data: new Uint8ClampedArray(48 * 48 * 4) }),
+}));
 
 import { MapCanvas } from "./MapCanvas";
 import { DEFAULT_LAYER_STATE } from "../lib/layerState";
@@ -184,12 +213,15 @@ describe("MapCanvas", () => {
     state.handlers = {};
     state.layerHandlers = {};
     state.images = [];
+    state.layers = [];
+    state.sources = [];
     state.layoutProps = [];
     state.featureStates = [];
     state.flyToCalls = [];
     state.easeToCalls = [];
     state.queryHits = [];
     state.popupHtml = [];
+    state.styledataCb = null;
   });
 
   it("initializes centered on Taiwan", () => {
@@ -280,5 +312,111 @@ describe("MapCanvas", () => {
     expect(dragstart).toBeTruthy();
     dragstart();
     expect(onUserInteract).toHaveBeenCalled();
+  });
+
+  // --- Rendering reliability regression tests (zero-vessel bug) ------------ //
+
+  it("installs the always-visible vessel dot layer, halo, symbol, and ship image", () => {
+    render(<MapCanvas {...baseProps()} />);
+    expect(state.images).toContain("ship-icon");
+    expect(state.sources).toContain("live-vessels");
+    expect(state.layers.find((l) => l.id === "live-vessels-dot")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "live-vessels-halo")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "live-vessels-symbols")).toBeTruthy();
+  });
+
+  it("the primary vessel dot layer is a circle (renders without a loaded sprite/style)", () => {
+    render(<MapCanvas {...baseProps()} />);
+    const dot = state.layers.find((l) => l.id === "live-vessels-dot");
+    expect(dot?.type).toBe("circle");
+  });
+
+  it("orders vessel layers above the basemap (dot above halo, symbol above dot)", () => {
+    render(<MapCanvas {...baseProps()} />);
+    const ids = state.layers.map((l) => l.id);
+    const halo = ids.indexOf("live-vessels-halo");
+    const dot = ids.indexOf("live-vessels-dot");
+    const sym = ids.indexOf("live-vessels-symbols");
+    expect(halo).toBeGreaterThanOrEqual(0);
+    expect(dot).toBeGreaterThan(halo);
+    expect(sym).toBeGreaterThan(dot);
+  });
+
+  it("pushes real vessel features onto the single source when vessel_count > 0", () => {
+    render(<MapCanvas {...baseProps()} />);
+    const push = state.setDataPayloads.find((p) => p.id === "live-vessels");
+    expect(push).toBeTruthy();
+    expect(push.data.features.length).toBe(2);
+  });
+
+  it("keeps the vessel layer visible by default (visibility === visible)", () => {
+    render(<MapCanvas {...baseProps()} />);
+    const dotVis = state.layoutProps.filter(
+      (p) => p.layer === "live-vessels-dot" && p.prop === "visibility",
+    );
+    expect(dotVis.length).toBeGreaterThan(0);
+    expect(dotVis.every((p) => p.value === "visible")).toBe(true);
+  });
+
+  it("hides vessels when the liveVessels layer is toggled off", () => {
+    render(
+      <MapCanvas {...baseProps({ layers: { ...DEFAULT_LAYER_STATE, liveVessels: false } })} />,
+    );
+    const dotVis = state.layoutProps.filter(
+      (p) => p.layer === "live-vessels-dot" && p.prop === "visibility",
+    );
+    expect(dotVis.length).toBeGreaterThan(0);
+    expect(dotVis.every((p) => p.value === "none")).toBe(true);
+  });
+
+  it("reinstalls ship image, source, and vessel layers after a basemap style reload", () => {
+    const { rerender } = render(<MapCanvas {...baseProps({ layers: DEFAULT_LAYER_STATE })} />);
+    // Sanity: present after initial load.
+    expect(state.images).toContain("ship-icon");
+    expect(state.layers.find((l) => l.id === "live-vessels-dot")).toBeTruthy();
+
+    // Switch basemap -> setStyle() wipes custom layers/sources/images.
+    rerender(
+      <MapCanvas {...baseProps({ layers: { ...DEFAULT_LAYER_STATE, baseMap: "nlsc-photo" } })} />,
+    );
+    // The effect called setStyle (wiped) then queued a styledata reinstall.
+    expect(typeof state.styledataCb).toBe("function");
+    state.styledataCb?.();
+
+    // Everything is reinstalled after the style reload.
+    expect(state.images).toContain("ship-icon");
+    expect(state.sources).toContain("live-vessels");
+    expect(state.layers.find((l) => l.id === "live-vessels-dot")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "live-vessels-halo")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "live-vessels-symbols")).toBeTruthy();
+  });
+
+  it("restores vessel data and layer order after a basemap style reload", () => {
+    const { rerender } = render(<MapCanvas {...baseProps({ layers: DEFAULT_LAYER_STATE })} />);
+    rerender(
+      <MapCanvas {...baseProps({ layers: { ...DEFAULT_LAYER_STATE, baseMap: "nlsc-photo" } })} />,
+    );
+    state.styledataCb?.();
+    // Vessel data re-pushed onto the source after reload.
+    const pushesAfter = state.setDataPayloads.filter((p) => p.id === "live-vessels");
+    expect(pushesAfter.length).toBeGreaterThan(0);
+    // Correct order preserved.
+    const ids = state.layers.map((l) => l.id);
+    expect(ids.indexOf("live-vessels-dot")).toBeGreaterThan(ids.indexOf("live-vessels-halo"));
+    expect(ids.indexOf("live-vessels-symbols")).toBeGreaterThan(ids.indexOf("live-vessels-dot"));
+  });
+
+  it("keeps unselected vessels visible (dot layer not filtered by selection)", () => {
+    render(<MapCanvas {...baseProps({ selectedId: null })} />);
+    const push = state.setDataPayloads.find((p) => p.id === "live-vessels");
+    // All features present even with nothing selected.
+    expect(push.data.features.length).toBe(2);
+    const dot = state.layers.find((l) => l.id === "live-vessels-dot");
+    expect(dot).toBeTruthy();
+    // Dot layer is visible (not hidden when no selection).
+    const dotVis = state.layoutProps.filter(
+      (p) => p.layer === "live-vessels-dot" && p.prop === "visibility",
+    );
+    expect(dotVis.every((p) => p.value === "visible")).toBe(true);
   });
 });

@@ -38,6 +38,7 @@ interface MapCanvasProps {
 
 const VESSEL_SOURCE = "live-vessels";
 const VESSEL_LAYER = "live-vessels-symbols";
+const VESSEL_DOT_LAYER = "live-vessels-dot";
 const HALO_LAYER = "live-vessels-halo";
 const TRACK_SOURCE = "selected-track";
 const TRACK_LAYER = "selected-track-line";
@@ -48,6 +49,10 @@ const AIRSPACE_SOURCE = "airspace";
 const AIRSPACE_FILL = "airspace-fill";
 const AIRSPACE_LINE = "airspace-line";
 const SHIP_ICON = "ship-icon";
+
+// Both vessel layers are interactive; the dot always renders, the symbol may
+// not until the raster style is loaded.
+const VESSEL_INTERACTIVE_LAYERS = [VESSEL_LAYER, VESSEL_DOT_LAYER];
 
 const FOLLOW_ZOOM = 11;
 
@@ -124,8 +129,9 @@ export function MapCanvas({
       if (!programmaticMoveRef.current) onUserInteract?.();
     });
 
-    // Click a vessel symbol -> select it.
-    map.on("click", VESSEL_LAYER, (e) => {
+    // Click a vessel (symbol or dot) -> select it. The dot layer always renders;
+    // the symbol may not until the raster style is loaded, so both are targeted.
+    map.on("click", VESSEL_INTERACTIVE_LAYERS, (e) => {
       const feature = e.features?.[0];
       if (!feature) return;
       const match = vesselsRef.current.find((v) => v.id === feature.id);
@@ -134,12 +140,12 @@ export function MapCanvas({
 
     // Click empty map (not on a vessel) -> deselect.
     map.on("click", (e) => {
-      const hits = map.queryRenderedFeatures(e.point, { layers: [VESSEL_LAYER] });
+      const hits = map.queryRenderedFeatures(e.point, { layers: existingLayers(map, VESSEL_INTERACTIVE_LAYERS) });
       if (hits.length === 0) onDeselect();
     });
 
     // Hover tooltip (desktop) — lightweight, does not open the panel.
-    map.on("mousemove", VESSEL_LAYER, (e) => {
+    map.on("mousemove", VESSEL_INTERACTIVE_LAYERS, (e) => {
       map.getCanvas().style.cursor = "pointer";
       const feature = e.features?.[0];
       if (!feature) return;
@@ -147,7 +153,7 @@ export function MapCanvas({
       if (!match) return;
       showHoverPopup(map, popupRef, match, e.lngLat);
     });
-    map.on("mouseleave", VESSEL_LAYER, () => {
+    map.on("mouseleave", VESSEL_INTERACTIVE_LAYERS, () => {
       map.getCanvas().style.cursor = "";
       popupRef.current?.remove();
     });
@@ -250,7 +256,8 @@ export function MapCanvas({
 function installOverlays(map: maplibregl.Map) {
   if (!map.hasImage(SHIP_ICON)) {
     const icon = makeShipIcon();
-    if (icon) map.addImage(SHIP_ICON, icon, { pixelRatio: 2 });
+    // Register as SDF so the symbol layer's data-driven icon-color is valid.
+    if (icon) map.addImage(SHIP_ICON, icon, { pixelRatio: 2, sdf: true });
   }
   if (!map.getSource(VESSEL_SOURCE)) {
     map.addSource(VESSEL_SOURCE, {
@@ -282,6 +289,33 @@ function installOverlays(map: maplibregl.Map) {
           0,
         ],
         "circle-stroke-opacity": 0.9,
+      },
+    });
+  }
+  // Primary vessel marker: a CIRCLE layer. Unlike a symbol/icon layer, a circle
+  // layer commits to the render pipeline even when the raster basemap style has
+  // not reached isStyleLoaded() (NLSC tiles can stall / be CORS-blocked). This
+  // guarantees vessels are ALWAYS visible; the directional ship symbol is drawn
+  // on top of it when the sprite path is ready. Runtime diagnosis proved the
+  // symbol-only layer silently failed to render while circles on the same
+  // source rendered thousands of features.
+  if (!map.getLayer(VESSEL_DOT_LAYER)) {
+    map.addLayer({
+      id: VESSEL_DOT_LAYER,
+      type: "circle",
+      source: VESSEL_SOURCE,
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 2.5, 8, 3.5, 11, 5],
+        "circle-color": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false],
+          "#fde68a",
+          ["get", "isInterpolated"],
+          "#f59e0b",
+          "#38bdf8",
+        ],
+        "circle-stroke-color": "#04121f",
+        "circle-stroke-width": 1,
       },
     });
   }
@@ -529,6 +563,7 @@ function escapeHtml(s: string): string {
 
 function applyLayerVisibility(map: maplibregl.Map, layers: LayerState, selectedId: string | null) {
   setVisible(map, VESSEL_LAYER, layers.liveVessels);
+  setVisible(map, VESSEL_DOT_LAYER, layers.liveVessels);
   setVisible(map, HALO_LAYER, layers.liveVessels);
   // Trails are off by default, but the selected vessel's trail is always shown.
   setVisible(map, TRACK_LAYER, layers.vesselTracks || selectedId !== null);
@@ -552,6 +587,11 @@ function applyAirspace(map: maplibregl.Map, layers: LayerState) {
 function setVisible(map: maplibregl.Map, layerId: string, visible: boolean) {
   if (!map.getLayer(layerId)) return;
   map.setLayoutProperty(layerId, "visibility", visible ? "visible" : "none");
+}
+
+/** Filter a layer-id list to those that currently exist in the style. */
+function existingLayers(map: maplibregl.Map, ids: string[]): string[] {
+  return ids.filter((id) => map.getLayer(id));
 }
 
 function emitViewport(map: maplibregl.Map, cb: (v: Viewport) => void) {
