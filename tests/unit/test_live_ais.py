@@ -326,7 +326,8 @@ def test_live_vessels_bbox_filter() -> None:
 def test_live_track_endpoint_and_not_found() -> None:
     client = _client_with_vessel()
     try:
-        resp = client.get("/live/vessels/tw-ship-1/track")
+        public_id = client.get("/live/vessels").json()["features"][0]["id"]
+        resp = client.get(f"/live/vessels/{public_id}/track")
         assert resp.status_code == 200
         body = resp.json()
         assert body["geometry"]["type"] == "LineString"
@@ -341,9 +342,11 @@ def test_live_track_endpoint_and_not_found() -> None:
 def test_live_vessels_never_exposes_identity() -> None:
     client = _client_with_vessel()
     try:
-        text = client.get("/live/vessels").text.lower()
-        track = client.get("/live/vessels/tw-ship-1/track").text.lower()
-        for token in ("mmsi", "257083750", "imo"):
+        response = client.get("/live/vessels")
+        text = response.text.lower()
+        public_id = response.json()["features"][0]["id"]
+        track = client.get(f"/live/vessels/{public_id}/track").text.lower()
+        for token in ("mmsi", "257083750", "imo", "callsign", "tw-ship-1"):
             assert token not in text
             assert token not in track
     finally:

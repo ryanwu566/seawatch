@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 
+from .active_view import ActiveVesselView
+from .config import LiveRuntimeConfig
+from .identity import VesselIdentityRegistry
 from .ingest import AisIngestConsumer
 from .open_waters import OpenWatersProvider
 from .store import LiveVesselStore
@@ -22,15 +26,31 @@ class LiveRuntime:
     """Process-wide live services, beginning with the existing Cloud source."""
 
     cloud: CloudLiveState
+    config: LiveRuntimeConfig
+    identity_registry: VesselIdentityRegistry
+    active_view: ActiveVesselView
 
 
 _runtime: LiveRuntime | None = None
 
 
 def _build_runtime() -> LiveRuntime:
+    config = LiveRuntimeConfig.from_env()
+    for warning in config.warnings:
+        logging.getLogger("seawatch.live.runtime").warning("%s", warning)
+    if config.identity_key is None:
+        logging.getLogger("seawatch.live.runtime").warning(
+            "SEAWATCH_IDENTITY_KEY is unset; public vessel IDs reset on restart"
+        )
     store = LiveVesselStore()
     consumer = AisIngestConsumer(OpenWatersProvider(), store)
-    return LiveRuntime(cloud=CloudLiveState(store=store, consumer=consumer))
+    identity_registry = VesselIdentityRegistry(config.identity_key)
+    return LiveRuntime(
+        cloud=CloudLiveState(store=store, consumer=consumer),
+        config=config,
+        identity_registry=identity_registry,
+        active_view=ActiveVesselView(store, identity_registry),
+    )
 
 
 def get_live_runtime() -> LiveRuntime:

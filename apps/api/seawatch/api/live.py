@@ -57,18 +57,24 @@ def live_vessels(
     the data integrity fields needed to label LIVE vs CACHED vs STALE client-side.
     """
 
-    store = get_live_runtime().cloud.store
+    runtime = get_live_runtime()
+    store = runtime.cloud.store
     bbox = _parse_bbox(min_lat, min_lon, max_lat, max_lon)
     now = utcnow()
-    observations = store.snapshot(bbox=bbox)
+    observations = runtime.active_view.snapshot(bbox=bbox, now=now)
     features = []
-    for obs in observations:
-        props = obs.to_public_properties()
+    for public in observations:
+        obs = public.observation
+        props = obs.to_public_properties(public_id=public.public_id)
         props["data_age_seconds"] = round(obs.age_seconds(now=now), 1)
+        props["observation_origin"] = public.origin.value
+        props["display_state"] = public.display_state.value
+        props["active_source"] = public.active_source
+        props["coverage"] = public.coverage.value
         features.append(
             {
                 "type": "Feature",
-                "id": obs.provider_id,
+                "id": public.public_id,
                 "geometry": {
                     "type": "Point",
                     "coordinates": [obs.longitude, obs.latitude],
@@ -96,14 +102,13 @@ def live_vessel_track(vessel_id: str) -> dict:
     empty-coordinate LineString rather than a fabricated segment.
     """
 
-    store = get_live_runtime().cloud.store
-    trajectory = store.get_trajectory(vessel_id)
-    if trajectory is None:
+    track = get_live_runtime().active_view.track(vessel_id)
+    if track is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"vessel not found: {vessel_id}",
         )
-    coordinates = [[p.longitude, p.latitude] for p in trajectory]
+    coordinates = [[p.longitude, p.latitude] for p in track.points]
     return {
         "type": "Feature",
         "id": vessel_id,
@@ -111,7 +116,8 @@ def live_vessel_track(vessel_id: str) -> dict:
         "properties": {
             "provider_id": vessel_id,
             "point_count": len(coordinates),
-            "observed_from": trajectory[0].observed_at.isoformat() if trajectory else None,
-            "observed_to": trajectory[-1].observed_at.isoformat() if trajectory else None,
+            "observed_from": track.points[0].observed_at.isoformat() if track.points else None,
+            "observed_to": track.points[-1].observed_at.isoformat() if track.points else None,
+            "source": track.source_name,
         },
     }
