@@ -14,3 +14,6 @@ httpx==0.28.1
 
 # Phase 7A live real-time AIS ingest (Open Waters WebSocket)
 websockets==13.1
+
+# Phase 8 local NMEA/AIS decoding
+pyais==3.2.3
