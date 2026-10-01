@@ -317,7 +317,7 @@ It returns a normal inactive response when disabled or hardware is absent.
 
 Edge RF and replay always state:
 
-> 僅顯示本地天線可接收的船舶。  
+> 僅顯示本地天線可接收的船舶。
 > Shows only vessels receivable by the local antenna.
 
 Replay additionally says the data is recorded and not live RF. Brief
@@ -333,7 +333,7 @@ selection panel stay open. No old cloud point is called an Edge observation.
 Power status is configured as `external` or `battery_ups` and displayed as
 `外部電源` / `External Power` or `電池／UPS` / `Battery / UPS`, followed by:
 
-> 韌性運作需要筆電電池或 UPS。  
+> 韌性運作需要筆電電池或 UPS。
 > Power resilience requires laptop battery or UPS.
 
 ## 13. Offline map fallback
