@@ -42,11 +42,23 @@ describe("VesselPanel", () => {
     wrap(
       <VesselPanel vessel={measured} track={null} trackLoading={false} demo={false} onClose={() => {}} />,
     );
-    expect(screen.getByText("船舶概況")).toBeInTheDocument(); // Vessel Overview
-    expect(screen.getByText("目前航速")).toBeInTheDocument(); // Speed
     expect(screen.getByText("CLIPPER ERIS")).toBeInTheDocument();
-    // Measured fix => Live AIS badge.
-    expect(screen.getByText("即時 AIS")).toBeInTheDocument();
+    expect(screen.getByText("目前航速")).toBeInTheDocument(); // Speed
+    expect(screen.getByText("位置狀態")).toBeInTheDocument(); // Position status
+    // "即時 AIS" appears both as the integrity badge and the position status.
+    expect(screen.getAllByText("即時 AIS").length).toBeGreaterThanOrEqual(1);
+    // "實際 AIS" is the measured position-status value.
+    expect(screen.getByText("實際 AIS")).toBeInTheDocument();
+    // Friendly source, never raw provider id, in the main panel.
+    expect(screen.queryByText("aishub")).not.toBeInTheDocument();
+  });
+
+  it("shows '未公開船名' when the vessel has no name", () => {
+    const anon = { ...measured, properties: { ...measured.properties, name: null } };
+    wrap(
+      <VesselPanel vessel={anon} track={null} trackLoading={false} demo={false} onClose={() => {}} />,
+    );
+    expect(screen.getByText("未公開船名")).toBeInTheDocument();
   });
 
   it("distinguishes a provider-interpolated vessel", () => {
@@ -59,7 +71,21 @@ describe("VesselPanel", () => {
         onClose={() => {}}
       />,
     );
-    expect(screen.getByText("供應商插值")).toBeInTheDocument(); // Provider Interpolated
+    expect(screen.getAllByText("供應商插值").length).toBeGreaterThanOrEqual(1); // Provider Interpolated
+  });
+
+  it("shows a no-recent-update notice for a missing (dropped-out) vessel", () => {
+    wrap(
+      <VesselPanel
+        vessel={measured}
+        track={null}
+        trackLoading={false}
+        demo={false}
+        missing
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText("此船舶暫時沒有新資料")).toBeInTheDocument();
   });
 
   it("shows Building Track History when fewer than 2 points", () => {

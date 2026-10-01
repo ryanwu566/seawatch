@@ -10,6 +10,11 @@ const state: {
   layerHandlers: Record<string, (e?: any) => void>;
   images: string[];
   layoutProps: Array<{ layer: string; prop: string; value: unknown }>;
+  featureStates: Array<{ id: unknown; state: Record<string, unknown> }>;
+  flyToCalls: any[];
+  easeToCalls: any[];
+  queryHits: any[];
+  popupHtml: string[];
 } = {
   options: null,
   setDataPayloads: [],
@@ -17,6 +22,11 @@ const state: {
   layerHandlers: {},
   images: [],
   layoutProps: [],
+  featureStates: [],
+  flyToCalls: [],
+  easeToCalls: [],
+  queryHits: [],
+  popupHtml: [],
 };
 
 vi.mock("maplibre-gl", () => {
@@ -33,7 +43,9 @@ vi.mock("maplibre-gl", () => {
         state.layerHandlers[`${event}:${layerOrCb}`] = cb;
       }
     }
-    once() {}
+    once(_event: string, cb?: any) {
+      if (typeof cb === "function") cb();
+    }
     hasImage(id: string) {
       return state.images.includes(id);
     }
@@ -55,7 +67,25 @@ vi.mock("maplibre-gl", () => {
     setLayoutProperty(layer: string, prop: string, value: unknown) {
       state.layoutProps.push({ layer, prop, value });
     }
+    setFeatureState(id: unknown, s: Record<string, unknown>) {
+      state.featureStates.push({ id, state: s });
+    }
     setStyle() {}
+    flyTo(opts: any) {
+      state.flyToCalls.push(opts);
+    }
+    easeTo(opts: any) {
+      state.easeToCalls.push(opts);
+    }
+    getZoom() {
+      return 7;
+    }
+    getCenter() {
+      return { lng: 120.9, lat: 23.6 };
+    }
+    queryRenderedFeatures() {
+      return state.queryHits;
+    }
     getBounds() {
       return {
         getSouth: () => 21.5,
@@ -69,12 +99,24 @@ vi.mock("maplibre-gl", () => {
     }
     remove() {}
   }
+  class FakePopup {
+    setLngLat() {
+      return this;
+    }
+    setHTML(html: string) {
+      state.popupHtml.push(html);
+      return this;
+    }
+    addTo() {
+      return this;
+    }
+    remove() {}
+  }
   return {
-    default: { Map: FakeMap, NavigationControl: class {} },
+    default: { Map: FakeMap, NavigationControl: class {}, Popup: FakePopup },
   };
 });
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}));
-// jsdom has no canvas 2d; return null icon so addImage is skipped gracefully.
 vi.mock("../lib/shipIcon", () => ({ makeShipIcon: () => null }));
 
 import { MapCanvas } from "./MapCanvas";
@@ -87,7 +129,7 @@ const vessels: LiveVesselFeature[] = [
     geometry: { type: "Point", coordinates: [120.0, 22.3] },
     properties: {
       provider_id: "v1",
-      sog_knots: 0, // zero speed => no visual advance; stays at measured pos
+      sog_knots: 0,
       cog_deg: 200,
       heading_deg: 319,
       nav_status: 0,
@@ -107,8 +149,8 @@ const vessels: LiveVesselFeature[] = [
     properties: {
       provider_id: "v2",
       sog_knots: 0,
-      cog_deg: 90, // no heading -> orientation falls back to COG
-      heading_deg: null,
+      cog_deg: 90,
+      heading_deg: 511, // AIS sentinel "not available" -> falls back to COG 90
       nav_status: 0,
       vessel_type: 70,
       name: "B",
@@ -121,6 +163,20 @@ const vessels: LiveVesselFeature[] = [
   },
 ];
 
+function baseProps(overrides: Partial<React.ComponentProps<typeof MapCanvas>> = {}) {
+  return {
+    vessels,
+    layers: DEFAULT_LAYER_STATE,
+    selectedId: null,
+    selectedTrack: null,
+    follow: false,
+    onSelectVessel: () => {},
+    onDeselect: () => {},
+    onViewportChange: () => {},
+    ...overrides,
+  };
+}
+
 describe("MapCanvas", () => {
   beforeEach(() => {
     state.options = null;
@@ -129,18 +185,15 @@ describe("MapCanvas", () => {
     state.layerHandlers = {};
     state.images = [];
     state.layoutProps = [];
+    state.featureStates = [];
+    state.flyToCalls = [];
+    state.easeToCalls = [];
+    state.queryHits = [];
+    state.popupHtml = [];
   });
 
   it("initializes centered on Taiwan", () => {
-    render(
-      <MapCanvas
-        vessels={vessels}
-        layers={DEFAULT_LAYER_STATE}
-        selectedTrack={null}
-        onSelectVessel={() => {}}
-        onViewportChange={() => {}}
-      />,
-    );
+    render(<MapCanvas {...baseProps()} />);
     const center = state.options?.center as [number, number];
     expect(center[0]).toBeGreaterThan(119);
     expect(center[0]).toBeLessThan(123);
@@ -148,37 +201,21 @@ describe("MapCanvas", () => {
     expect(center[1]).toBeLessThan(26);
   });
 
-  it("pushes all vessels onto a single GeoJSON source with orientation", () => {
-    render(
-      <MapCanvas
-        vessels={vessels}
-        layers={DEFAULT_LAYER_STATE}
-        selectedTrack={null}
-        onSelectVessel={() => {}}
-        onViewportChange={() => {}}
-      />,
-    );
+  it("pushes all vessels onto a single GeoJSON source with valid orientation", () => {
+    render(<MapCanvas {...baseProps()} />);
     const vesselPush = state.setDataPayloads.find((p) => p.id === "live-vessels");
     expect(vesselPush).toBeTruthy();
     expect(vesselPush.data.features).toHaveLength(2);
-    // v1: orientation from heading (319); v2: falls back to COG (90).
+    // v1: orientation from heading (319).
     expect(vesselPush.data.features[0].properties.orientation).toBe(319);
+    // v2: heading 511 is a sentinel -> falls back to COG (90), never 511.
     expect(vesselPush.data.features[1].properties.orientation).toBe(90);
-    // v2 is provider-synthesized => flagged interpolated.
     expect(vesselPush.data.features[1].properties.isInterpolated).toBe(true);
   });
 
   it("emits the viewport bbox on load", () => {
     const onViewportChange = vi.fn();
-    render(
-      <MapCanvas
-        vessels={vessels}
-        layers={DEFAULT_LAYER_STATE}
-        selectedTrack={null}
-        onSelectVessel={() => {}}
-        onViewportChange={onViewportChange}
-      />,
-    );
+    render(<MapCanvas {...baseProps({ onViewportChange })} />);
     expect(onViewportChange).toHaveBeenCalledWith({
       minLat: 21.5,
       minLon: 118.0,
@@ -187,20 +224,61 @@ describe("MapCanvas", () => {
     });
   });
 
-  it("opens the vessel panel when a vessel symbol is clicked", () => {
+  it("selects a vessel when its symbol is clicked", () => {
     const onSelectVessel = vi.fn();
-    render(
-      <MapCanvas
-        vessels={vessels}
-        layers={DEFAULT_LAYER_STATE}
-        selectedTrack={null}
-        onSelectVessel={onSelectVessel}
-        onViewportChange={() => {}}
-      />,
-    );
+    render(<MapCanvas {...baseProps({ onSelectVessel })} />);
     const clickHandler = state.layerHandlers["click:live-vessels-symbols"];
     expect(clickHandler).toBeTruthy();
     clickHandler({ features: [{ id: "v1" }] });
     expect(onSelectVessel).toHaveBeenCalledWith(expect.objectContaining({ id: "v1" }));
+  });
+
+  it("deselects when clicking empty map (no vessel under cursor)", () => {
+    const onDeselect = vi.fn();
+    render(<MapCanvas {...baseProps({ onDeselect })} />);
+    state.queryHits = []; // nothing under the click point
+    const mapClick = state.handlers["click"];
+    expect(mapClick).toBeTruthy();
+    mapClick({ point: { x: 1, y: 1 } });
+    expect(onDeselect).toHaveBeenCalled();
+  });
+
+  it("sets the selected feature-state on the chosen vessel", () => {
+    render(<MapCanvas {...baseProps({ selectedId: "v1" })} />);
+    const selectedTrue = state.featureStates.find(
+      (f: any) => f.id.id === "v1" && f.state.selected === true,
+    );
+    const otherFalse = state.featureStates.find(
+      (f: any) => f.id.id === "v2" && f.state.selected === false,
+    );
+    expect(selectedTrue).toBeTruthy();
+    expect(otherFalse).toBeTruthy();
+  });
+
+  it("flies to the selected vessel", () => {
+    render(<MapCanvas {...baseProps({ selectedId: "v1" })} />);
+    expect(state.flyToCalls.length).toBeGreaterThan(0);
+    expect(state.flyToCalls[0].center).toEqual([120.0, 22.3]);
+  });
+
+  it("shows a hover tooltip without opening the panel", () => {
+    const onSelectVessel = vi.fn();
+    render(<MapCanvas {...baseProps({ onSelectVessel })} />);
+    const move = state.layerHandlers["mousemove:live-vessels-symbols"];
+    expect(move).toBeTruthy();
+    move({ features: [{ id: "v1" }], lngLat: { lng: 120, lat: 22.3 } });
+    expect(state.popupHtml.length).toBeGreaterThan(0);
+    expect(state.popupHtml[0]).toContain("A");
+    // Hovering must NOT select.
+    expect(onSelectVessel).not.toHaveBeenCalled();
+  });
+
+  it("pauses follow when the user drags the map", () => {
+    const onUserInteract = vi.fn();
+    render(<MapCanvas {...baseProps({ follow: true, selectedId: "v1", onUserInteract })} />);
+    const dragstart = state.handlers["dragstart"];
+    expect(dragstart).toBeTruthy();
+    dragstart();
+    expect(onUserInteract).toHaveBeenCalled();
   });
 });

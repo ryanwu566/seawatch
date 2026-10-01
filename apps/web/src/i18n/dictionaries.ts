@@ -15,6 +15,9 @@ export interface Dict {
 
   // Header / status
   live: string;
+  reconnecting: string;
+  staleData: string;
+  liveSourceLabel: string;
   langToggleZh: string;
   langToggleEn: string;
   dataFreshness: string;
@@ -43,6 +46,17 @@ export interface Dict {
   collectingTrajectory: string;
   noVesselName: string;
   destination: string;
+  vesselType: string;
+  positionStatus: string;
+  positionMeasured: string;
+  positionProviderInterp: string;
+  positionStale: string;
+  noRecentUpdate: string;
+
+  // Follow mode
+  followVessel: string;
+  resumeFollow: string;
+  following: string;
 
   // Advanced analysis
   advancedAnalysis: string;
@@ -95,7 +109,10 @@ const zhHant: Dict = {
   productTagline: "臺灣海域智慧態勢平台",
   productSubtitle: "Taiwan Maritime Awareness Platform",
 
-  live: "即時資料",
+  live: "即時 AIS",
+  reconnecting: "重新連線中",
+  staleData: "資料較舊",
+  liveSourceLabel: "即時 AIS",
   langToggleZh: "中文",
   langToggleEn: "EN",
   dataFreshness: "資料更新",
@@ -121,8 +138,18 @@ const zhHant: Dict = {
   selectVesselHint: "點選地圖上的船舶以查看詳細資訊",
   buildingTrackHistory: "航跡累積中",
   collectingTrajectory: "資料累積中",
-  noVesselName: "未提供船名",
+  noVesselName: "未公開船名",
   destination: "目的地",
+  vesselType: "船舶類型",
+  positionStatus: "位置狀態",
+  positionMeasured: "實際 AIS",
+  positionProviderInterp: "供應商插值",
+  positionStale: "資料較舊",
+  noRecentUpdate: "此船舶暫時沒有新資料",
+
+  followVessel: "追蹤船舶",
+  resumeFollow: "繼續追蹤",
+  following: "追蹤中",
 
   advancedAnalysis: "進階分析",
   analysisMethod: "分析方法",
@@ -172,6 +199,9 @@ const en: Dict = {
   productSubtitle: "臺灣海域智慧態勢平台",
 
   live: "LIVE",
+  reconnecting: "Reconnecting",
+  staleData: "Stale Data",
+  liveSourceLabel: "Live AIS",
   langToggleZh: "中文",
   langToggleEn: "EN",
   dataFreshness: "Data freshness",
@@ -197,8 +227,18 @@ const en: Dict = {
   selectVesselHint: "Click a vessel on the map to see details",
   buildingTrackHistory: "Building Track History",
   collectingTrajectory: "Collecting trajectory",
-  noVesselName: "Name not provided",
+  noVesselName: "Name not disclosed",
   destination: "Destination",
+  vesselType: "Vessel Type",
+  positionStatus: "Position status",
+  positionMeasured: "Measured AIS",
+  positionProviderInterp: "Provider Interpolated",
+  positionStale: "Stale Data",
+  noRecentUpdate: "No recent update for this vessel",
+
+  followVessel: "Follow vessel",
+  resumeFollow: "Resume Follow",
+  following: "Following",
 
   advancedAnalysis: "Advanced Analysis",
   analysisMethod: "Analysis Method",

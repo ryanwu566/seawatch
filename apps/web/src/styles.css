@@ -516,17 +516,21 @@ body {
   background: currentColor;
   box-shadow: 0 0 8px currentColor;
 }
-.live-pill.live-degraded {
+.live-pill.live-live {
+  color: var(--sw-green);
+  background: #0a2a1a;
+}
+.live-pill.live-reconnecting {
   color: var(--sw-amber);
   background: #2a1f0a;
 }
-.live-pill.live-offline {
+.live-pill.live-stale {
+  color: var(--sw-amber);
+  background: #2a1f0a;
+}
+.live-pill.live-offline_demo {
   color: var(--sw-red);
   background: #2a0a0a;
-}
-.live-pill.demo {
-  color: var(--sw-amber);
-  background: #2a1f0a;
 }
 .lang-toggle {
   background: #10293f;
@@ -838,4 +842,66 @@ body {
   .status-value {
     font-size: 1.05rem;
   }
+}
+
+/* Follow-vessel control (FlightRadar24-style) */
+.follow-control {
+  position: absolute;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+.follow-btn,
+.follow-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border: 1px solid #1e3a52;
+  cursor: pointer;
+}
+.follow-btn {
+  background: #10293f;
+  color: var(--sw-accent);
+}
+.follow-btn:hover {
+  background: #16314a;
+}
+.follow-pill.active {
+  background: #0a2a1a;
+  color: var(--sw-green);
+  cursor: default;
+}
+
+/* Lightweight hover tooltip over a vessel */
+.vessel-popup .maplibregl-popup-content {
+  background: #0b1f33;
+  color: #e2e8f0;
+  border: 1px solid #1e3a52;
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.vessel-popup .maplibregl-popup-tip {
+  border-top-color: #0b1f33;
+  border-bottom-color: #0b1f33;
+}
+.vessel-tooltip strong {
+  color: var(--sw-accent);
+}
+
+/* "No recent update" notice inside the vessel panel */
+.vessel-missing {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: #2a1f0a;
+  color: var(--sw-amber);
+  font-size: 0.85rem;
+  font-weight: 600;
 }

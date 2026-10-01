@@ -12,6 +12,7 @@ import {
   portsGeoJson,
 } from "../config/taiwanMap";
 import { projectPosition, type MeasuredFix } from "../lib/interpolation";
+import { normalizeOrientation } from "../lib/orientation";
 import { makeShipIcon } from "../lib/shipIcon";
 
 export interface Viewport {
@@ -24,14 +25,20 @@ export interface Viewport {
 interface MapCanvasProps {
   vessels: LiveVesselFeature[];
   layers: LayerState;
+  selectedId: string | null;
   selectedTrack: GeoJSON.Feature | null;
+  follow: boolean;
   onSelectVessel: (feature: LiveVesselFeature) => void;
+  onDeselect: () => void;
   onViewportChange: (viewport: Viewport) => void;
+  /** Fired when the user manually pans/zooms, so follow mode can pause. */
+  onUserInteract?: () => void;
   onBaseMapError?: (message: string | null) => void;
 }
 
 const VESSEL_SOURCE = "live-vessels";
 const VESSEL_LAYER = "live-vessels-symbols";
+const HALO_LAYER = "live-vessels-halo";
 const TRACK_SOURCE = "selected-track";
 const TRACK_LAYER = "selected-track-line";
 const PORT_SOURCE = "ports";
@@ -42,19 +49,25 @@ const AIRSPACE_FILL = "airspace-fill";
 const AIRSPACE_LINE = "airspace-line";
 const SHIP_ICON = "ship-icon";
 
+const FOLLOW_ZOOM = 11;
+
 /**
- * The product map. Renders all live vessels through ONE GeoJSON source + ONE
- * symbol layer (no DOM element per vessel), animates smooth motion via frontend
- * visual interpolation between real fixes, draws the selected vessel's trail,
- * and overlays public ports + airspace context. Base map switches between the
- * official NLSC e-Map / Orthophoto with a demo-tile fallback.
+ * The product map. All live vessels render through ONE GeoJSON source + a halo
+ * circle layer and a symbol layer (no DOM element per vessel). The selected
+ * vessel is styled via MapLibre feature-state ("selected") so selection changes
+ * never rebuild the source. Motion is smoothed on the client via visual
+ * interpolation between real fixes; the selected vessel can be followed.
  */
 export function MapCanvas({
   vessels,
   layers,
+  selectedId,
   selectedTrack,
+  follow,
   onSelectVessel,
+  onDeselect,
   onViewportChange,
+  onUserInteract,
   onBaseMapError,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -63,9 +76,15 @@ export function MapCanvas({
   const vesselsRef = useRef<LiveVesselFeature[]>([]);
   const rafRef = useRef<number | null>(null);
   const currentBaseRef = useRef<string>(layers.baseMap);
+  const selectedIdRef = useRef<string | null>(selectedId);
+  const followRef = useRef<boolean>(follow);
+  const popupRef = useRef<maplibregl.Popup | null>(null);
+  const programmaticMoveRef = useRef(false);
 
-  // Keep the latest vessels in a ref for the animation loop.
+  // Keep latest props in refs for the animation loop and event handlers.
   vesselsRef.current = vessels;
+  selectedIdRef.current = selectedId;
+  followRef.current = follow;
 
   // Initialize the map once.
   useEffect(() => {
@@ -79,8 +98,6 @@ export function MapCanvas({
     });
     map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-    // If the official NLSC tiles error (e.g. CORS), fall back to demo tiles and
-    // report honestly instead of faking success.
     map.on("error", (e) => {
       const msg = (e?.error && (e.error as Error).message) || "";
       if (msg && /tile|source|network|fetch/i.test(msg)) {
@@ -91,7 +108,7 @@ export function MapCanvas({
     map.on("load", () => {
       loadedRef.current = true;
       installOverlays(map);
-      applyVessels(map, vesselsRef.current);
+      applyVessels(map, vesselsRef.current, selectedIdRef.current);
       applyLayerVisibility(map, layers);
       applyPorts(map, layers);
       applyAirspace(map, layers);
@@ -100,17 +117,39 @@ export function MapCanvas({
 
     map.on("moveend", () => emitViewport(map, onViewportChange));
 
+    // Manual pan/zoom -> pause follow mode. Programmatic moves (flyTo/follow)
+    // set a flag so they don't count as user interaction.
+    map.on("dragstart", () => onUserInteract?.());
+    map.on("zoomstart", () => {
+      if (!programmaticMoveRef.current) onUserInteract?.();
+    });
+
+    // Click a vessel symbol -> select it.
     map.on("click", VESSEL_LAYER, (e) => {
       const feature = e.features?.[0];
       if (!feature) return;
       const match = vesselsRef.current.find((v) => v.id === feature.id);
       if (match) onSelectVessel(match);
     });
-    map.on("mouseenter", VESSEL_LAYER, () => {
+
+    // Click empty map (not on a vessel) -> deselect.
+    map.on("click", (e) => {
+      const hits = map.queryRenderedFeatures(e.point, { layers: [VESSEL_LAYER] });
+      if (hits.length === 0) onDeselect();
+    });
+
+    // Hover tooltip (desktop) — lightweight, does not open the panel.
+    map.on("mousemove", VESSEL_LAYER, (e) => {
       map.getCanvas().style.cursor = "pointer";
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const match = vesselsRef.current.find((v) => v.id === feature.id);
+      if (!match) return;
+      showHoverPopup(map, popupRef, match, e.lngLat);
     });
     map.on("mouseleave", VESSEL_LAYER, () => {
       map.getCanvas().style.cursor = "";
+      popupRef.current?.remove();
     });
 
     mapRef.current = map;
@@ -119,13 +158,14 @@ export function MapCanvas({
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       loadedRef.current = false;
+      popupRef.current?.remove();
       map.remove();
       mapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Switch base map when it changes (setStyle, then reinstall overlays).
+  // Switch base map when it changes.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
@@ -135,7 +175,7 @@ export function MapCanvas({
     map.setStyle(nlscStyle(layers.baseMap));
     map.once("styledata", () => {
       installOverlays(map);
-      applyVessels(map, vesselsRef.current);
+      applyVessels(map, vesselsRef.current, selectedIdRef.current);
       applyLayerVisibility(map, layers);
       applyPorts(map, layers);
       applyAirspace(map, layers);
@@ -147,11 +187,37 @@ export function MapCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    applyVessels(map, vessels);
+    applyVessels(map, vessels, selectedId);
     applyLayerVisibility(map, layers);
     applyPorts(map, layers);
     applyAirspace(map, layers);
-  }, [vessels, layers]);
+  }, [vessels, layers, selectedId]);
+
+  // Update selected feature-state (never rebuilds the source).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    applySelectedState(map, vesselsRef.current, selectedId);
+  }, [selectedId]);
+
+  // Fly to the newly selected vessel.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !selectedId) return;
+    const match = vesselsRef.current.find((v) => v.id === selectedId);
+    if (!match) return;
+    programmaticMoveRef.current = true;
+    map.flyTo({
+      center: match.geometry.coordinates,
+      zoom: Math.max(map.getZoom(), FOLLOW_ZOOM),
+      duration: 900,
+      essential: true,
+    });
+    map.once("moveend", () => {
+      programmaticMoveRef.current = false;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   // Draw the selected track.
   useEffect(() => {
@@ -159,17 +225,17 @@ export function MapCanvas({
     if (!map || !loadedRef.current) return;
     const source = map.getSource(TRACK_SOURCE) as maplibregl.GeoJSONSource | undefined;
     if (!source) return;
-    source.setData(
-      selectedTrack ?? { type: "FeatureCollection", features: [] },
-    );
+    source.setData(selectedTrack ?? { type: "FeatureCollection", features: [] });
   }, [selectedTrack]);
 
-  // Animation loop: advance visual (interpolated) positions each frame.
+  // Animation loop: advance visual (interpolated) positions each frame, and
+  // keep following the selected vessel when follow mode is on.
   function startAnimation() {
     const step = () => {
       const map = mapRef.current;
       if (map && loadedRef.current) {
-        applyVessels(map, vesselsRef.current);
+        applyVessels(map, vesselsRef.current, selectedIdRef.current);
+        maybeFollow(map, vesselsRef.current, selectedIdRef.current, followRef, programmaticMoveRef);
       }
       rafRef.current = requestAnimationFrame(step);
     };
@@ -182,16 +248,41 @@ export function MapCanvas({
 // --- helpers (module scope so the animation loop can reuse them) ------------ //
 
 function installOverlays(map: maplibregl.Map) {
-  // Ship icon.
   if (!map.hasImage(SHIP_ICON)) {
     const icon = makeShipIcon();
     if (icon) map.addImage(SHIP_ICON, icon, { pixelRatio: 2 });
   }
-  // Vessel source + symbol layer (single source for all vessels).
   if (!map.getSource(VESSEL_SOURCE)) {
     map.addSource(VESSEL_SOURCE, {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] },
+      promoteId: "fid",
+    });
+  }
+  // Halo under the selected vessel for immediate visibility.
+  if (!map.getLayer(HALO_LAYER)) {
+    map.addLayer({
+      id: HALO_LAYER,
+      type: "circle",
+      source: VESSEL_SOURCE,
+      paint: {
+        "circle-radius": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false],
+          16,
+          0,
+        ],
+        "circle-color": "#38bdf8",
+        "circle-opacity": 0.25,
+        "circle-stroke-color": "#38bdf8",
+        "circle-stroke-width": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false],
+          2,
+          0,
+        ],
+        "circle-stroke-opacity": 0.9,
+      },
     });
   }
   if (!map.getLayer(VESSEL_LAYER)) {
@@ -201,40 +292,70 @@ function installOverlays(map: maplibregl.Map) {
       source: VESSEL_SOURCE,
       layout: {
         "icon-image": SHIP_ICON,
-        "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.35, 10, 0.7],
+        // Selected vessel is larger; others scale with zoom (low-zoom density).
+        "icon-size": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false],
+          ["interpolate", ["linear"], ["zoom"], 5, 0.7, 10, 1.1],
+          ["interpolate", ["linear"], ["zoom"], 5, 0.28, 8, 0.45, 11, 0.7],
+        ],
         "icon-rotate": ["get", "orientation"],
         "icon-rotation-alignment": "map",
         "icon-allow-overlap": true,
+        // Selected vessel sorts on top.
+        "symbol-sort-key": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false],
+          0,
+          1,
+        ],
+        "symbol-z-order": "source",
       },
       paint: {
-        // Amber tint when the position is provider-interpolated or visually
-        // interpolated; neutral when it's a measured fix at rest.
         "icon-color": [
           "case",
+          ["boolean", ["feature-state", "selected"], false],
+          "#fde68a",
           ["get", "isInterpolated"],
           "#f59e0b",
           "#38bdf8",
         ],
+        "icon-halo-color": "#04121f",
+        "icon-halo-width": 1,
       },
     });
   }
-  // Trail.
   if (!map.getSource(TRACK_SOURCE)) {
     map.addSource(TRACK_SOURCE, {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] },
+      lineMetrics: true,
     });
   }
   if (!map.getLayer(TRACK_LAYER)) {
-    map.addLayer({
-      id: TRACK_LAYER,
-      type: "line",
-      source: TRACK_SOURCE,
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: { "line-color": "#fbbf24", "line-width": 2.5, "line-opacity": 0.8 },
-    });
+    map.addLayer(
+      {
+        id: TRACK_LAYER,
+        type: "line",
+        source: TRACK_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-width": 3,
+          // Older (start) more transparent -> recent (end) stronger.
+          "line-gradient": [
+            "interpolate",
+            ["linear"],
+            ["line-progress"],
+            0,
+            "rgba(251,191,36,0.15)",
+            1,
+            "rgba(251,191,36,0.95)",
+          ],
+        },
+      },
+      HALO_LAYER,
+    );
   }
-  // Ports.
   if (!map.getSource(PORT_SOURCE)) {
     map.addSource(PORT_SOURCE, { type: "geojson", data: portsGeoJson() });
   }
@@ -269,7 +390,6 @@ function installOverlays(map: maplibregl.Map) {
       },
     });
   }
-  // Airspace.
   if (!map.getSource(AIRSPACE_SOURCE)) {
     map.addSource(AIRSPACE_SOURCE, { type: "geojson", data: airspaceGeoJson() });
   }
@@ -292,38 +412,124 @@ function installOverlays(map: maplibregl.Map) {
 }
 
 /** Push vessels onto the single source, computing visual-interpolated positions. */
-function applyVessels(map: maplibregl.Map, vessels: LiveVesselFeature[]) {
+function applyVessels(
+  map: maplibregl.Map,
+  vessels: LiveVesselFeature[],
+  selectedId: string | null,
+) {
   const source = map.getSource(VESSEL_SOURCE) as maplibregl.GeoJSONSource | undefined;
   if (!source) return;
   const now = Date.now();
   const features = vessels.map((v) => {
+    const course = normalizeOrientation(v.properties.heading_deg, v.properties.cog_deg);
     const fix: MeasuredFix = {
       lon: v.geometry.coordinates[0],
       lat: v.geometry.coordinates[1],
       sogKnots: v.properties.sog_knots,
-      courseDeg: v.properties.heading_deg ?? v.properties.cog_deg,
+      courseDeg: course,
       observedAtMs: Date.parse(v.properties.observed_at),
     };
     const projected = projectPosition(fix, now);
-    const orientation = v.properties.heading_deg ?? v.properties.cog_deg ?? 0;
-    // Interpolated visually (frontend) OR provider-synthesized source position.
     const isInterpolated = projected.interpolated || v.properties.synthesized;
     return {
       type: "Feature" as const,
       id: v.id,
       geometry: { type: "Point" as const, coordinates: [projected.lon, projected.lat] },
       properties: {
+        fid: v.id,
         provider_id: v.properties.provider_id,
-        orientation,
+        orientation: course ?? 0,
         isInterpolated,
       },
     };
   });
   source.setData({ type: "FeatureCollection", features });
+  applySelectedState(map, vessels, selectedId);
+}
+
+/** Set the "selected" feature-state on the active vessel, clearing others. */
+function applySelectedState(
+  map: maplibregl.Map,
+  vessels: LiveVesselFeature[],
+  selectedId: string | null,
+) {
+  if (!map.getSource(VESSEL_SOURCE)) return;
+  for (const v of vessels) {
+    try {
+      map.setFeatureState(
+        { source: VESSEL_SOURCE, id: v.id },
+        { selected: selectedId !== null && v.id === selectedId },
+      );
+    } catch {
+      // Feature not yet in the tile index; ignore.
+    }
+  }
+}
+
+/** Smoothly keep the map centered on the selected vessel while following. */
+function maybeFollow(
+  map: maplibregl.Map,
+  vessels: LiveVesselFeature[],
+  selectedId: string | null,
+  followRef: React.MutableRefObject<boolean>,
+  programmaticMoveRef: React.MutableRefObject<boolean>,
+) {
+  if (!followRef.current || !selectedId) return;
+  const match = vessels.find((v) => v.id === selectedId);
+  if (!match) return;
+  const now = Date.now();
+  const course = normalizeOrientation(match.properties.heading_deg, match.properties.cog_deg);
+  const projected = projectPosition(
+    {
+      lon: match.geometry.coordinates[0],
+      lat: match.geometry.coordinates[1],
+      sogKnots: match.properties.sog_knots,
+      courseDeg: course,
+      observedAtMs: Date.parse(match.properties.observed_at),
+    },
+    now,
+  );
+  const center = map.getCenter();
+  const dLon = Math.abs(center.lng - projected.lon);
+  const dLat = Math.abs(center.lat - projected.lat);
+  // Only re-center when drift is meaningful (avoid re-centering every frame).
+  if (dLon < 0.0005 && dLat < 0.0005) return;
+  programmaticMoveRef.current = true;
+  map.easeTo({ center: [projected.lon, projected.lat], duration: 500 });
+}
+
+function showHoverPopup(
+  map: maplibregl.Map,
+  popupRef: React.MutableRefObject<maplibregl.Popup | null>,
+  v: LiveVesselFeature,
+  lngLat: maplibregl.LngLat,
+) {
+  const name = v.properties.name || "—";
+  const sog = v.properties.sog_knots === null ? "—" : `${v.properties.sog_knots.toFixed(1)} kn`;
+  const course = normalizeOrientation(v.properties.heading_deg, v.properties.cog_deg);
+  const courseStr = course === null ? "—" : `${Math.round(course)}°`;
+  const age = `${Math.round(v.properties.data_age_seconds)}s`;
+  const html = `<div class="vessel-tooltip"><strong>${escapeHtml(name)}</strong><br/>${sog} · ${courseStr} · ${age}</div>`;
+  if (!popupRef.current) {
+    popupRef.current = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+      className: "vessel-popup",
+    });
+  }
+  popupRef.current.setLngLat(lngLat).setHTML(html).addTo(map);
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string,
+  );
 }
 
 function applyLayerVisibility(map: maplibregl.Map, layers: LayerState) {
   setVisible(map, VESSEL_LAYER, layers.liveVessels);
+  setVisible(map, HALO_LAYER, layers.liveVessels);
   setVisible(map, TRACK_LAYER, layers.vesselTracks);
   setVisible(map, PORT_LAYER, layers.ports);
   setVisible(map, PORT_LABEL, layers.ports);
