@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api import alerts, health, live, tracks
-from .live import get_consumer
+from .live import get_live_runtime
 
 logger = logging.getLogger("seawatch.main")
 
@@ -66,7 +66,7 @@ async def _lifespan(app: FastAPI):
 
     consumer = None
     if _live_ingest_enabled():
-        consumer = get_consumer()
+        consumer = get_live_runtime().cloud.consumer
         try:
             consumer.start()
             logger.info("Live AIS ingest started (provider=%s)", consumer.provider.name)

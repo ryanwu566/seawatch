@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from ..live import BoundingBox, get_consumer, get_store
+from ..live import BoundingBox, get_live_runtime
 from ..live.schema import utcnow
 
 router = APIRouter(prefix="/live", tags=["live"])
@@ -40,7 +40,7 @@ def _parse_bbox(
 def live_health() -> dict:
     """Return the live ingest health snapshot (connection, freshness, counts)."""
 
-    return get_consumer().health_snapshot()
+    return get_live_runtime().cloud.consumer.health_snapshot()
 
 
 @router.get("/vessels", summary="Current real AIS vessel positions (GeoJSON)")
@@ -57,7 +57,7 @@ def live_vessels(
     the data integrity fields needed to label LIVE vs CACHED vs STALE client-side.
     """
 
-    store = get_store()
+    store = get_live_runtime().cloud.store
     bbox = _parse_bbox(min_lat, min_lon, max_lat, max_lon)
     now = utcnow()
     observations = store.snapshot(bbox=bbox)
@@ -96,7 +96,7 @@ def live_vessel_track(vessel_id: str) -> dict:
     empty-coordinate LineString rather than a fabricated segment.
     """
 
-    store = get_store()
+    store = get_live_runtime().cloud.store
     trajectory = store.get_trajectory(vessel_id)
     if trajectory is None:
         raise HTTPException(
