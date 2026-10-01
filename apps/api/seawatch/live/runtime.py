@@ -7,6 +7,8 @@ import logging
 
 from .active_view import ActiveVesselView
 from .config import LiveRuntimeConfig
+from .edge_ais import EdgeAisDecoder
+from .edge_ingest import EdgeAisConsumer
 from .identity import VesselIdentityRegistry
 from .ingest import AisIngestConsumer
 from .open_waters import OpenWatersProvider
@@ -22,10 +24,19 @@ class CloudLiveState:
 
 
 @dataclass(frozen=True)
+class EdgeLiveState:
+    """The Edge store and its optional local-only consumer."""
+
+    store: LiveVesselStore
+    consumer: EdgeAisConsumer
+
+
+@dataclass(frozen=True)
 class LiveRuntime:
     """Process-wide live services, beginning with the existing Cloud source."""
 
     cloud: CloudLiveState
+    edge: EdgeLiveState
     config: LiveRuntimeConfig
     identity_registry: VesselIdentityRegistry
     active_view: ActiveVesselView
@@ -44,9 +55,12 @@ def _build_runtime() -> LiveRuntime:
         )
     store = LiveVesselStore()
     consumer = AisIngestConsumer(OpenWatersProvider(), store)
+    edge_store = LiveVesselStore()
+    edge_consumer = EdgeAisConsumer(EdgeAisDecoder(), edge_store, config)
     identity_registry = VesselIdentityRegistry(config.identity_key)
     return LiveRuntime(
         cloud=CloudLiveState(store=store, consumer=consumer),
+        edge=EdgeLiveState(store=edge_store, consumer=edge_consumer),
         config=config,
         identity_registry=identity_registry,
         active_view=ActiveVesselView(store, identity_registry),

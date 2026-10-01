@@ -13,6 +13,7 @@ from .open_waters import OpenWatersProvider
 from .provider import TAIWAN_BBOX, BoundingBox, LiveAisProvider, ParsedFrame
 from .runtime import (
     CloudLiveState,
+    EdgeLiveState,
     LiveRuntime,
     get_live_runtime,
     reset_live_runtime,
@@ -33,6 +34,7 @@ __all__ = [
     "VesselState",
     "LiveVesselStore",
     "CloudLiveState",
+    "EdgeLiveState",
     "LiveRuntime",
     "get_live_runtime",
     "reset_live_runtime",
@@ -40,6 +42,7 @@ __all__ = [
     "get_consumer",
     "reset_live_state",
 ]
+
 
 def get_store() -> LiveVesselStore:
     """Compatibility alias for the Cloud-owned store."""

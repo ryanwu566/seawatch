@@ -24,6 +24,8 @@ def test_runtime_owns_one_process_wide_cloud_store_and_consumer() -> None:
     assert isinstance(first.cloud, CloudLiveState)
     assert first is second
     assert first.cloud.consumer.store is first.cloud.store
+    assert first.edge.consumer.store is first.edge.store
+    assert first.edge.store is not first.cloud.store
 
 
 def test_compatibility_getters_return_cloud_owned_objects() -> None:

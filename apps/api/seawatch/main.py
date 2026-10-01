@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import alerts, health, live, tracks
+from .api import alerts, health, live, resilience, tracks
 from .live import get_live_runtime
 
 logger = logging.getLogger("seawatch.main")
@@ -62,9 +62,11 @@ def _live_ingest_enabled() -> bool:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Start/stop the single upstream AIS ingest consumer with the app."""
+    """Start/stop independent Cloud and explicitly enabled Edge consumers."""
 
+    runtime = get_live_runtime()
     consumer = None
+    edge_consumer = None
     if _live_ingest_enabled():
         consumer = get_live_runtime().cloud.consumer
         try:
@@ -72,12 +74,26 @@ async def _lifespan(app: FastAPI):
             logger.info("Live AIS ingest started (provider=%s)", consumer.provider.name)
         except Exception as exc:  # noqa: BLE001 - never block startup on ingest
             logger.warning("Failed to start live AIS ingest: %s", exc)
+    if runtime.config.edge_ingest_enabled or runtime.config.edge_replay_enabled:
+        edge_consumer = runtime.edge.consumer
+        try:
+            edge_consumer.start()
+            logger.info(
+                "Edge AIS ingest starting (input=%s)",
+                edge_consumer.health.input_kind.value,
+            )
+        except Exception as exc:  # noqa: BLE001 - Edge cannot block API/Cloud
+            edge_consumer.health.record_error(exc)
+            logger.warning("Failed to start Edge AIS ingest: %s", exc)
     try:
         yield
     finally:
         if consumer is not None:
             await consumer.stop()
             logger.info("Live AIS ingest stopped")
+        if edge_consumer is not None:
+            await edge_consumer.stop()
+            logger.info("Edge AIS ingest stopped")
 
 
 def create_app() -> FastAPI:
@@ -99,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(tracks.router)
     app.include_router(alerts.router)
     app.include_router(live.router)
+    app.include_router(resilience.router)
     return app
 
 
