@@ -11,3 +11,6 @@ fastapi==0.115.6
 starlette==0.41.3
 pydantic==2.13.5
 httpx==0.28.1
+
+# Phase 7A live real-time AIS ingest (Open Waters WebSocket)
+websockets==13.1

@@ -6,12 +6,17 @@ outputs. It performs no ranking computation and modifies no Phase 1-3 artifacts.
 
 from __future__ import annotations
 
+import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import alerts, health, tracks
+from .api import alerts, health, live, tracks
+from .live import get_consumer
+
+logger = logging.getLogger("seawatch.main")
 
 _TITLE = "SeaWatch API"
 _DESCRIPTION = (
@@ -40,10 +45,50 @@ def _cors_origins() -> list[str]:
     return list(_DEFAULT_CORS_ORIGINS)
 
 
+def _live_ingest_enabled() -> bool:
+    """Whether to start the background AIS ingest consumer on startup.
+
+    Off by default so the test suite and offline runs never open sockets. Enable
+    with SEAWATCH_LIVE_INGEST=true (or 1/yes/on) when running the live backend.
+    """
+
+    return os.environ.get("SEAWATCH_LIVE_INGEST", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Start/stop the single upstream AIS ingest consumer with the app."""
+
+    consumer = None
+    if _live_ingest_enabled():
+        consumer = get_consumer()
+        try:
+            consumer.start()
+            logger.info("Live AIS ingest started (provider=%s)", consumer.provider.name)
+        except Exception as exc:  # noqa: BLE001 - never block startup on ingest
+            logger.warning("Failed to start live AIS ingest: %s", exc)
+    try:
+        yield
+    finally:
+        if consumer is not None:
+            await consumer.stop()
+            logger.info("Live AIS ingest stopped")
+
+
 def create_app() -> FastAPI:
     """Build and configure the SeaWatch dashboard API application."""
 
-    app = FastAPI(title=_TITLE, description=_DESCRIPTION, version=_VERSION)
+    app = FastAPI(
+        title=_TITLE,
+        description=_DESCRIPTION,
+        version=_VERSION,
+        lifespan=_lifespan,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
@@ -53,6 +98,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(tracks.router)
     app.include_router(alerts.router)
+    app.include_router(live.router)
     return app
 
 

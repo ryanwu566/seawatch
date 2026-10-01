@@ -56,3 +56,5 @@ models/*
 *.log
 tmp/
 temp/
+.swtmp/
+.swtmp*
