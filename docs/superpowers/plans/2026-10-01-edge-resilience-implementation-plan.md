@@ -25,6 +25,7 @@
 - Edge coverage is `local_rf` and always says “Shows only vessels receivable by the local antenna.”
 - Cached/stale observations retain original provenance; Cloud and Edge tracks are never spliced.
 - Local web serving defaults off. When enabled, the prepared Vite `dist`, APIs, PMTiles, and emergency map use `http://127.0.0.1:8000` with no Internet or npm dev server.
+- Frontend API-base precedence is: explicit `VITE_API_BASE_URL`; otherwise `http://localhost:8000` only in Vite development; otherwise empty string/same origin in every production build. An Edge build needs no `.env` file and must not contain the Render URL.
 - The browser PMTiles URL is always `/offline/taiwan.pmtiles`; `SEAWATCH_PMTILES_FILE` chooses the runtime filesystem file.
 - Do not commit PMTiles archives, secrets, raw AIS collections, military data, deployment changes, or Challenge #10 logistics.
 - Normal tests require no Internet, RTL-SDR, AIS-catcher, PMTiles archive, or production identity secret.
@@ -56,6 +57,7 @@ Official review sources: PyPI/GitHub for `pyais`, npm/Protomaps PMTiles reposito
 | `apps/api/seawatch/live/edge_ingest.py` | UDP/replay lifecycle and Edge health counters. |
 | `apps/api/seawatch/api/resilience.py` | `/resilience/status` and `/edge/health`. |
 | `apps/api/seawatch/web/serving.py` | Optional Vite-dist, SPA fallback, and range-capable PMTiles serving. |
+| `apps/web/src/api/client.ts` | Select explicit cloud API URL, development localhost convenience, or production same-origin API paths. |
 | `apps/web/src/lib/resilience.ts` | Frontend mode/provenance derivation and transition detection. |
 | `apps/web/src/config/offlineMap.ts` | PMTiles protocol/style and emergency-style selection. |
 | `apps/web/src/components/ResilienceBanner.tsx` | Non-blocking transition and coverage/power messaging. |
@@ -69,7 +71,7 @@ Official review sources: PyPI/GitHub for `pyais`, npm/Protomaps PMTiles reposito
 1. **Conflicting/invalid environment values:** defaults remain safe, replay cannot enable implicitly, and a configured non-loopback Edge bind emits one explicit security warning while never becoming the default (Slice A tests).
 2. **Multipart collisions and resource exhaustion:** duplicate/out-of-order fragments, reused sequence IDs, oversized datagrams, and expired assemblies never mix vessels or grow unbounded (Slices D/E tests).
 3. **Clock anomalies:** a decreasing/frozen monotonic test clock cannot create negative age, premature recovery, or mode flapping (Slice F tests).
-4. **Route shadowing and traversal:** SPA fallback never captures API/offline/assets, and configured dist/PMTiles paths cannot escape validated files (Slices I/J tests).
+4. **Origin, route shadowing, and traversal:** production-without-env stays same-origin, SPA fallback never captures API/offline/assets, and configured dist/PMTiles paths cannot escape validated files (Slices I/J tests).
 5. **Range/network edge cases:** suffix/open-ended/invalid PMTiles ranges behave correctly, and the offline browser test fails on any non-loopback request including fonts, glyphs, sprites, CSS, or tiles (Slice J tests).
 
 ---
@@ -499,11 +501,16 @@ Expected behavior: users can distinguish Cloud, RF Edge, replay, no source, demo
 - Modify: `apps/api/seawatch/main.py`
 - Modify: `apps/api/seawatch/live/config.py`
 - Modify: `tests/unit/test_live_config.py`
+- Modify: `apps/web/src/api/client.ts`
+- Modify: `apps/web/src/api/client.test.ts`
+- Modify: `apps/web/.env.example`
 
 **Interfaces:**
 - Produce `configure_local_web(app: FastAPI, config: LiveRuntimeConfig) -> None`.
 - With `SEAWATCH_SERVE_WEB=false`, register no root/assets/SPA routes.
 - With it true, serve validated `SEAWATCH_WEB_DIST` assets, local `/`, and a last-registered SPA fallback; missing dist returns root `503` while APIs remain available.
+- Produce pure `resolveApiBaseUrl(explicitBaseUrl: string | undefined, isDevelopment: boolean) -> string`; `getBaseUrl()` delegates using Vite env/mode.
+- API-base precedence is exact: a non-empty explicit `VITE_API_BASE_URL` always wins and has trailing slashes removed; no explicit value returns `http://localhost:8000` only when `import.meta.env.DEV` is true; every production build otherwise returns `""`, yielding relative same-origin requests.
 
 **Risk / rollback:** High deployment risk: catch-all routing can shadow APIs or change Render. The feature defaults off; rollback is removal of one conditional registration call.
 
@@ -517,29 +524,41 @@ Using `tmp_path`, assert disabled default leaves `/` behavior unchanged; enabled
 
 With serving enabled, assert `/live/health`, `/live/vessels`, `/resilience/status`, `/edge/health`, `/offline/taiwan.pmtiles`, and `/health` are never captured; `/vessel/example` returns local index; nonexistent asset returns `404`, not index.
 
-- [ ] **I3 — Verify RED**
+- [ ] **I3 — Write failing frontend API-base tests**
 
-Run: `python -m pytest -q -p no:cacheprovider --basetemp=C:\Projects\seawatch\.swtmp tests/unit/test_web_serving.py tests/unit/test_live_config.py`
+In `client.test.ts`, test the pure resolver and fetch URLs for: explicit `https://seawatch-bgsi.onrender.com/` in production/dev → trimmed Render URL; no explicit value in production → `""` and `/health`/`/live/*` relative requests; no explicit value in development → `http://localhost:8000`; empty/whitespace explicit value → mode fallback. Update `.env.example` so the cloud/development override is documented but commented out and Edge requires no `.env`.
 
-Expected: missing serving module/behavior.
+- [ ] **I4 — Verify RED**
 
-- [ ] **I4 — Implement optional serving seam**
+Run backend: `python -m pytest -q -p no:cacheprovider --basetemp=C:\Projects\seawatch\.swtmp tests/unit/test_web_serving.py tests/unit/test_live_config.py`.
+
+Run from `apps/web`: `npm test -- src/api/client.test.ts`.
+
+Expected: backend serving behavior is missing and the production-without-env client still returns `http://localhost:8000` instead of same origin.
+
+- [ ] **I5 — Implement optional serving seam**
 
 Use Starlette/FastAPI static responses already installed. Validate resolved dist path, register API routers first and SPA fallback last, distinguish extension-bearing asset paths from client routes, and never redirect to Vercel or another origin.
 
-- [ ] **I5 — Verify GREEN and full backend**
+- [ ] **I6 — Implement the API-base selection contract**
 
-Run I3 then the full backend command. Build frontend and point a test config at `apps/web/dist` for a local TestClient smoke check.
+Extract the pure resolver, keep the explicit Vercel→Render override, restrict `http://localhost:8000` to Vite development, and use empty-string relative paths for production without an override. Do not add an Edge `.env` or embed the Render URL in code.
 
-- [ ] **I6 — HARD GATE: default deployment isolation**
+- [ ] **I7 — Verify GREEN and full regressions**
 
-With all new env flags absent, assert application route/OpenAPI sets and lifespan match pre-slice behavior and no dist lookup occurs. With serving enabled, assert APIs win over fallback. GO only if `SEAWATCH_SERVE_WEB=false` is proven default and Render needs no config change. STOP and remove registration if not.
+Run I4 commands, the full backend command, `npm test`, and `npm run build`. Point a test config at `apps/web/dist` for a local TestClient smoke check.
 
-- [ ] **I7 — Commit**
+- [ ] **I8 — HARD GATE: deployment and same-origin isolation**
+
+With all new backend flags absent, assert application route/OpenAPI sets and lifespan match pre-slice behavior and no dist lookup occurs. With `SEAWATCH_SERVE_WEB=true`, serve the production build at `http://127.0.0.1:8000`, assert its `/live/*`, `/edge/*`, `/resilience/*`, and `/health` calls stay on exact origin `http://127.0.0.1:8000`, require no CORS, and prove API precedence plus SPA fallback. Fail on `http://localhost:8000`, Vercel, Render, or any cross-origin API request.
+
+With `SEAWATCH_SERVE_WEB=false`, verify Render behavior is unchanged and a Vercel production build with explicit `VITE_API_BASE_URL=https://seawatch-bgsi.onrender.com` still targets Render. GO only when both deployment paths pass. STOP and remove serving/client changes otherwise.
+
+- [ ] **I9 — Commit**
 
 Commit message: `feat: optionally serve the local SeaWatch web app`
 
-Expected behavior: Cloud deployment remains unchanged; an Edge operator can serve a prepared local UI from the API process.
+Expected behavior: Cloud deployment remains unchanged; an Edge operator can serve a prepared local UI whose relative API requests remain on the exact page origin.
 
 ## Slice J — PMTiles and zero-network emergency map
 
@@ -581,7 +600,7 @@ Assert protocol registration occurs once before Map construction; PMTiles URL is
 
 - [ ] **J3 — Write failing real-browser test**
 
-Build the app, launch local FastAPI with web serving on and PMTiles intentionally absent, intercept every request, abort/record any hostname other than `127.0.0.1`/`localhost`, and assert app header, emergency map canvas, ports/Taiwan context, `/live/*`, and resilience UI render with zero recorded external requests.
+Build without `VITE_API_BASE_URL`, launch local FastAPI on `127.0.0.1:8000` with web serving on and PMTiles intentionally absent, and require the page URL to be `http://127.0.0.1:8000`. Intercept every application/API/map request and fail unless its origin is exactly `http://127.0.0.1:8000` (allow another loopback representation only for an explicitly documented test-harness control channel). Assert app header, emergency map canvas, ports/Taiwan context, `/live/*`, and resilience UI render. Explicitly fail on `localhost:8000`, Vercel, Render, NLSC, CDN, or any other origin.
 
 - [ ] **J4 — Verify RED before adding packages**
 
@@ -605,7 +624,7 @@ Run the focused backend tests, full backend command, then `npm test` and `npm ru
 
 Run from `apps/web`: `npx playwright test e2e/offline-edge.spec.ts --project=chromium` with outbound requests blocked by the test and PMTiles absent.
 
-GO only if the built localhost UI, emergency map, and API-backed status render; no non-loopback request is attempted; and NLSC/remote fonts/glyphs/sprites/CDNs are absent. STOP and fix asset/style references before proceeding.
+GO only if the built `127.0.0.1:8000` UI, emergency map, and API-backed status render; every observed application/API/map request uses the exact page origin; and localhost, Vercel, Render, NLSC, remote fonts/glyphs/sprites, CDNs, and every other origin are absent. STOP and fix API-base/asset/style references before proceeding.
 
 - [ ] **J9 — Commit**
 
@@ -693,7 +712,10 @@ Keep measurement code outside request hot paths except optional bounded counters
 
 - [ ] **L4 — Write exact Windows-first runbooks**
 
-Document AIS-catcher command shape, `127.0.0.1:10110`, env flags, pre-building `dist`, local `http://127.0.0.1:8000`, PMTiles installation/runtime path, battery/UPS, disconnect sequence, health/status checks, Edge local-antenna limitation, replay warning, troubleshooting, and no-SDR safe behavior.
+Document AIS-catcher command shape, `127.0.0.1:10110`, env flags, PMTiles installation/runtime path, battery/UPS, disconnect sequence, health/status checks, Edge local-antenna limitation, replay warning, troubleshooting, and no-SDR safe behavior. Make the build contracts explicit:
+
+- Edge: ensure `VITE_API_BASE_URL` is unset, run `npm run build`, enable local serving, start FastAPI, and open `http://127.0.0.1:8000`; relative API URLs stay on that FastAPI process and no npm dev server is used.
+- Public cloud: Vercel builds with explicit `VITE_API_BASE_URL=https://seawatch-bgsi.onrender.com`; local static serving remains disabled on Render.
 
 - [ ] **L5 — Run measurements and record only observed results**
 
@@ -732,8 +754,8 @@ Expected behavior: Phase 8 is documented, measured, reproducible, and passes eve
 | After C | Serialized public payload scan has no MMSI/IMO/callsign/raw IDs | Restore Cloud-only direct routing; fix identity seam. |
 | After E | No hardware/receiver/bind failure cannot affect Cloud startup/API | Disable/remove Edge lifespan wiring. |
 | After G | Failover, recovery hysteresis, cache provenance, dedupe, and track ownership pass twice | Return active API to Cloud-only facade; no frontend work. |
-| After I | Static serving off by default; Render/open routes unchanged; API precedence proven | Remove serving registration; do not add map file route. |
-| After J | Outbound-blocked real browser renders localhost shell + emergency map with zero external requests | Fix bundle/style/serving; no drill/docs completion. |
+| After I | Static serving off by default; same-origin Edge API; explicit Vercel→Render URL; API/SPA precedence | Remove serving/client changes; do not add map file route. |
+| After J | Outbound-blocked browser at `127.0.0.1:8000` renders shell/map and every app/API/map request is exact same-origin | Fix API base, bundle, style, or serving; no drill/docs completion. |
 
 ## Final Verification and Handoff
 
