@@ -17,9 +17,9 @@ interface VesselPanelProps {
 }
 
 /**
- * Consumer-tracking style vessel panel (side panel on desktop, bottom sheet on
+ * Polished consumer-tracking drawer (right-side on desktop, bottom sheet on
  * mobile). Traditional Chinese first with English secondary labels. No MMSI/IMO
- * is required or shown. Technical analysis lives under a collapsed section.
+ * is shown; raw provider id lives only under Advanced Analysis.
  */
 export function VesselPanel({
   vessel,
@@ -34,7 +34,7 @@ export function VesselPanel({
 
   if (!vessel) {
     return (
-      <aside className="vessel-panel empty" aria-label={t.vesselOverview}>
+      <aside className="vessel-drawer empty" aria-label={t.vesselOverview}>
         <p className="muted">{t.selectVesselHint}</p>
       </aside>
     );
@@ -46,7 +46,6 @@ export function VesselPanel({
   const hasTrail = trackPoints >= 2;
   const course = normalizeOrientation(p.heading_deg, p.cog_deg);
 
-  // Position status: how trustworthy the on-screen position is.
   const positionStatus =
     integrity === "provider_interpolated"
       ? t.positionProviderInterp
@@ -55,56 +54,80 @@ export function VesselPanel({
         : t.positionMeasured;
 
   return (
-    <aside className="vessel-panel" aria-label={t.vesselOverview}>
-      <div className="vessel-panel-head">
-        <div>
-          <h2>{p.name || t.noVesselName}</h2>
-          <p className="vessel-sub">{vesselTypeLabel(p.vessel_type, lang)}</p>
+    <aside className="vessel-drawer" aria-label={t.vesselOverview} role="dialog">
+      <button type="button" className="drawer-close" onClick={onClose} aria-label={t.closePanel}>
+        ✕
+      </button>
+
+      {/* Header: ship glyph + name + type + last update */}
+      <header className="drawer-header">
+        <span className="drawer-ship-icon" aria-hidden="true">
+          ⛴
+        </span>
+        <div className="drawer-identity">
+          <h2 className="drawer-name">{p.name || t.noVesselName}</h2>
+          <p className="drawer-type">{vesselTypeLabel(p.vessel_type, lang)}</p>
+          <p className="drawer-updated">
+            {t.dataFreshness}: {formatAge(p.data_age_seconds, t)}
+          </p>
         </div>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label={t.closePanel}>
-          ✕
-        </button>
-      </div>
+      </header>
 
       {missing && <div className="vessel-missing">{t.noRecentUpdate}</div>}
 
-      <div className="vessel-badges">
-        <IntegrityBadge kind={integrity} />
-        <span className="fix-age" title={t.measuredFix}>
-          {formatAge(p.data_age_seconds, t)}
-        </span>
+      {/* Clean metric row */}
+      <div className="drawer-metrics">
+        <div className="metric">
+          <span className="metric-value">
+            {p.sog_knots === null ? "—" : p.sog_knots.toFixed(1)}
+            {p.sog_knots !== null && <span className="metric-unit"> {t.knots}</span>}
+          </span>
+          <span className="metric-label">{t.speed}</span>
+        </div>
+        <div className="metric">
+          <span className="metric-value">
+            {course === null ? "—" : `${Math.round(course)}${t.degrees}`}
+          </span>
+          <span className="metric-label">{t.course}</span>
+        </div>
+        <div className="metric">
+          <span className="metric-value small">{p.destination || "—"}</span>
+          <span className="metric-label">{t.destination}</span>
+        </div>
       </div>
 
-      <dl className="vessel-fields">
-        <dt>{t.vesselType}</dt>
-        <dd>{vesselTypeLabel(p.vessel_type, lang)}</dd>
-        <dt>{t.speed}</dt>
-        <dd>{p.sog_knots === null ? "—" : `${p.sog_knots.toFixed(1)} ${t.knots}`}</dd>
-        <dt>{t.course}</dt>
-        <dd>{course === null ? "—" : `${t.course} ${Math.round(course)}${t.degrees}`}</dd>
-        <dt>{t.destination}</dt>
-        <dd>{p.destination || "—"}</dd>
-        <dt>{t.lastUpdate}</dt>
-        <dd>{formatAge(p.data_age_seconds, t)}</dd>
+      {/* Position status + source */}
+      <dl className="drawer-fields">
+        <dt>{t.positionStatus}</dt>
+        <dd>
+          <IntegrityBadge kind={integrity} />
+          <span className="position-status-text">{positionStatus}</span>
+        </dd>
         <dt>{t.source}</dt>
         <dd>{friendlySource(p.source, t)}</dd>
-        <dt>{t.positionStatus}</dt>
-        <dd>{positionStatus}</dd>
       </dl>
 
-      <section className="vessel-track-section">
+      {/* Track */}
+      <section className="drawer-section">
         <h3>{t.recentTrack}</h3>
         {trackLoading ? (
           <p className="muted">{t.loading}</p>
         ) : hasTrail ? (
           <p className="muted">
-            {trackPoints} {t.recentTrack}
+            {trackPoints} · {t.recentTrack}
           </p>
         ) : (
           <p className="muted building">{t.buildingTrackHistory}</p>
         )}
       </section>
 
+      {/* Needs review — placeholder state, no fabricated score */}
+      <section className="drawer-section">
+        <h3>{t.reviewPriority}</h3>
+        <p className="muted collecting">{t.collectingForAnalysis}</p>
+      </section>
+
+      {/* Advanced analysis — collapsed, technical fields live here */}
       <section className="advanced-analysis">
         <button
           type="button"
@@ -116,7 +139,7 @@ export function VesselPanel({
         </button>
         {advancedOpen && (
           <div className="advanced-body">
-            <dl className="vessel-fields">
+            <dl className="drawer-fields">
               <dt>{t.heading}</dt>
               <dd>{p.heading_deg === null ? "—" : `${Math.round(p.heading_deg)}${t.degrees}`}</dd>
               <dt>{t.dataQuality}</dt>

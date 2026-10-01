@@ -8,6 +8,26 @@ export const TAIWAN_CENTER: [number, number] = [120.9, 23.6];
 export const TAIWAN_ZOOM = 6.6;
 export const TAIWAN_BBOX = { minLat: 21.5, minLon: 118.0, maxLat: 26.5, maxLon: 123.5 };
 
+// Quick-navigation presets. Bounds are intentionally centered on WATER (ports
+// are approached from their seaward side) so a preset never centers inland.
+export interface LocationPreset {
+  id: "taiwan" | "keelung" | "strait" | "kaohsiung";
+  labelKey: "presetTaiwanWaters" | "presetKeelung" | "presetTaiwanStrait" | "presetKaohsiung";
+  /** [west, south, east, north] */
+  bounds: [number, number, number, number];
+}
+
+export const LOCATION_PRESETS: LocationPreset[] = [
+  { id: "taiwan", labelKey: "presetTaiwanWaters", bounds: [118.0, 21.5, 123.5, 26.3] },
+  // Keelung approaches: north coast waters.
+  { id: "keelung", labelKey: "presetKeelung", bounds: [121.5, 25.05, 122.1, 25.45] },
+  // Taiwan Strait: the water channel west of the island.
+  { id: "strait", labelKey: "presetTaiwanStrait", bounds: [118.6, 23.0, 120.4, 25.2] },
+  // Kaohsiung approaches: south-west harbour waters.
+  { id: "kaohsiung", labelKey: "presetKaohsiung", bounds: [120.1, 22.3, 120.5, 22.75] },
+];
+
+
 // --- Official Taiwan NLSC basemaps (public WMTS, EPSG:3857 / Web Mercator) --- //
 // NLSC (National Land Surveying and Mapping Center) publishes public web tiles.
 // We reference them as raster sources; tiles are fetched on demand (no bulk

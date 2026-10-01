@@ -28,6 +28,10 @@ interface MapCanvasProps {
   selectedId: string | null;
   selectedTrack: GeoJSON.Feature | null;
   follow: boolean;
+  /** Fit the map to these [west,south,east,north] bounds (preset navigation). */
+  fitBounds?: [number, number, number, number] | null;
+  /** Nonce bumped by the caller to re-trigger the same fitBounds. */
+  fitBoundsNonce?: number;
   onSelectVessel: (feature: LiveVesselFeature) => void;
   onDeselect: () => void;
   onViewportChange: (viewport: Viewport) => void;
@@ -69,6 +73,8 @@ export function MapCanvas({
   selectedId,
   selectedTrack,
   follow,
+  fitBounds,
+  fitBoundsNonce,
   onSelectVessel,
   onDeselect,
   onViewportChange,
@@ -215,7 +221,8 @@ export function MapCanvas({
     programmaticMoveRef.current = true;
     map.flyTo({
       center: match.geometry.coordinates,
-      zoom: Math.max(map.getZoom(), FOLLOW_ZOOM),
+      // Zoom to a useful maritime detail level (10–12) without overzooming.
+      zoom: Math.min(12, Math.max(map.getZoom(), FOLLOW_ZOOM)),
       duration: 900,
       essential: true,
     });
@@ -224,6 +231,24 @@ export function MapCanvas({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
+
+  // Fit to a preset region (quick-location navigation).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current || !fitBounds) return;
+    programmaticMoveRef.current = true;
+    map.fitBounds(
+      [
+        [fitBounds[0], fitBounds[1]],
+        [fitBounds[2], fitBounds[3]],
+      ],
+      { padding: 40, duration: 900, maxZoom: 12 },
+    );
+    map.once("moveend", () => {
+      programmaticMoveRef.current = false;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitBoundsNonce]);
 
   // Draw the selected track.
   useEffect(() => {
@@ -305,7 +330,11 @@ function installOverlays(map: maplibregl.Map) {
       type: "circle",
       source: VESSEL_SOURCE,
       paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 2.5, 8, 3.5, 11, 5],
+        // Smaller at national overview (declutter), larger when closer. NOTE:
+        // MapLibre silently rejects a layer whose "circle-radius" nests an
+        // "interpolate" inside a "case" — keep this a PLAIN zoom interpolate.
+        // Selected-vessel emphasis is provided by the halo + larger ship symbol.
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 1.8, 8, 2.6, 11, 3.4],
         "circle-color": [
           "case",
           ["boolean", ["feature-state", "selected"], false],
@@ -314,8 +343,11 @@ function installOverlays(map: maplibregl.Map) {
           "#f59e0b",
           "#38bdf8",
         ],
+        // The directional ship symbol takes over at closer zoom; fade the dot
+        // out there. Plain zoom interpolate (no "case" wrapper — see above).
+        "circle-opacity": ["interpolate", ["linear"], ["zoom"], 8.5, 0.95, 10.5, 0.35],
         "circle-stroke-color": "#04121f",
-        "circle-stroke-width": 1,
+        "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 5, 0.5, 10, 1],
       },
     });
   }
@@ -326,23 +358,14 @@ function installOverlays(map: maplibregl.Map) {
       source: VESSEL_SOURCE,
       layout: {
         "icon-image": SHIP_ICON,
-        // Selected vessel is larger; others scale with zoom (low-zoom density).
-        "icon-size": [
-          "case",
-          ["boolean", ["feature-state", "selected"], false],
-          ["interpolate", ["linear"], ["zoom"], 5, 0.7, 10, 1.1],
-          ["interpolate", ["linear"], ["zoom"], 5, 0.28, 8, 0.45, 11, 0.7],
-        ],
+        // Directional ship grows with zoom; kept modest so thousands of vessels
+        // never become giant icons. PLAIN zoom interpolate (do not nest inside a
+        // "case" — MapLibre silently drops such layers). Selected emphasis comes
+        // from the halo + the dot colour.
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 6, 0.18, 9, 0.32, 12, 0.55],
         "icon-rotate": ["get", "orientation"],
         "icon-rotation-alignment": "map",
         "icon-allow-overlap": true,
-        // Selected vessel sorts on top.
-        "symbol-sort-key": [
-          "case",
-          ["boolean", ["feature-state", "selected"], false],
-          0,
-          1,
-        ],
         "symbol-z-order": "source",
       },
       paint: {
@@ -354,6 +377,10 @@ function installOverlays(map: maplibregl.Map) {
           "#f59e0b",
           "#38bdf8",
         ],
+        // Fade the directional icon in as we zoom past the overview level so the
+        // national view stays as light dots (declutter), ships appear closer in.
+        // PLAIN zoom interpolate (no "case" wrapper).
+        "icon-opacity": ["interpolate", ["linear"], ["zoom"], 7.5, 0, 9.5, 1],
         "icon-halo-color": "#04121f",
         "icon-halo-width": 1,
       },

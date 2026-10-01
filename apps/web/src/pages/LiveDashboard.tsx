@@ -12,11 +12,13 @@ import { useI18n } from "../i18n/I18nContext";
 import { AppHeader } from "../components/AppHeader";
 import { StatusCards } from "../components/StatusCards";
 import { LayerControl } from "../components/LayerControl";
+import { SearchControl } from "../components/SearchControl";
 import { VesselPanel } from "../components/VesselPanel";
 import { MapCanvas, type Viewport } from "../components/MapCanvas";
 import { DEFAULT_LAYER_STATE, type LayerState } from "../lib/layerState";
 import { deriveLiveStatus } from "../lib/liveStatus";
 import { friendlySource } from "../lib/display";
+import { LOCATION_PRESETS } from "../config/taiwanMap";
 
 const POLL_MS = 8000;
 const VIEWPORT_DEBOUNCE_MS = 400;
@@ -26,11 +28,10 @@ function isDemoMode(): boolean {
 }
 
 /**
- * Taiwan-first live maritime awareness experience. The map is the main surface.
- * Vessels poll by viewport bbox with debounce; motion is smoothed on the client
- * via visual interpolation (never fabricated server-side). The selected vessel
- * is tracked by id so it survives data refreshes; a follow mode keeps the map
- * centered on it, pausing when the user manually pans.
+ * Taiwan-first, map-first live maritime awareness experience. The map dominates;
+ * a compact header, floating status chip, floating search + layer controls, and
+ * a right-side vessel drawer sit over it. Vessels poll by viewport bbox with
+ * debounce; motion is smoothed on the client via visual interpolation.
  */
 export function LiveDashboard() {
   const { t } = useI18n();
@@ -43,9 +44,12 @@ export function LiveDashboard() {
   const [track, setTrack] = useState<LiveTrack | null>(null);
   const [trackLoading, setTrackLoading] = useState(false);
   const [follow, setFollow] = useState(false);
-  const [paused, setPaused] = useState(false); // follow paused by manual drag
+  const [paused, setPaused] = useState(false);
   const [baseMapError, setBaseMapError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fitBounds, setFitBounds] = useState<[number, number, number, number] | null>(null);
+  const [fitNonce, setFitNonce] = useState(0);
+  const [loadedOnce, setLoadedOnce] = useState(false);
 
   const viewportRef = useRef<Bbox | null>(null);
   const debounceRef = useRef<number | null>(null);
@@ -59,6 +63,7 @@ export function LiveDashboard() {
       setVessels(collection.features);
       if (h) setHealth(h);
       setError(null);
+      setLoadedOnce(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : t.errorLoadingVessels);
     }
@@ -86,22 +91,17 @@ export function LiveDashboard() {
     [loadVessels],
   );
 
-  // The selected vessel is resolved by id from the latest feed each render, so
-  // it stays selected while new AIS positions arrive and reflects fresh data.
   const selected = useMemo(
     () => (selectedId ? (vessels.find((v) => v.id === selectedId) ?? null) : null),
     [vessels, selectedId],
   );
   const selectedMissing = selectedId !== null && selected === null;
 
-  // Remember the last-known feature for the selected id so the panel can keep
-  // showing its details (with a "no recent update" notice) if it drops out.
   const lastKnownRef = useRef<LiveVesselFeature | null>(null);
   if (selected) lastKnownRef.current = selected;
   if (selectedId === null) lastKnownRef.current = null;
   const panelVessel = selected ?? lastKnownRef.current;
 
-  // Load the selected vessel's track when the selection id changes.
   useEffect(() => {
     if (!selectedId) {
       setTrack(null);
@@ -138,7 +138,6 @@ export function LiveDashboard() {
     setPaused(false);
   }, []);
 
-  // Escape closes the panel / deselects.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") handleDeselect();
@@ -147,7 +146,6 @@ export function LiveDashboard() {
     return () => window.removeEventListener("keydown", onKey);
   }, [handleDeselect]);
 
-  // Manual pan/zoom pauses follow mode.
   const handleUserInteract = useCallback(() => {
     setFollow((f) => {
       if (f) setPaused(true);
@@ -158,6 +156,11 @@ export function LiveDashboard() {
   const handleResumeFollow = useCallback(() => {
     setFollow(true);
     setPaused(false);
+  }, []);
+
+  const handleFitBounds = useCallback((bounds: [number, number, number, number]) => {
+    setFitBounds(bounds);
+    setFitNonce((n) => n + 1);
   }, []);
 
   const freshestAge =
@@ -174,11 +177,16 @@ export function LiveDashboard() {
 
   const sourceLabel = friendlySource(health?.provider ?? "open_waters", t);
 
+  // Empty-viewport state: loaded, live (not reconnecting), but no vessels here.
+  const showEmptyState = loadedOnce && vessels.length === 0 && status !== "reconnecting";
+  const taiwanPreset = LOCATION_PRESETS[0];
+
   return (
     <div className="live-dashboard lang-shell">
       <AppHeader status={status} />
 
       {status === "offline_demo" && <div className="offline-banner">{t.offlineDemoNote}</div>}
+      {status === "reconnecting" && <div className="warn-banner">{t.reconnectingAis}</div>}
       {error && (
         <div className="error-banner">
           {t.errorLoadingVessels}: {error}
@@ -193,6 +201,8 @@ export function LiveDashboard() {
           selectedId={selectedId}
           selectedTrack={selectedTrackGeo}
           follow={follow}
+          fitBounds={fitBounds}
+          fitBoundsNonce={fitNonce}
           onSelectVessel={handleSelectVessel}
           onDeselect={handleDeselect}
           onViewportChange={handleViewportChange}
@@ -200,10 +210,15 @@ export function LiveDashboard() {
           onBaseMapError={setBaseMapError}
         />
 
-        <div className="map-overlay-top">
+        <div className="map-overlay-top-left">
+          <SearchControl
+            vessels={vessels}
+            onSelectVessel={handleSelectVessel}
+            onFitBounds={handleFitBounds}
+          />
           <StatusCards
             vesselCount={vessels.length}
-            needsReview={0}
+            needsReview={null}
             freshestAgeSeconds={freshestAge}
             source={sourceLabel}
           />
@@ -213,17 +228,24 @@ export function LiveDashboard() {
           <LayerControl layers={layers} onChange={setLayers} />
         </div>
 
+        {showEmptyState && (
+          <div className="empty-viewport" role="status">
+            <p>{t.emptyViewport}</p>
+            <div className="empty-actions">
+              <button type="button" onClick={() => handleFitBounds(taiwanPreset.bounds)}>
+                {t.presetTaiwanWaters}
+              </button>
+            </div>
+          </div>
+        )}
+
         {selectedId && (
           <div className="follow-control">
             {follow ? (
               <span className="follow-pill active">{t.following}</span>
-            ) : paused ? (
-              <button type="button" className="follow-btn" onClick={handleResumeFollow}>
-                {t.resumeFollow}
-              </button>
             ) : (
               <button type="button" className="follow-btn" onClick={handleResumeFollow}>
-                {t.followVessel}
+                {paused ? t.resumeFollow : t.followVessel}
               </button>
             )}
           </div>
@@ -240,10 +262,6 @@ export function LiveDashboard() {
           />
         )}
       </div>
-
-      <footer className="app-footer">
-        <span>{t.attribution}</span>
-      </footer>
     </div>
   );
 }

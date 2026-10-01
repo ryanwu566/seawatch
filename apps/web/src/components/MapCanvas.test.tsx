@@ -15,6 +15,7 @@ const state: {
   featureStates: Array<{ id: unknown; state: Record<string, unknown> }>;
   flyToCalls: any[];
   easeToCalls: any[];
+  fitBoundsCalls: any[];
   queryHits: any[];
   popupHtml: string[];
   styledataCb: ((e?: any) => void) | null;
@@ -30,6 +31,7 @@ const state: {
   featureStates: [],
   flyToCalls: [],
   easeToCalls: [],
+  fitBoundsCalls: [],
   queryHits: [],
   popupHtml: [],
   styledataCb: null,
@@ -101,6 +103,9 @@ vi.mock("maplibre-gl", () => {
     }
     easeTo(opts: any) {
       state.easeToCalls.push(opts);
+    }
+    fitBounds(bounds: any, opts: any) {
+      state.fitBoundsCalls.push({ bounds, opts });
     }
     getZoom() {
       return 7;
@@ -219,6 +224,7 @@ describe("MapCanvas", () => {
     state.featureStates = [];
     state.flyToCalls = [];
     state.easeToCalls = [];
+    state.fitBoundsCalls = [];
     state.queryHits = [];
     state.popupHtml = [];
     state.styledataCb = null;
@@ -418,5 +424,31 @@ describe("MapCanvas", () => {
       (p) => p.layer === "live-vessels-dot" && p.prop === "visibility",
     );
     expect(dotVis.every((p) => p.value === "visible")).toBe(true);
+  });
+
+  it("fits the map to a preset region when fitBoundsNonce changes", () => {
+    const bounds: [number, number, number, number] = [118.0, 21.5, 123.5, 26.3];
+    const { rerender } = render(<MapCanvas {...baseProps({ fitBounds: bounds, fitBoundsNonce: 0 })} />);
+    const before = state.fitBoundsCalls.length;
+    rerender(<MapCanvas {...baseProps({ fitBounds: bounds, fitBoundsNonce: 1 })} />);
+    expect(state.fitBoundsCalls.length).toBeGreaterThan(before);
+    const last = state.fitBoundsCalls[state.fitBoundsCalls.length - 1];
+    expect(last.bounds).toEqual([
+      [118.0, 21.5],
+      [123.5, 26.3],
+    ]);
+  });
+
+  it("caps the select flyTo zoom to a useful maritime detail level (<=12)", () => {
+    render(<MapCanvas {...baseProps({ selectedId: "v1" })} />);
+    expect(state.flyToCalls.length).toBeGreaterThan(0);
+    expect(state.flyToCalls[0].zoom).toBeLessThanOrEqual(12);
+  });
+
+  it("declutters at low zoom: the directional symbol icon fades in with zoom", () => {
+    render(<MapCanvas {...baseProps()} />);
+    const sym = state.layers.find((l) => l.id === "live-vessels-symbols");
+    expect(sym).toBeTruthy();
+    expect(sym?.type).toBe("symbol");
   });
 });

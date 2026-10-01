@@ -97,11 +97,31 @@ export interface Dict {
   offlineDemoData: string;
   offlineDemoNote: string;
 
+  // Search + presets
+  searchPlaceholder: string;
+  searchVessels: string;
+  searchPorts: string;
+  searchNoResults: string;
+  presetTaiwanWaters: string;
+  presetKeelung: string;
+  presetTaiwanStrait: string;
+  presetKaohsiung: string;
+  presetsLabel: string;
+
+  // Empty / error / reconnecting states
+  emptyViewport: string;
+  showNearbyVessels: string;
+  reconnectingAis: string;
+  collectingForAnalysis: string;
+  illustrativeAirspace: string;
+
   // Misc
   loading: string;
   errorLoadingVessels: string;
   attribution: string;
   corsNote: string;
+  openLayers: string;
+  statusLabel: string;
 }
 
 const zhHant: Dict = {
@@ -187,10 +207,28 @@ const zhHant: Dict = {
   offlineDemoData: "離線展示資料",
   offlineDemoNote: "目前顯示離線展示資料，並非即時 AIS。",
 
+  searchPlaceholder: "搜尋船舶或港口",
+  searchVessels: "船舶",
+  searchPorts: "港口",
+  searchNoResults: "找不到符合的結果",
+  presetTaiwanWaters: "臺灣海域",
+  presetKeelung: "基隆",
+  presetTaiwanStrait: "臺灣海峽",
+  presetKaohsiung: "高雄",
+  presetsLabel: "快速定位",
+
+  emptyViewport: "此區域目前沒有船舶資料",
+  showNearbyVessels: "顯示附近船舶",
+  reconnectingAis: "正在重新取得即時 AIS…",
+  collectingForAnalysis: "分析資料累積中",
+  illustrativeAirspace: "示意空域",
+
   loading: "載入中…",
   errorLoadingVessels: "無法載入即時船舶資料",
   attribution: "資料來源：Open Waters AIS",
   corsNote: "官方圖資因瀏覽器 CORS 限制無法載入時，將顯示此註記。",
+  openLayers: "開啟圖層選單",
+  statusLabel: "即時狀態",
 };
 
 const en: Dict = {
@@ -276,11 +314,29 @@ const en: Dict = {
   offlineDemoData: "Offline Demo Data",
   offlineDemoNote: "Showing offline demo data — this is not live AIS.",
 
+  searchPlaceholder: "Search vessels or ports",
+  searchVessels: "Vessels",
+  searchPorts: "Ports",
+  searchNoResults: "No matching results",
+  presetTaiwanWaters: "Taiwan Waters",
+  presetKeelung: "Keelung",
+  presetTaiwanStrait: "Taiwan Strait",
+  presetKaohsiung: "Kaohsiung",
+  presetsLabel: "Quick locations",
+
+  emptyViewport: "No vessel data in this area right now",
+  showNearbyVessels: "Show nearby vessels",
+  reconnectingAis: "Reacquiring live AIS…",
+  collectingForAnalysis: "Collecting data for analysis",
+  illustrativeAirspace: "Illustrative Airspace",
+
   loading: "Loading…",
   errorLoadingVessels: "Failed to load live vessels",
   attribution: "Source: Open Waters AIS",
   corsNote:
     "If an official map layer is blocked by browser CORS, this note is shown instead of faking success.",
+  openLayers: "Open layer menu",
+  statusLabel: "Live status",
 };
 
 export const DICTIONARIES: Record<Lang, Dict> = {

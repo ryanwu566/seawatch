@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import type { LiveVesselFeature } from "../api/live";
+import { DICTIONARIES } from "../i18n/dictionaries";
 
 // --- Mock the live API --------------------------------------------------- //
 let currentVessels: LiveVesselFeature[] = [];
@@ -63,6 +64,8 @@ vi.mock("../components/MapCanvas", () => {
         <div data-testid="map">
           <div data-testid="selected-id">{props.selectedId ?? ""}</div>
           <div data-testid="follow">{String(props.follow)}</div>
+          <div data-testid="fit-bounds">{props.fitBounds ? props.fitBounds.join(",") : ""}</div>
+          <div data-testid="fit-nonce">{String(props.fitBoundsNonce ?? 0)}</div>
           {props.vessels.map((v: LiveVesselFeature) => (
             <button key={v.id} data-testid={`sel-${v.id}`} onClick={() => props.onSelectVessel(v)}>
               {v.id}
@@ -94,6 +97,7 @@ function renderDash() {
 describe("LiveDashboard interaction", () => {
   beforeEach(() => {
     currentVessels = [vessel("v1", "ALPHA"), vessel("v2", "BRAVO")];
+    window.localStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -160,5 +164,57 @@ describe("LiveDashboard interaction", () => {
     expect(screen.getByTestId("follow").textContent).toBe("false");
     // Resume control appears.
     expect(screen.getByText("繼續追蹤")).toBeInTheDocument();
+  });
+
+  it("shows the compact header in Traditional Chinese by default and toggles to English", async () => {
+    renderDash();
+    await screen.findByTestId("sel-v1");
+    const zh = DICTIONARIES["zh-Hant"];
+    const enDict = DICTIONARIES["en"];
+    expect(screen.getByText(zh.productTagline)).toBeInTheDocument();
+    expect(screen.getAllByText(zh.live).length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(screen.getByLabelText("Toggle language"));
+    expect(screen.getByText(enDict.productTagline)).toBeInTheDocument();
+    expect(screen.getByText(enDict.live)).toBeInTheDocument();
+  });
+
+  it("searches a loaded vessel and selects it from the search box", async () => {
+    renderDash();
+    await screen.findByTestId("sel-v1");
+    const input = document.querySelector(".search-input") as HTMLInputElement;
+    expect(input).toBeTruthy();
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "ALPHA" } });
+    fireEvent.click(screen.getByText("ALPHA"));
+    expect(screen.getByTestId("selected-id").textContent).toBe("v1");
+  });
+
+  it("navigates to a location preset (fitBounds nonce increments)", async () => {
+    renderDash();
+    await screen.findByTestId("sel-v1");
+    const before = screen.getByTestId("fit-nonce").textContent;
+    const presets = Array.from(document.querySelectorAll(".preset-btn")) as HTMLButtonElement[];
+    const kao = presets.find((b) => b.textContent === DICTIONARIES["zh-Hant"].presetKaohsiung);
+    expect(kao).toBeTruthy();
+    fireEvent.click(kao!);
+    const after = screen.getByTestId("fit-nonce").textContent;
+    expect(Number(after)).toBeGreaterThan(Number(before));
+    expect(screen.getByTestId("fit-bounds").textContent).not.toBe("");
+  });
+
+  it("shows an empty-viewport state when loaded but no vessels are present", async () => {
+    currentVessels = [];
+    renderDash();
+    await screen.findByTestId("map");
+    const box = await waitFor(() => {
+      const el = document.querySelector(".empty-viewport");
+      if (!el) throw new Error("no empty-viewport yet");
+      return el as HTMLElement;
+    });
+    expect(box.textContent).toContain(DICTIONARIES["zh-Hant"].emptyViewport);
+    const before = screen.getByTestId("fit-nonce").textContent;
+    const action = box.querySelector("button") as HTMLButtonElement;
+    fireEvent.click(action);
+    expect(Number(screen.getByTestId("fit-nonce").textContent)).toBeGreaterThan(Number(before));
   });
 });

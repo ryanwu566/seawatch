@@ -22,6 +22,7 @@ export function LayerControl({ layers, onChange }: LayerControlProps) {
         className="layer-control-toggle"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
+        aria-label={t.openLayers}
       >
         {t.layers}
       </button>
@@ -63,10 +64,6 @@ export function LayerControl({ layers, onChange }: LayerControlProps) {
               <input type="checkbox" checked={layers.ports} onChange={toggle("ports")} />
               {t.layerPorts}
             </label>
-            <label>
-              <input type="checkbox" checked={layers.navReference} onChange={toggle("navReference")} />
-              {t.layerNavReference}
-            </label>
           </fieldset>
 
           <fieldset>
@@ -74,18 +71,11 @@ export function LayerControl({ layers, onChange }: LayerControlProps) {
             <label>
               <input
                 type="checkbox"
-                checked={layers.restrictedAirspace}
-                onChange={toggle("restrictedAirspace")}
-              />
-              {t.layerRestrictedAirspace}
-            </label>
-            <label>
-              <input
-                type="checkbox"
                 checked={layers.publicAirspace}
                 onChange={toggle("publicAirspace")}
               />
               {t.layerPublicAirspace}
+              <span className="layer-note">（{t.illustrativeAirspace}）</span>
             </label>
           </fieldset>
 
