@@ -12,6 +12,7 @@ from .edge_ingest import EdgeAisConsumer
 from .identity import VesselIdentityRegistry
 from .ingest import AisIngestConsumer
 from .open_waters import OpenWatersProvider
+from .resilience import ResilienceModeManager
 from .store import LiveVesselStore
 
 
@@ -40,6 +41,7 @@ class LiveRuntime:
     config: LiveRuntimeConfig
     identity_registry: VesselIdentityRegistry
     active_view: ActiveVesselView
+    mode_manager: ResilienceModeManager
 
 
 _runtime: LiveRuntime | None = None
@@ -64,6 +66,7 @@ def _build_runtime() -> LiveRuntime:
         config=config,
         identity_registry=identity_registry,
         active_view=ActiveVesselView(store, identity_registry),
+        mode_manager=ResilienceModeManager(config),
     )
 
 
