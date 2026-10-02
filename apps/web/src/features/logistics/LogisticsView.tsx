@@ -3,6 +3,7 @@ import { useI18n } from "../../i18n/I18nContext";
 import { MapCanvas } from "../../components/MapCanvas";
 import { DEFAULT_LAYER_STATE } from "../../lib/layerState";
 import { buildLogisticsOverlays } from "./logisticsLayers";
+import { useOperatingMode } from "./useOperatingMode";
 import {
   fetchScenarioContext,
   fetchScenarios,
@@ -13,6 +14,8 @@ import type {
   ScenarioContext,
   ScenarioSummary,
 } from "./logisticsTypes";
+import type { OperatingMode } from "../../api/live";
+import type { Dict } from "../../i18n/dictionaries";
 
 /**
  * Resilience Logistics (RESPOND) view: scenario select → load context →
@@ -31,6 +34,8 @@ export function LogisticsView({
 }) {
   const { t, lang } = useI18n();
   const L = t.logistics;
+
+  const { mode: operatingMode } = useOperatingMode();
 
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -94,6 +99,22 @@ export function LogisticsView({
         <p className="logistics-subtitle">{L.subtitle}</p>
       </header>
 
+      {operatingMode && operatingModeLabel(operatingMode, t) ? (
+        <aside
+          className="logistics-operating-context"
+          data-testid="operating-context"
+          data-mode={operatingMode}
+          role="note"
+          aria-label={L.operatingContext}
+        >
+          <strong>{L.operatingContext}:</strong>{" "}
+          <span className="logistics-operating-mode">
+            {operatingModeLabel(operatingMode, t)}
+          </span>
+          <span className="logistics-operating-note"> · {L.operatingContextNote}</span>
+        </aside>
+      ) : null}
+
       <div className="logistics-controls">
         <label htmlFor="logistics-scenario">{L.scenarioLabel}</label>
         <select
@@ -155,6 +176,24 @@ export function LogisticsView({
 
 function noop() {
   /* no-op: the logistics map is read-only context, not an interactive selector */
+}
+
+/**
+ * Map a Phase 8 operating mode to its shared bilingual label. Returns null for
+ * any unknown/unexpected value so the banner degrades silently rather than
+ * showing a raw enum. Uses the existing top-level mode labels (no new vocab for
+ * the modes themselves), keeping the bilingual UI style consistent with the
+ * live view.
+ */
+function operatingModeLabel(mode: OperatingMode, t: Dict): string | null {
+  const labels: Record<OperatingMode, string> = {
+    CLOUD_LIVE: t.modeCloud,
+    EDGE_LIVE: t.modeEdge,
+    EDGE_REPLAY: t.modeReplay,
+    NO_LIVE_SOURCE: t.modeNoSource,
+    OFFLINE_DEMO: t.modeDemo,
+  };
+  return labels[mode] ?? null;
 }
 
 function commodityLabel(commodity: string, L: ReturnType<typeof useI18n>["t"]["logistics"]) {

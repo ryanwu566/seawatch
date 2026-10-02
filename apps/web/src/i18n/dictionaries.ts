@@ -183,6 +183,8 @@ export interface LogisticsDict {
   commodityFood: string;
   commodityFuel: string;
   contextEdgeBanner: string;
+  operatingContext: string;
+  operatingContextNote: string;
 }
 
 const zhHant: Dict = {
@@ -344,6 +346,8 @@ const zhHant: Dict = {
     commodityFood: "食品",
     commodityFuel: "燃料",
     contextEdgeBanner: "目前為邊緣模式——物流使用本地情境資料集。",
+    operatingContext: "目前運作情境",
+    operatingContextNote: "僅供顯示的 Phase 8 即時來源狀態；物流決策支援不受其影響。",
   },
 };
 
@@ -508,6 +512,9 @@ const en: Dict = {
     commodityFood: "Food",
     commodityFuel: "Fuel",
     contextEdgeBanner: "Running in Edge mode — logistics uses the local scenario dataset.",
+    operatingContext: "Current operating context",
+    operatingContextNote:
+      "Display-only Phase 8 live-source status; the logistics decision support is unaffected by it.",
   },
 };
 

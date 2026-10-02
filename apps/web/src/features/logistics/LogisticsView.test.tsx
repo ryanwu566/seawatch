@@ -71,6 +71,13 @@ vi.mock("../../components/MapCanvas", () => ({
   ),
 }));
 
+// Slice J read-only integration seam: the operating-mode hook is mocked so the
+// view test controls whether a Phase 8 resilience mode is present or absent.
+let operatingMode: string | null = null;
+vi.mock("./useOperatingMode", () => ({
+  useOperatingMode: () => ({ mode: operatingMode }),
+}));
+
 import { LogisticsView } from "./LogisticsView";
 
 function renderView(renderResult?: Parameters<typeof LogisticsView>[0]["renderResult"]) {
@@ -86,6 +93,7 @@ beforeEach(() => {
   fetchScenarioContext.mockClear();
   runSimulation.mockClear();
   window.localStorage.clear();
+  operatingMode = null;
 });
 
 describe("LogisticsView", () => {
@@ -152,5 +160,22 @@ describe("LogisticsView", () => {
         <LogisticsView />
       </I18nProvider>,
     );
+  });
+
+  it("shows the operating-context banner when a Phase 8 mode is available", async () => {
+    operatingMode = "EDGE_REPLAY";
+    renderView();
+    const banner = await screen.findByTestId("operating-context");
+    expect(banner).toBeInTheDocument();
+    // Mode is rendered via the shared bilingual mode label (zh-Hant default).
+    expect(banner.textContent).toContain(DICTIONARIES["zh-Hant"].modeReplay);
+    expect(banner).toHaveAttribute("data-mode", "EDGE_REPLAY");
+  });
+
+  it("renders no operating-context banner when the status is unavailable (graceful fallback)", async () => {
+    operatingMode = null;
+    renderView();
+    await waitFor(() => expect(fetchScenarios).toHaveBeenCalled());
+    expect(screen.queryByTestId("operating-context")).toBeNull();
   });
 });
