@@ -233,3 +233,23 @@ Phase 8 adds opt-in local AIS reception, honest Cloud/Edge/replay modes,
 same-origin localhost production serving, and a fully bundled emergency map.
 Cloud remains the default deployment and local web serving remains disabled
 unless `SEAWATCH_SERVE_WEB=true`.
+
+### Phase 9 Resilience Logistics (RESPOND)
+
+- [Resilience demo runbook](docs/phase9-resilience-logistics-runbook.md)
+- [Verification report](docs/phase9-resilience-logistics-report.md)
+- [Design specification](docs/superpowers/specs/2026-10-01-resilience-logistics-design.md)
+- [Implementation plan](docs/superpowers/plans/2026-10-01-resilience-logistics-implementation-plan.md)
+
+Phase 9 adds the **RESPOND** layer: a deterministic, explainable
+decision-support simulation for a civilian port-disruption scenario (affected
+demand, alternative ports/routes, priority-aware capacity-constrained
+allocation, trade-offs, and a bilingual Resilience Decision Brief). It is for
+**human review only** — not an instruction, prediction, or autonomous command.
+Capacity, cost, risk, and demand figures are `scenario`/`synthetic` planning
+values, never real operational data, and an always-visible TruthBadge preserves
+that provenance. Phase 9 adds no new dependency, reuses the Phase 8 shared API
+client and offline map machinery, and consumes Phase 8 only through the stable,
+read-only `/resilience/status` contract. The SENSE → SURVIVE → RESPOND
+demonstration runs fully offline; the live-RF Edge hardware path remains
+**pending real-hardware validation**.
