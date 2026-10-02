@@ -93,6 +93,30 @@ export interface Dict {
   provenanceUnknown: string;
   valueUnknown: string;
 
+  // Route Deviation evidence (route-deviation-1)
+  routeDeviationTitle: string;
+  routeDeviationStatus: string;
+  routeDeviationDetected: string;
+  routeWithinCorridor: string;
+  routeDeviationDistance: string;
+  routeDeviationBaseline: string;
+  routeDeviationConfidence: string;
+  routeDeviationSource: string;
+  routeDeviationExplanation: string;
+  routeDeviationUnknown: string;
+  confidenceHigh: string;
+  confidenceMedium: string;
+  confidenceLow: string;
+
+  // Maritime GIS context (gis-context-1)
+  gisContextTitle: string;
+  gisDistanceToCoast: string;
+  gisNearestPort: string;
+  gisDistanceToPort: string;
+  gisMaritimeArea: string;
+  gisNotWithinArea: string;
+  gisOutsideCoverage: string;
+
   // Layers
   layers: string;
   baseMaps: string;
@@ -353,6 +377,26 @@ const zhHant: Dict = {
   provenanceDerived: "推導",
   provenanceUnknown: "未知",
   valueUnknown: "未知",
+  routeDeviationTitle: "航線偏離",
+  routeDeviationStatus: "偏離狀態",
+  routeDeviationDetected: "偵測到航線偏離",
+  routeWithinCorridor: "位於歷史航廊範圍內",
+  routeDeviationDistance: "偏離距離",
+  routeDeviationBaseline: "歷史基準",
+  routeDeviationConfidence: "信賴度",
+  routeDeviationSource: "來源",
+  routeDeviationExplanation: "證據說明",
+  routeDeviationUnknown: "無航線偏離證據，狀態未知。",
+  confidenceHigh: "高",
+  confidenceMedium: "中",
+  confidenceLow: "低",
+  gisContextTitle: "地理情境",
+  gisDistanceToCoast: "離岸距離",
+  gisNearestPort: "最近港口",
+  gisDistanceToPort: "距港口距離",
+  gisMaritimeArea: "所在海域",
+  gisNotWithinArea: "不在任何命名區域內",
+  gisOutsideCoverage: "超出參考範圍",
   illustrativeAirspace: "示意空域",
 
   loading: "載入中…",
@@ -560,6 +604,26 @@ const en: Dict = {
   provenanceDerived: "derived",
   provenanceUnknown: "unknown",
   valueUnknown: "Unknown",
+  routeDeviationTitle: "Route Deviation",
+  routeDeviationStatus: "Status",
+  routeDeviationDetected: "Route deviation detected",
+  routeWithinCorridor: "Within historical corridor",
+  routeDeviationDistance: "Distance",
+  routeDeviationBaseline: "Baseline",
+  routeDeviationConfidence: "Confidence",
+  routeDeviationSource: "Source",
+  routeDeviationExplanation: "Evidence",
+  routeDeviationUnknown: "No route-deviation evidence; status unknown.",
+  confidenceHigh: "HIGH",
+  confidenceMedium: "MEDIUM",
+  confidenceLow: "LOW",
+  gisContextTitle: "Geographic Context",
+  gisDistanceToCoast: "Distance to coast",
+  gisNearestPort: "Nearest port",
+  gisDistanceToPort: "Distance to port",
+  gisMaritimeArea: "Within area(s)",
+  gisNotWithinArea: "Not within a named area",
+  gisOutsideCoverage: "Outside reference coverage",
   illustrativeAirspace: "Illustrative Airspace",
 
   loading: "Loading…",

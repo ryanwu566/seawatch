@@ -1235,6 +1235,30 @@ body {
   opacity: 0.9;
 }
 
+/* Route Deviation (route-deviation-1) + Maritime GIS Context (gis-context-1) */
+.route-deviation,
+.geographic-context {
+  margin-top: 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 0.4rem;
+}
+.route-deviation-fields,
+.geographic-context-fields {
+  margin-top: 0.2rem;
+}
+.route-deviation-fields .intelligence-value[data-field="status"],
+.route-deviation-fields .intelligence-value[data-field="confidence"] {
+  font-weight: 600;
+}
+.route-deviation-fields .intelligence-value[data-field="explanation"] {
+  opacity: 0.8;
+}
+.route-deviation-unknown,
+.gis-outside-coverage {
+  margin: 0.25rem 0;
+  opacity: 0.8;
+}
+
 /* Provenance chip: official / observed / derived / unknown */
 .provenance-tag {
   display: inline-block;
