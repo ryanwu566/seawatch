@@ -269,13 +269,57 @@ describe("MapCanvas", () => {
     expect(state.styles).toHaveLength(transitions);
   });
 
-  it("fails Cloud NLSC over once to PMTiles", () => {
-    render(<MapCanvas {...baseProps({ operatingMode: "CLOUD_LIVE" })} />);
-    expect(JSON.stringify(state.options?.style)).toContain("wmts.nlsc.gov.tw");
-    act(() => state.handlers.error?.({ error: new Error("NLSC tile fetch failed") }));
-    expect(JSON.stringify(state.styles[state.styles.length - 1])).toContain(
-      "pmtiles:///offline/taiwan.pmtiles",
+  it("warns on Cloud NLSC failure without invoking an offline fallback", () => {
+    const onBaseMapError = vi.fn();
+    const { container } = render(
+      <MapCanvas
+        {...baseProps({ operatingMode: "CLOUD_LIVE", onBaseMapError })}
+      />,
     );
+    expect(JSON.stringify(state.options?.style)).toContain("wmts.nlsc.gov.tw");
+
+    act(() => state.handlers.error?.({ error: new Error("NLSC tile fetch failed") }));
+
+    expect(onBaseMapError).toHaveBeenCalledWith("NLSC tile fetch failed");
+    expect(state.styles).toHaveLength(0);
+    expect(container.querySelector(".map-canvas")).toHaveAttribute(
+      "data-basemap-stage",
+      "nlsc",
+    );
+
+    act(() => state.handlers.error?.({ error: new Error("NLSC tile retry failed") }));
+    expect(state.styles).toHaveLength(0);
+    expect(container.querySelector(".map-canvas")).toHaveAttribute(
+      "data-basemap-stage",
+      "nlsc",
+    );
+  });
+
+  it("preserves every MapCanvas overlay after a Cloud basemap warning", () => {
+    render(<MapCanvas {...baseProps({ operatingMode: "CLOUD_LIVE" })} />);
+    const sourcesBefore = [...state.sources];
+    const layersBefore = state.layers.map((layer) => layer.id);
+    expect(sourcesBefore).toEqual(
+      expect.arrayContaining(["live-vessels", "selected-track", "ports", "airspace"]),
+    );
+    expect(layersBefore).toEqual(
+      expect.arrayContaining([
+        "live-vessels-halo",
+        "live-vessels-dot",
+        "live-vessels-symbols",
+        "selected-track-line",
+        "ports-circle",
+        "ports-label",
+        "airspace-fill",
+        "airspace-line",
+      ]),
+    );
+
+    act(() => state.handlers.error?.({ error: new Error("CORS tile request blocked") }));
+
+    expect(state.styles).toHaveLength(0);
+    expect(state.sources).toEqual(sourcesBefore);
+    expect(state.layers.map((layer) => layer.id)).toEqual(layersBefore);
   });
 
   it("pushes all vessels onto a single GeoJSON source with valid orientation", () => {
