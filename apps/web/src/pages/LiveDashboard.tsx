@@ -25,6 +25,7 @@ import { deriveLiveStatus } from "../lib/liveStatus";
 import { modePresentation } from "../lib/resilience";
 import { friendlySource } from "../lib/display";
 import { LOCATION_PRESETS } from "../config/taiwanMap";
+import { getDemoScenario } from "../features/intelligence/demoScenario";
 
 const POLL_MS = 8000;
 const VIEWPORT_DEBOUNCE_MS = 400;
@@ -57,6 +58,17 @@ export function LiveDashboard() {
   const [fitBounds, setFitBounds] = useState<[number, number, number, number] | null>(null);
   const [fitNonce, setFitNonce] = useState(0);
   const [loadedOnce, setLoadedOnce] = useState(false);
+
+  // DEMO fixture (frontend-only, illustrative). The demo vessel is NEVER added
+  // to the live `vessels` array; it is held entirely separately and only shown
+  // when the judge explicitly opens it. Live polling/selection is unaffected.
+  const [demoOpen, setDemoOpen] = useState(false);
+  const demoScenario = useMemo(() => getDemoScenario(), []);
+  const openDemo = useCallback(() => {
+    setSelectedId(null); // ensure no live vessel is selected simultaneously
+    setDemoOpen(true);
+  }, []);
+  const closeDemo = useCallback(() => setDemoOpen(false), []);
 
   const viewportRef = useRef<Bbox | null>(null);
   const debounceRef = useRef<number | null>(null);
@@ -135,6 +147,7 @@ export function LiveDashboard() {
   }, [selectedId]);
 
   const handleSelectVessel = useCallback((feature: LiveVesselFeature) => {
+    setDemoOpen(false); // live selection and demo are mutually exclusive
     setSelectedId(feature.id);
     setFollow(true);
     setPaused(false);
@@ -149,11 +162,14 @@ export function LiveDashboard() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") handleDeselect();
+      if (e.key === "Escape") {
+        handleDeselect();
+        closeDemo();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleDeselect]);
+  }, [handleDeselect, closeDemo]);
 
   const handleUserInteract = useCallback(() => {
     setFollow((f) => {
@@ -265,6 +281,16 @@ export function LiveDashboard() {
             freshestAgeSeconds={freshestAge}
             source={sourceLabel}
           />
+          {demo && !demoOpen && (
+            <button
+              type="button"
+              className="demo-entry-btn"
+              data-testid="demo-entry"
+              onClick={openDemo}
+            >
+              {t.demoViewVessel}
+            </button>
+          )}
         </div>
 
         <div className="map-overlay-right">
@@ -294,7 +320,18 @@ export function LiveDashboard() {
           </div>
         )}
 
-        {selectedId && (
+        {demoOpen && (
+          <VesselPanel
+            vessel={demoScenario.vessel}
+            track={demoScenario.track}
+            trackLoading={false}
+            demo
+            demoContext={demoScenario.geographicContext}
+            onClose={closeDemo}
+          />
+        )}
+
+        {!demoOpen && selectedId && (
           <VesselPanel
             vessel={panelVessel}
             track={track}

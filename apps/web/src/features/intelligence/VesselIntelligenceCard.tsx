@@ -20,12 +20,21 @@ import type { Confidence, GeographicContext } from "./geographicTypes";
 export function VesselIntelligenceCard({
   vessel,
   track,
+  demoContext = null,
 }: {
   vessel: LiveVesselFeature;
   track: LiveTrack | null;
+  /**
+   * Optional ILLUSTRATIVE demo geographic context. When provided, the card is in
+   * demo mode: it renders a DEMO/illustrative banner, uses this fixture context,
+   * and NEVER calls the live `/context/geographic` endpoint. Live rendering is
+   * entirely unaffected when this is null (the default).
+   */
+  demoContext?: GeographicContext | null;
 }) {
   const { t, lang } = useI18n();
-  const [open, setOpen] = useState(false);
+  const isDemo = demoContext !== null;
+  const [open, setOpen] = useState(isDemo);
 
   const intel = useMemo(() => buildVesselIntelligence(vessel, track), [vessel, track]);
 
@@ -40,27 +49,31 @@ export function VesselIntelligenceCard({
   // when present, else an all-Unknown view. No geometry done here.
   const routeDeviation = useMemo(() => readRouteDeviation(track), [track]);
 
-  // Maritime GIS context (gis-context-1): fetched from the existing
+  // Maritime GIS context (gis-context-1): in demo mode use the fixture and skip
+  // the network entirely. In live mode, fetch from the existing
   // GET /context/geographic route using the vessel position. Degrades to null
   // (treated as unknown) on error or while loading; the backend returns a
   // fully-unknown result for positions outside reference coverage.
-  const [gis, setGis] = useState<GeographicContext | null>(null);
+  const [liveGis, setLiveGis] = useState<GeographicContext | null>(null);
   const [lon, lat] = vessel.geometry.coordinates;
   useEffect(() => {
+    if (isDemo) return; // demo context is injected; never touch the live endpoint
     if (!open) return;
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
-      setGis(null);
+      setLiveGis(null);
       return;
     }
     const controller = new AbortController();
     fetchGeographicContext(lon, lat, controller.signal)
-      .then((ctx) => setGis(ctx))
-      .catch(() => setGis(null));
+      .then((ctx) => setLiveGis(ctx))
+      .catch(() => setLiveGis(null));
     return () => controller.abort();
-  }, [open, lon, lat]);
+  }, [isDemo, open, lon, lat]);
+
+  const gis = isDemo ? demoContext : liveGis;
 
   return (
-    <section className="vessel-intelligence">
+    <section className="vessel-intelligence" data-demo={isDemo ? "true" : undefined}>
       <button
         type="button"
         className="intelligence-toggle"
@@ -72,6 +85,11 @@ export function VesselIntelligenceCard({
 
       {open && (
         <div className="intelligence-body" data-testid="vessel-intelligence">
+          {isDemo ? (
+            <p className="intelligence-demo-banner" data-testid="demo-banner" role="note">
+              {t.demoIllustrativeLabel}
+            </p>
+          ) : null}
           {/* Identity */}
           <h4 className="intelligence-group">{t.intelligenceIdentity}</h4>
           <dl className="intelligence-fields">

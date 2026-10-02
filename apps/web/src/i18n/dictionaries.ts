@@ -117,6 +117,10 @@ export interface Dict {
   gisNotWithinArea: string;
   gisOutsideCoverage: string;
 
+  // DEMO fixture (frontend-only, illustrative)
+  demoIllustrativeLabel: string;
+  demoViewVessel: string;
+
   // Layers
   layers: string;
   baseMaps: string;
@@ -397,6 +401,8 @@ const zhHant: Dict = {
   gisMaritimeArea: "所在海域",
   gisNotWithinArea: "不在任何命名區域內",
   gisOutsideCoverage: "超出參考範圍",
+  demoIllustrativeLabel: "示範 / 說明用資料（非即時 AIS）",
+  demoViewVessel: "檢視示範船舶",
   illustrativeAirspace: "示意空域",
 
   loading: "載入中…",
@@ -624,6 +630,8 @@ const en: Dict = {
   gisMaritimeArea: "Within area(s)",
   gisNotWithinArea: "Not within a named area",
   gisOutsideCoverage: "Outside reference coverage",
+  demoIllustrativeLabel: "DEMO / illustrative data (not live AIS)",
+  demoViewVessel: "View demo vessel",
   illustrativeAirspace: "Illustrative Airspace",
 
   loading: "Loading…",

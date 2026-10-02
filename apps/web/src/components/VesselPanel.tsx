@@ -6,6 +6,7 @@ import { normalizeOrientation } from "../lib/orientation";
 import { friendlySource, vesselTypeLabel } from "../lib/display";
 import { IntegrityBadge } from "./IntegrityBadge";
 import { VesselIntelligenceCard } from "../features/intelligence/VesselIntelligenceCard";
+import type { GeographicContext } from "../features/intelligence/geographicTypes";
 
 interface VesselPanelProps {
   vessel: LiveVesselFeature | null;
@@ -14,6 +15,12 @@ interface VesselPanelProps {
   demo: boolean;
   /** True when the selected vessel is no longer in the live feed (dropped out). */
   missing?: boolean;
+  /**
+   * Optional ILLUSTRATIVE demo geographic context. When set, the embedded
+   * Vessel Intelligence Card renders in DEMO mode (banner + fixture context, no
+   * live GIS fetch). Null for all live vessels.
+   */
+  demoContext?: GeographicContext | null;
   onClose: () => void;
 }
 
@@ -28,6 +35,7 @@ export function VesselPanel({
   trackLoading,
   demo,
   missing,
+  demoContext = null,
   onClose,
 }: VesselPanelProps) {
   const { t, lang } = useI18n();
@@ -134,7 +142,7 @@ export function VesselPanel({
       </section>
 
       {/* Explainable Vessel Intelligence — collapsed, additive, review support */}
-      <VesselIntelligenceCard vessel={vessel} track={track} />
+      <VesselIntelligenceCard vessel={vessel} track={track} demoContext={demoContext} />
 
       {/* Advanced analysis — collapsed, technical fields live here */}
       <section className="advanced-analysis">

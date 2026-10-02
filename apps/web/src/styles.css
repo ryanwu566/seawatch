@@ -1259,6 +1259,39 @@ body {
   opacity: 0.8;
 }
 
+/* DEMO / illustrative banner — unmistakable, never mimicking a live label. */
+.intelligence-demo-banner {
+  margin: 0 0 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px dashed #f59e0b;
+  border-radius: 0.4rem;
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.vessel-intelligence[data-demo="true"] {
+  outline: 1px dashed rgba(245, 158, 11, 0.5);
+  outline-offset: 2px;
+  border-radius: 0.4rem;
+}
+.demo-entry-btn {
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px dashed #f59e0b;
+  border-radius: 0.4rem;
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.demo-entry-btn:hover {
+  background: rgba(245, 158, 11, 0.2);
+}
+
 /* Provenance chip: official / observed / derived / unknown */
 .provenance-tag {
   display: inline-block;
