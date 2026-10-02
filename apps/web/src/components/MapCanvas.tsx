@@ -212,7 +212,7 @@ export function MapCanvas({
   }, []);
 
   // Edge/no-source operation starts locally and never retries a latched remote
-  // source. A later Cloud mode may keep the safe local map until reload.
+  // source. Cloud mode always selects NLSC and handles tile failures in place.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;

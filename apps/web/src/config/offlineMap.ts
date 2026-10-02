@@ -95,6 +95,7 @@ export function selectOfflineBasemap(
   mode: OperatingMode,
   onlineFailureState: OnlineFailureState,
 ): BasemapStage {
+  if (mode === "CLOUD_LIVE") return "nlsc";
   if (onlineFailureState === "pmtiles_failed") return "emergency";
   if (onlineFailureState === "nlsc_failed") return "pmtiles";
   if (mode === "EDGE_LIVE" || mode === "EDGE_REPLAY" || mode === "NO_LIVE_SOURCE") {
