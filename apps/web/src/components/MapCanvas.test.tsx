@@ -251,6 +251,19 @@ describe("MapCanvas", () => {
     expect(vesselPush.data.features[1].properties.isInterpolated).toBe(true);
   });
 
+  it("preserves authoritative cached and stale display states on map features", () => {
+    const classified = [
+      { ...vessels[0], properties: { ...vessels[0].properties, display_state: "cached" as const } },
+      { ...vessels[1], properties: { ...vessels[1].properties, display_state: "stale" as const } },
+    ];
+    render(<MapCanvas {...baseProps({ vessels: classified })} />);
+    const vesselPush = state.setDataPayloads.find((p) => p.id === "live-vessels");
+    expect(vesselPush.data.features.map((feature: any) => feature.properties.displayState)).toEqual([
+      "cached",
+      "stale",
+    ]);
+  });
+
   it("emits the viewport bbox on load", () => {
     const onViewportChange = vi.fn();
     render(<MapCanvas {...baseProps({ onViewportChange })} />);

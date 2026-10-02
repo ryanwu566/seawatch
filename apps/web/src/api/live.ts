@@ -5,6 +5,37 @@
 
 import { getBaseUrl } from "./client";
 
+export type OperatingMode =
+  | "CLOUD_LIVE"
+  | "EDGE_LIVE"
+  | "EDGE_REPLAY"
+  | "NO_LIVE_SOURCE"
+  | "OFFLINE_DEMO";
+export type CoverageKind = "taiwan_wide_network_feed" | "local_rf" | "none" | "demo";
+export type ObservationOrigin = "cloud" | "edge_rf" | "edge_replay" | "offline_demo";
+export type DisplayState = "live" | "cached" | "stale";
+export type EdgeInputKind = "disabled" | "udp" | "replay";
+export type PowerMode = "external" | "battery_ups";
+
+export interface SourceStatus {
+  source: string;
+  fresh: boolean;
+  message_age_seconds: number | null;
+  vessel_count: number;
+  connected: boolean;
+  input_kind: EdgeInputKind | null;
+}
+
+export interface ResilienceStatus {
+  mode: OperatingMode;
+  coverage: CoverageKind;
+  simulated: boolean;
+  internet_available: boolean;
+  power_mode: PowerMode;
+  cloud: SourceStatus;
+  edge: SourceStatus;
+}
+
 /** A GeoJSON Feature for one live vessel with SeaWatch data-integrity props. */
 export interface LiveVesselFeature {
   type: "Feature";
@@ -26,6 +57,11 @@ export interface LiveVesselFeature {
     synthesized: boolean;
     /** Server-computed age of the AIS fix at response time, in seconds. */
     data_age_seconds: number;
+    observation_origin?: ObservationOrigin;
+    display_state?: DisplayState;
+    active_source?: boolean;
+    coverage?: CoverageKind;
+    operating_mode?: OperatingMode;
   };
 }
 
@@ -35,6 +71,9 @@ export interface LiveVesselCollection {
   server_timestamp: string;
   data_timestamp: string | null;
   vessel_count: number;
+  mode?: OperatingMode;
+  coverage?: CoverageKind;
+  simulated?: boolean;
   features: LiveVesselFeature[];
 }
 
@@ -48,6 +87,11 @@ export interface LiveHealth {
   vessel_count: number;
   reconnect_attempts: number;
   last_error: string | null;
+  mode?: OperatingMode;
+  coverage?: CoverageKind;
+  simulated?: boolean;
+  cloud?: SourceStatus;
+  edge?: SourceStatus;
 }
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -63,6 +107,10 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export function fetchLiveHealth(signal?: AbortSignal): Promise<LiveHealth> {
   return getJson<LiveHealth>("/live/health", signal);
+}
+
+export function fetchResilienceStatus(signal?: AbortSignal): Promise<ResilienceStatus> {
+  return getJson<ResilienceStatus>("/resilience/status", signal);
 }
 
 export interface Bbox {

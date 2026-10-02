@@ -122,6 +122,25 @@ export interface Dict {
   corsNote: string;
   openLayers: string;
   statusLabel: string;
+
+  // Phase 8 resilience modes
+  modeCloud: string;
+  modeEdge: string;
+  modeReplay: string;
+  modeNoSource: string;
+  modeDemo: string;
+  coverageCloud: string;
+  coverageEdge: string;
+  coverageNone: string;
+  coverageDemo: string;
+  edgeCoverageNote: string;
+  replayRecordedNote: string;
+  externalPower: string;
+  batteryUps: string;
+  powerRequirement: string;
+  cloudToEdge: string;
+  cloudRestored: string;
+  simulatedPrefix: string;
 }
 
 const zhHant: Dict = {
@@ -229,6 +248,23 @@ const zhHant: Dict = {
   corsNote: "官方圖資因瀏覽器 CORS 限制無法載入時，將顯示此註記。",
   openLayers: "開啟圖層選單",
   statusLabel: "即時狀態",
+  modeCloud: "雲端即時 AIS",
+  modeEdge: "本地 AIS 接收",
+  modeReplay: "本地接收重播",
+  modeNoSource: "即時資料無法使用",
+  modeDemo: "離線示範資料",
+  coverageCloud: "臺灣廣域網路 AIS",
+  coverageEdge: "本地無線電 AIS",
+  coverageNone: "無即時涵蓋",
+  coverageDemo: "示範資料",
+  edgeCoverageNote: "僅顯示本地天線可接收的船舶。",
+  replayRecordedNote: "此為錄製資料，非即時無線電 AIS。",
+  externalPower: "外部電源",
+  batteryUps: "電池／UPS",
+  powerRequirement: "韌性運作需要筆電電池或 UPS。",
+  cloudToEdge: "雲端 AIS 無法使用，已切換至本地 AIS 接收器",
+  cloudRestored: "雲端 AIS 已恢復",
+  simulatedPrefix: "模擬",
 };
 
 const en: Dict = {
@@ -337,6 +373,23 @@ const en: Dict = {
     "If an official map layer is blocked by browser CORS, this note is shown instead of faking success.",
   openLayers: "Open layer menu",
   statusLabel: "Live status",
+  modeCloud: "CLOUD LIVE",
+  modeEdge: "EDGE LIVE",
+  modeReplay: "EDGE REPLAY",
+  modeNoSource: "LIVE DATA UNAVAILABLE",
+  modeDemo: "OFFLINE DEMO",
+  coverageCloud: "Taiwan-wide network AIS",
+  coverageEdge: "Local RF AIS",
+  coverageNone: "No live coverage",
+  coverageDemo: "Demo data",
+  edgeCoverageNote: "Shows only vessels receivable by the local antenna.",
+  replayRecordedNote: "Recorded data — not live RF AIS.",
+  externalPower: "External Power",
+  batteryUps: "Battery / UPS",
+  powerRequirement: "Power resilience requires laptop battery or UPS.",
+  cloudToEdge: "Cloud AIS unavailable — switched to local AIS receiver",
+  cloudRestored: "Cloud AIS restored",
+  simulatedPrefix: "SIMULATED",
 };
 
 export const DICTIONARIES: Record<Lang, Dict> = {

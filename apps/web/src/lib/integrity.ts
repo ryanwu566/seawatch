@@ -2,6 +2,7 @@
 // product promises strictly separate and never blurs them.
 
 import type { LiveVesselFeature } from "../api/live";
+import { vesselIntegrity } from "./resilience";
 
 export type IntegrityKind =
   | "live" // fresh measured AIS fix
@@ -25,7 +26,9 @@ export function classifyVessel(
   options: { demo?: boolean } = {},
 ): IntegrityKind {
   if (options.demo) return "offline_demo";
-  if (feature.properties.synthesized) return "provider_interpolated";
+  const authoritative = vesselIntegrity(feature);
+  if (authoritative === "provider_interpolated") return authoritative;
+  if (feature.properties.display_state) return authoritative;
   const age = feature.properties.data_age_seconds;
   if (age <= LIVE_MAX_AGE_S) return "live";
   if (age <= CACHED_MAX_AGE_S) return "cached";

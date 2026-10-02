@@ -54,7 +54,12 @@ export function VesselPanel({
         : t.positionMeasured;
 
   return (
-    <aside className="vessel-drawer" aria-label={t.vesselOverview} role="dialog">
+    <aside
+      className={`vessel-drawer vessel-${integrity}`}
+      data-display-state={integrity}
+      aria-label={t.vesselOverview}
+      role="dialog"
+    >
       <button type="button" className="drawer-close" onClick={onClose} aria-label={t.closePanel}>
         ✕
       </button>

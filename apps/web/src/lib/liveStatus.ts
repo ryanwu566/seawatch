@@ -37,6 +37,13 @@ export interface DeriveStatusInput {
  *  3. With no health yet but vessels present, assume live (data is visible).
  */
 export function deriveLiveStatus({ demo, health, vesselCount }: DeriveStatusInput): LiveStatusKind {
+  if (health?.mode) {
+    if (health.mode === "OFFLINE_DEMO") return "offline_demo";
+    if (health.mode === "CLOUD_LIVE" || health.mode === "EDGE_LIVE" || health.mode === "EDGE_REPLAY") {
+      return "live";
+    }
+    return vesselCount > 0 ? "stale" : "reconnecting";
+  }
   // Offline demo is only honest when there is no real live data on screen.
   if (demo && vesselCount === 0 && (!health || !health.connected)) {
     return "offline_demo";

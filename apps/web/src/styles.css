@@ -557,6 +557,31 @@ body {
   padding: 0.4rem 1rem;
   font-size: 0.85rem;
 }
+.resilience-banner,
+.edge-context {
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  background: #10293f;
+  color: #e2e8f0;
+  border-bottom: 1px solid #1e3a52;
+}
+.resilience-banner {
+  background: #2a230a;
+  color: #fde68a;
+}
+.live-pill.live-edge_live,
+.live-pill.live-edge_replay {
+  color: #67e8f9;
+  background: #0a1f2a;
+}
+.live-pill.live-no_live_source {
+  color: var(--sw-amber);
+  background: #2a1f0a;
+}
+.live-pill.live-offline_demo {
+  color: var(--sw-red);
+  background: #2a0a0a;
+}
 .offline-banner {
   background: #2a1f0a;
   color: var(--sw-amber);

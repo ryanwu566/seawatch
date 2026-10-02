@@ -61,6 +61,23 @@ describe("deriveLiveStatus", () => {
   it("assumes live when vessels are visible but health has not loaded yet", () => {
     expect(deriveLiveStatus({ demo: false, health: null, vesselCount: 42 })).toBe("live");
   });
+
+  it("treats backend mode as authoritative over legacy connection heuristics", () => {
+    expect(
+      deriveLiveStatus({
+        demo: false,
+        health: health({ mode: "NO_LIVE_SOURCE", connected: true, message_age_seconds: 1 }),
+        vesselCount: 2,
+      }),
+    ).toBe("stale");
+    expect(
+      deriveLiveStatus({
+        demo: false,
+        health: health({ mode: "EDGE_REPLAY", connected: false }),
+        vesselCount: 1,
+      }),
+    ).toBe("live");
+  });
 });
 
 describe("normalizeOrientation", () => {

@@ -1,25 +1,13 @@
 import { useI18n } from "../i18n/I18nContext";
-import type { LiveStatusKind } from "../lib/liveStatus";
+import type { ModePresentation } from "../lib/resilience";
 
 interface AppHeaderProps {
-  /** Derived from real /live/health (plus demo flag), not just the env flag. */
-  status: LiveStatusKind;
+  presentation: ModePresentation;
 }
 
 /** Product header: identity, status indicator, instant language toggle. */
-export function AppHeader({ status }: AppHeaderProps) {
+export function AppHeader({ presentation }: AppHeaderProps) {
   const { t, lang, toggleLang } = useI18n();
-
-  const label =
-    status === "offline_demo"
-      ? t.offlineDemoData
-      : status === "reconnecting"
-        ? t.reconnecting
-        : status === "stale"
-          ? t.staleData
-          : t.live;
-
-  const title = status === "offline_demo" ? t.offlineDemoNote : undefined;
 
   return (
     <header className="app-header">
@@ -29,8 +17,12 @@ export function AppHeader({ status }: AppHeaderProps) {
         <span className="brand-sub">{t.productSubtitle}</span>
       </div>
       <div className="header-right">
-        <span className={`live-pill live-${status}`} title={title} data-status={status}>
-          {status !== "offline_demo" && <span className="live-dot" />} {label}
+        <span
+          className={`live-pill live-${presentation.mode.toLowerCase()}`}
+          title={presentation.detail || presentation.coverageLabel}
+          data-status={presentation.mode}
+        >
+          <span className="live-dot" /> {presentation.label}
         </span>
         <button
           type="button"

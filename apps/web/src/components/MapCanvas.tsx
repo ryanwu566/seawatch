@@ -339,6 +339,10 @@ function installOverlays(map: maplibregl.Map) {
           "case",
           ["boolean", ["feature-state", "selected"], false],
           "#fde68a",
+          ["==", ["get", "displayState"], "stale"],
+          "#f59e0b",
+          ["==", ["get", "displayState"], "cached"],
+          "#67e8f9",
           ["get", "isInterpolated"],
           "#f59e0b",
           "#38bdf8",
@@ -501,6 +505,7 @@ function applyVessels(
         provider_id: v.properties.provider_id,
         orientation: course ?? 0,
         isInterpolated,
+        displayState: v.properties.display_state ?? "live",
       },
     };
   });

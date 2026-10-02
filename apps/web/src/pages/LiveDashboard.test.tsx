@@ -48,6 +48,15 @@ vi.mock("../api/live", () => ({
     reconnect_attempts: 0,
     last_error: null,
   })),
+  fetchResilienceStatus: vi.fn(async () => ({
+    mode: "CLOUD_LIVE",
+    coverage: "taiwan_wide_network_feed",
+    simulated: false,
+    internet_available: true,
+    power_mode: "external",
+    cloud: { source: "open_waters", fresh: true, message_age_seconds: 5, vessel_count: currentVessels.length, connected: true, input_kind: null },
+    edge: { source: "edge_ais", fresh: false, message_age_seconds: null, vessel_count: 0, connected: false, input_kind: "disabled" },
+  })),
   fetchLiveTrack: vi.fn(async (id: string) => ({
     type: "Feature",
     id,
@@ -172,10 +181,10 @@ describe("LiveDashboard interaction", () => {
     const zh = DICTIONARIES["zh-Hant"];
     const enDict = DICTIONARIES["en"];
     expect(screen.getByText(zh.productTagline)).toBeInTheDocument();
-    expect(screen.getAllByText(zh.live).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(zh.modeCloud).length).toBeGreaterThanOrEqual(1);
     fireEvent.click(screen.getByLabelText("Toggle language"));
     expect(screen.getByText(enDict.productTagline)).toBeInTheDocument();
-    expect(screen.getByText(enDict.live)).toBeInTheDocument();
+    expect(screen.getByText(enDict.modeCloud)).toBeInTheDocument();
   });
 
   it("searches a loaded vessel and selects it from the search box", async () => {
