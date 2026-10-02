@@ -55,6 +55,13 @@ export function VesselPanel({
   const hasTrail = trackPoints >= 2;
   const course = normalizeOrientation(p.heading_deg, p.cog_deg);
 
+  // Per-vessel DEMO panel: a demoContext means this drawer is the illustrative
+  // fixture, not a live/offline vessel. We override ONLY the Position-status and
+  // Source *display* here so they no longer read "Offline Demo" / "Live AIS".
+  // Live behavior (demoContext === null) is unchanged; classifyVessel,
+  // friendlySource, evidence logic, and provenance are all untouched.
+  const isDemoPanel = demoContext !== null;
+
   const positionStatus =
     integrity === "provider_interpolated"
       ? t.positionProviderInterp
@@ -114,11 +121,23 @@ export function VesselPanel({
       <dl className="drawer-fields">
         <dt>{t.positionStatus}</dt>
         <dd>
-          <IntegrityBadge kind={integrity} />
-          <span className="position-status-text">{positionStatus}</span>
+          {isDemoPanel ? (
+            <span className="position-status-text" data-field="position-status">
+              {t.demoPositionStatus}
+            </span>
+          ) : (
+            <>
+              <IntegrityBadge kind={integrity} />
+              <span className="position-status-text" data-field="position-status">
+                {positionStatus}
+              </span>
+            </>
+          )}
         </dd>
         <dt>{t.source}</dt>
-        <dd>{friendlySource(p.source, t)}</dd>
+        <dd data-field="source">
+          {isDemoPanel ? t.demoSourceLabel : friendlySource(p.source, t)}
+        </dd>
       </dl>
 
       {/* Track */}

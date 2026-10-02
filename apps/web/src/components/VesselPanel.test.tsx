@@ -4,6 +4,7 @@ import { I18nProvider } from "../i18n/I18nContext";
 import { DICTIONARIES } from "../i18n/dictionaries";
 import { VesselPanel } from "./VesselPanel";
 import type { LiveVesselFeature, LiveTrack } from "../api/live";
+import { getDemoScenario } from "../features/intelligence/demoScenario";
 
 const zh = DICTIONARIES["zh-Hant"];
 
@@ -97,5 +98,66 @@ describe("VesselPanel non-regression with the intelligence card", () => {
     renderPanel(feature());
     const text = document.body.textContent ?? "";
     expect(text).not.toMatch(/\b\d{9}\b/); // no MMSI
+  });
+});
+
+describe("VesselPanel demo-only presentation", () => {
+  function renderDemoPanel() {
+    const { vessel, track, geographicContext } = getDemoScenario();
+    return render(
+      <I18nProvider>
+        <VesselPanel
+          vessel={vessel}
+          track={track}
+          trackLoading={false}
+          demo
+          demoContext={geographicContext}
+          onClose={() => {}}
+        />
+      </I18nProvider>,
+    );
+  }
+
+  it("shows DEMO / Illustrative position status and Demo fixture source", () => {
+    renderDemoPanel();
+    expect(screen.getByText(zh.demoPositionStatus)).toBeInTheDocument();
+    expect(screen.getByText(zh.demoSourceLabel)).toBeInTheDocument();
+  });
+
+  it("the demo vessel NEVER displays Live AIS as its source", () => {
+    renderDemoPanel();
+    const source = document.querySelector('[data-field="source"]');
+    expect(source?.textContent ?? "").not.toContain(zh.liveSourceLabel);
+    expect(source?.textContent ?? "").not.toContain(DICTIONARIES["en"].liveSourceLabel);
+    // And it does not read "Offline Demo" for position status either.
+    const status = document.querySelector('[data-field="position-status"]');
+    expect(status?.textContent).toBe(zh.demoPositionStatus);
+  });
+
+  it("keeps DEMO banner, Human review required, Route Deviation, Geographic Context", () => {
+    renderDemoPanel();
+    expect(screen.getByTestId("demo-banner")).toBeInTheDocument();
+    expect(screen.getByText(zh.intelligenceHumanReview)).toBeInTheDocument();
+    expect(screen.getByTestId("route-deviation")).toBeInTheDocument();
+    expect(screen.getByTestId("geographic-context")).toBeInTheDocument();
+  });
+
+  it("never renders prohibited wording", () => {
+    renderDemoPanel();
+    const text = (document.body.textContent ?? "").toLowerCase();
+    for (const term of ["dangerous", "suspicious", "threat", "illegal"]) {
+      expect(text).not.toContain(term);
+    }
+  });
+});
+
+describe("VesselPanel live source non-regression", () => {
+  it("live vessels still show the Live AIS source label", () => {
+    renderPanel(feature()); // demoContext defaults to null → live path
+    const source = document.querySelector('[data-field="source"]');
+    expect(source?.textContent).toBe(zh.liveSourceLabel);
+    // Live position status is NOT the demo label.
+    const status = document.querySelector('[data-field="position-status"]');
+    expect(status?.textContent).not.toBe(zh.demoPositionStatus);
   });
 });

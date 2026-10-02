@@ -120,6 +120,8 @@ export interface Dict {
   // DEMO fixture (frontend-only, illustrative)
   demoIllustrativeLabel: string;
   demoViewVessel: string;
+  demoPositionStatus: string;
+  demoSourceLabel: string;
 
   // Layers
   layers: string;
@@ -403,6 +405,8 @@ const zhHant: Dict = {
   gisOutsideCoverage: "超出參考範圍",
   demoIllustrativeLabel: "示範 / 說明用資料（非即時 AIS）",
   demoViewVessel: "檢視示範船舶",
+  demoPositionStatus: "示範 / 說明用途",
+  demoSourceLabel: "示範資料",
   illustrativeAirspace: "示意空域",
 
   loading: "載入中…",
@@ -632,6 +636,8 @@ const en: Dict = {
   gisOutsideCoverage: "Outside reference coverage",
   demoIllustrativeLabel: "DEMO / illustrative data (not live AIS)",
   demoViewVessel: "View demo vessel",
+  demoPositionStatus: "DEMO / Illustrative",
+  demoSourceLabel: "Demo fixture",
   illustrativeAirspace: "Illustrative Airspace",
 
   loading: "Loading…",
