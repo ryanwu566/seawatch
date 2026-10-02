@@ -221,3 +221,15 @@ planned stages.
 - [Measured baseline comparison](docs/phase3b-baseline-comparison-report.md)
 - [Design specification](docs/superpowers/specs/2026-09-30-phase3b-explainable-review-ranking-design.md)
 - [Implementation plan](docs/superpowers/plans/2026-09-30-phase3b-explainable-review-ranking.md)
+
+### Phase 8 Edge resilience
+
+- [Edge AIS operations](docs/edge-ais-runbook.md)
+- [Offline map installation](docs/offline-map.md)
+- [Offline localhost startup](docs/offline-startup-runbook.md)
+- [Verification and measurements](docs/phase8-edge-resilience-report.md)
+
+Phase 8 adds opt-in local AIS reception, honest Cloud/Edge/replay modes,
+same-origin localhost production serving, and a fully bundled emergency map.
+Cloud remains the default deployment and local web serving remains disabled
+unless `SEAWATCH_SERVE_WEB=true`.
