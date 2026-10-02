@@ -256,6 +256,7 @@ export function LiveDashboard() {
           onViewportChange={handleViewportChange}
           onUserInteract={handleUserInteract}
           onBaseMapError={setBaseMapError}
+          operatingMode={effectiveResilience.mode}
         />
 
         <div className="map-overlay-top-left">

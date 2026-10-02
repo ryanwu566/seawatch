@@ -147,3 +147,50 @@ def test_application_factory_registers_web_after_real_api_routes(
         "application/json"
     )
     assert client.get("/vessel/example").headers["content-type"].startswith("text/html")
+
+
+def test_pmtiles_get_head_and_single_byte_ranges(tmp_path: Path) -> None:
+    dist = _dist(tmp_path)
+    archive = tmp_path / "taiwan.pmtiles"
+    archive.write_bytes(b"0123456789abcdef")
+    config = replace(_config(dist), pmtiles_file=archive)
+    app = _app()
+    configure_local_web(app, config)
+    client = TestClient(app)
+
+    full = client.get("/offline/taiwan.pmtiles")
+    head = client.head("/offline/taiwan.pmtiles")
+    bounded = client.get("/offline/taiwan.pmtiles", headers={"Range": "bytes=0-3"})
+    open_ended = client.get("/offline/taiwan.pmtiles", headers={"Range": "bytes=12-"})
+    suffix = client.get("/offline/taiwan.pmtiles", headers={"Range": "bytes=-4"})
+
+    assert full.status_code == 200 and full.content == b"0123456789abcdef"
+    assert full.headers["accept-ranges"] == "bytes"
+    assert head.status_code == 200 and head.content == b""
+    assert head.headers["content-length"] == "16"
+    assert bounded.status_code == 206 and bounded.content == b"0123"
+    assert bounded.headers["content-range"] == "bytes 0-3/16"
+    assert open_ended.status_code == 206 and open_ended.content == b"cdef"
+    assert suffix.status_code == 206 and suffix.content == b"cdef"
+
+
+def test_pmtiles_rejects_invalid_ranges_and_missing_or_non_file_paths(tmp_path: Path) -> None:
+    dist = _dist(tmp_path)
+    archive = tmp_path / "taiwan.pmtiles"
+    archive.write_bytes(b"0123456789abcdef")
+    app = _app()
+    configure_local_web(app, replace(_config(dist), pmtiles_file=archive))
+    client = TestClient(app)
+
+    for value in ("bytes=99-", "bytes=nope", "bytes=0-1,3-4", "items=0-1"):
+        response = client.get("/offline/taiwan.pmtiles", headers={"Range": value})
+        assert response.status_code == 416
+        assert response.headers["content-range"] == "bytes */16"
+
+    for unavailable in (tmp_path / "missing.pmtiles", tmp_path):
+        missing_app = _app()
+        configure_local_web(
+            missing_app,
+            replace(_config(dist), pmtiles_file=unavailable),
+        )
+        assert TestClient(missing_app).get("/offline/taiwan.pmtiles").status_code == 404

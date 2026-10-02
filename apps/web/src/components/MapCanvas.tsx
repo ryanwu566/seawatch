@@ -1,16 +1,23 @@
-import { useEffect, useRef } from "react";
-import maplibregl from "maplibre-gl";
+import { useEffect, useRef, useState } from "react";
+import maplibregl, { type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { LiveVesselFeature } from "../api/live";
+import type { LiveVesselFeature, OperatingMode } from "../api/live";
 import type { LayerState } from "../lib/layerState";
 import {
-  MAPLIBRE_DEMO_STYLE,
   TAIWAN_CENTER,
   TAIWAN_ZOOM,
   airspaceGeoJson,
   nlscStyle,
   portsGeoJson,
 } from "../config/taiwanMap";
+import {
+  emergencyStyle,
+  pmtilesStyle,
+  registerPmtilesProtocol,
+  selectOfflineBasemap,
+  type BasemapStage,
+  type OnlineFailureState,
+} from "../config/offlineMap";
 import { projectPosition, type MeasuredFix } from "../lib/interpolation";
 import { normalizeOrientation } from "../lib/orientation";
 import { makeShipIcon } from "../lib/shipIcon";
@@ -38,6 +45,7 @@ interface MapCanvasProps {
   /** Fired when the user manually pans/zooms, so follow mode can pause. */
   onUserInteract?: () => void;
   onBaseMapError?: (message: string | null) => void;
+  operatingMode?: OperatingMode;
 }
 
 const VESSEL_SOURCE = "live-vessels";
@@ -80,6 +88,7 @@ export function MapCanvas({
   onViewportChange,
   onUserInteract,
   onBaseMapError,
+  operatingMode = "CLOUD_LIVE",
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -91,18 +100,25 @@ export function MapCanvas({
   const followRef = useRef<boolean>(follow);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const programmaticMoveRef = useRef(false);
+  const failureRef = useRef<OnlineFailureState>("healthy");
+  const operatingModeRef = useRef(operatingMode);
+  const initialStage = selectOfflineBasemap(operatingMode, "healthy");
+  const stageRef = useRef<BasemapStage>(initialStage);
+  const [basemapStage, setBasemapStage] = useState<BasemapStage>(initialStage);
 
   // Keep latest props in refs for the animation loop and event handlers.
   vesselsRef.current = vessels;
   selectedIdRef.current = selectedId;
   followRef.current = follow;
+  operatingModeRef.current = operatingMode;
 
   // Initialize the map once.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    registerPmtilesProtocol();
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: nlscStyle(layers.baseMap),
+      style: styleForStage(stageRef.current, layers.baseMap),
       center: TAIWAN_CENTER,
       zoom: TAIWAN_ZOOM,
       attributionControl: { compact: true },
@@ -111,8 +127,26 @@ export function MapCanvas({
 
     map.on("error", (e) => {
       const msg = (e?.error && (e.error as Error).message) || "";
-      if (msg && /tile|source|network|fetch/i.test(msg)) {
+      const basemapFailed =
+        stageRef.current === "pmtiles" || /tile|source|network|fetch|response code/i.test(msg);
+      if (msg && stageRef.current !== "emergency" && basemapFailed) {
         onBaseMapError?.(msg);
+        const nextFailure =
+          stageRef.current === "nlsc"
+            ? "nlsc_failed"
+            : stageRef.current === "pmtiles"
+              ? "pmtiles_failed"
+              : failureRef.current;
+        const nextStage = selectOfflineBasemap(operatingModeRef.current, nextFailure);
+        if (nextStage !== stageRef.current) {
+          failureRef.current = nextFailure;
+          stageRef.current = nextStage;
+          setBasemapStage(nextStage);
+          map.setStyle(styleForStage(nextStage, layers.baseMap));
+          map.once("styledata", () =>
+            restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current),
+          );
+        }
       }
     });
 
@@ -177,10 +211,27 @@ export function MapCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Edge/no-source operation starts locally and never retries a latched remote
+  // source. A later Cloud mode may keep the safe local map until reload.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const nextStage = selectOfflineBasemap(operatingMode, failureRef.current);
+    if (nextStage === stageRef.current) return;
+    stageRef.current = nextStage;
+    setBasemapStage(nextStage);
+    map.setStyle(styleForStage(nextStage, layers.baseMap));
+    map.once("styledata", () =>
+      restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operatingMode]);
+
   // Switch base map when it changes.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
+    if (stageRef.current !== "nlsc") return;
     if (currentBaseRef.current === layers.baseMap) return;
     currentBaseRef.current = layers.baseMap;
     onBaseMapError?.(null);
@@ -273,7 +324,14 @@ export function MapCanvas({
     rafRef.current = requestAnimationFrame(step);
   }
 
-  return <div ref={containerRef} className="map-canvas" aria-label="Taiwan maritime map" />;
+  return (
+    <div
+      ref={containerRef}
+      className="map-canvas"
+      data-basemap-stage={basemapStage}
+      aria-label="Taiwan maritime map"
+    />
+  );
 }
 
 // --- helpers (module scope so the animation loop can reuse them) ------------ //
@@ -476,6 +534,25 @@ function installOverlays(map: maplibregl.Map) {
   }
 }
 
+function styleForStage(stage: BasemapStage, baseMap: LayerState["baseMap"]): StyleSpecification {
+  if (stage === "pmtiles") return pmtilesStyle();
+  if (stage === "emergency") return emergencyStyle();
+  return nlscStyle(baseMap);
+}
+
+function restoreOverlays(
+  map: maplibregl.Map,
+  layers: LayerState,
+  vessels: LiveVesselFeature[],
+  selectedId: string | null,
+) {
+  installOverlays(map);
+  applyVessels(map, vessels, selectedId);
+  applyLayerVisibility(map, layers, selectedId);
+  applyPorts(map, layers);
+  applyAirspace(map, layers);
+}
+
 /** Push vessels onto the single source, computing visual-interpolated positions. */
 function applyVessels(
   map: maplibregl.Map,
@@ -635,6 +712,3 @@ function emitViewport(map: maplibregl.Map, cb: (v: Viewport) => void) {
     maxLon: b.getEast(),
   });
 }
-
-const MAPLIBRE_FALLBACK_STYLE = MAPLIBRE_DEMO_STYLE;
-export { MAPLIBRE_FALLBACK_STYLE };

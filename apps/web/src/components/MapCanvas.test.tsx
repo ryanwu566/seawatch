@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import type { LiveVesselFeature } from "../api/live";
 
 // Record interactions with the mocked MapLibre map.
@@ -19,6 +19,8 @@ const state: {
   queryHits: any[];
   popupHtml: string[];
   styledataCb: ((e?: any) => void) | null;
+  events: string[];
+  styles: any[];
 } = {
   options: null,
   setDataPayloads: [],
@@ -35,11 +37,14 @@ const state: {
   queryHits: [],
   popupHtml: [],
   styledataCb: null,
+  events: [],
+  styles: [],
 };
 
 vi.mock("maplibre-gl", () => {
   class FakeMap {
     constructor(options: Record<string, unknown>) {
+      state.events.push("map");
       state.options = options;
     }
     addControl() {}
@@ -90,7 +95,8 @@ vi.mock("maplibre-gl", () => {
       state.featureStates.push({ id, state: s });
     }
     // setStyle wipes custom sources, layers, and images (real MapLibre behavior).
-    setStyle() {
+    setStyle(style: any) {
+      state.styles.push(style);
       state.layers = [];
       state.sources = [];
       state.images = [];
@@ -144,8 +150,10 @@ vi.mock("maplibre-gl", () => {
   }
   return {
     default: { Map: FakeMap, NavigationControl: class {}, Popup: FakePopup },
+    addProtocol: vi.fn(() => state.events.push("protocol")),
   };
 });
+vi.mock("pmtiles", () => ({ Protocol: class { tile() {} } }));
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}));
 // Return a lightweight stub ImageData so the addImage registration path runs
 // (jsdom has no canvas 2d; the real icon is verified in the browser harness).
@@ -228,15 +236,46 @@ describe("MapCanvas", () => {
     state.queryHits = [];
     state.popupHtml = [];
     state.styledataCb = null;
+    state.events = [];
+    state.styles = [];
   });
 
   it("initializes centered on Taiwan", () => {
     render(<MapCanvas {...baseProps()} />);
+    expect(state.events.indexOf("protocol")).toBeGreaterThanOrEqual(0);
+    expect(state.events.indexOf("protocol")).toBeLessThan(state.events.indexOf("map"));
     const center = state.options?.center as [number, number];
     expect(center[0]).toBeGreaterThan(119);
     expect(center[0]).toBeLessThan(123);
     expect(center[1]).toBeGreaterThan(21);
     expect(center[1]).toBeLessThan(26);
+  });
+
+  it("bypasses NLSC in no-source mode and latches PMTiles failure to emergency", () => {
+    const { container } = render(
+      <MapCanvas {...baseProps({ operatingMode: "NO_LIVE_SOURCE" })} />,
+    );
+    expect(JSON.stringify(state.options?.style)).toContain("pmtiles:///offline/taiwan.pmtiles");
+
+    act(() => state.handlers.error?.({ error: new Error("PMTiles source fetch failed") }));
+    expect(JSON.stringify(state.styles[state.styles.length - 1])).not.toMatch(/https?:|pmtiles:/);
+    expect(container.querySelector(".map-canvas")).toHaveAttribute(
+      "data-basemap-stage",
+      "emergency",
+    );
+
+    const transitions = state.styles.length;
+    act(() => state.handlers.error?.({ error: new Error("network still unavailable") }));
+    expect(state.styles).toHaveLength(transitions);
+  });
+
+  it("fails Cloud NLSC over once to PMTiles", () => {
+    render(<MapCanvas {...baseProps({ operatingMode: "CLOUD_LIVE" })} />);
+    expect(JSON.stringify(state.options?.style)).toContain("wmts.nlsc.gov.tw");
+    act(() => state.handlers.error?.({ error: new Error("NLSC tile fetch failed") }));
+    expect(JSON.stringify(state.styles[state.styles.length - 1])).toContain(
+      "pmtiles:///offline/taiwan.pmtiles",
+    );
   });
 
   it("pushes all vessels onto a single GeoJSON source with valid orientation", () => {

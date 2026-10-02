@@ -1,0 +1,32 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Taiwan",
+        "source": "Natural Earth public-domain outline, simplified for emergency context"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [120.02, 21.90], [120.72, 21.88], [121.18, 22.45],
+          [121.55, 23.15], [121.93, 24.32], [121.99, 25.02],
+          [121.60, 25.30], [121.05, 25.18], [120.55, 24.55],
+          [120.10, 23.65], [120.02, 22.70], [120.02, 21.90]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Penghu", "source": "Natural Earth, simplified" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [119.48, 23.45], [119.68, 23.43], [119.72, 23.64],
+          [119.50, 23.68], [119.48, 23.45]
+        ]]
+      }
+    }
+  ]
+}
