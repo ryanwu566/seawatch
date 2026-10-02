@@ -67,6 +67,32 @@ export interface Dict {
   benchmarkSource: string;
   benchmarkDisclaimer: string;
 
+  // Vessel Intelligence Card (explainable, human-in-the-loop review support)
+  intelligenceTitle: string;
+  intelligenceIdentity: string;
+  intelligenceName: string;
+  intelligenceType: string;
+  intelligenceFlag: string;
+  intelligenceImo: string;
+  intelligenceBehavior: string;
+  intelligenceObservations: string;
+  intelligenceSessionSpan: string;
+  intelligenceTypicalRoute: string;
+  intelligenceUsualArea: string;
+  intelligenceReviewNotes: string;
+  intelligenceNoReasons: string;
+  intelligenceNoBaseline: string;
+  intelligenceHumanReview: string;
+  intelligenceReasonLoitering: string;
+  intelligenceReasonSpeedChange: string;
+  intelligenceReasonCourseChange: string;
+  intelligenceThisSession: string;
+  provenanceOfficial: string;
+  provenanceObserved: string;
+  provenanceDerived: string;
+  provenanceUnknown: string;
+  valueUnknown: string;
+
   // Layers
   layers: string;
   baseMaps: string;
@@ -141,6 +167,20 @@ export interface Dict {
   cloudToEdge: string;
   cloudRestored: string;
   simulatedPrefix: string;
+  operatingStatusTitle: string;
+  coverageStatus: string;
+  provenance: string;
+  freshnessFresh: string;
+  noFreshSource: string;
+  ageUnavailable: string;
+  cloudCoverageNote: string;
+  noCoverageNote: string;
+  demoCoverageNote: string;
+  provenanceCloud: string;
+  provenanceEdge: string;
+  provenanceReplay: string;
+  provenanceNoSource: string;
+  provenanceDemo: string;
 
   // Phase 9 resilience logistics (RESPOND)
   logistics: LogisticsDict;
@@ -284,6 +324,30 @@ const zhHant: Dict = {
   showNearbyVessels: "顯示附近船舶",
   reconnectingAis: "正在重新取得即時 AIS…",
   collectingForAnalysis: "分析資料累積中",
+  intelligenceTitle: "船舶情報",
+  intelligenceIdentity: "身分",
+  intelligenceName: "名稱",
+  intelligenceType: "類型",
+  intelligenceFlag: "船旗",
+  intelligenceImo: "IMO",
+  intelligenceBehavior: "行為摘要",
+  intelligenceObservations: "本次觀測點數",
+  intelligenceSessionSpan: "觀測時間跨度",
+  intelligenceTypicalRoute: "慣常航線",
+  intelligenceUsualArea: "慣常作業海域",
+  intelligenceReviewNotes: "複審註記",
+  intelligenceNoReasons: "本次尚無可供複審的證據，分析資料累積中。",
+  intelligenceNoBaseline: "無歷史航線基準，無法進行航線偏離複審。",
+  intelligenceHumanReview: "需人工複審",
+  intelligenceReasonLoitering: "本次觀測到低速滯留",
+  intelligenceReasonSpeedChange: "本次航速變化",
+  intelligenceReasonCourseChange: "本次航向變化",
+  intelligenceThisSession: "本次連線",
+  provenanceOfficial: "官方",
+  provenanceObserved: "觀測",
+  provenanceDerived: "推導",
+  provenanceUnknown: "未知",
+  valueUnknown: "未知",
   illustrativeAirspace: "示意空域",
 
   loading: "載入中…",
@@ -309,6 +373,20 @@ const zhHant: Dict = {
   cloudToEdge: "雲端 AIS 無法使用，已切換至本地 AIS 接收器",
   cloudRestored: "雲端 AIS 已恢復",
   simulatedPrefix: "模擬",
+  operatingStatusTitle: "運作狀態",
+  coverageStatus: "涵蓋範圍",
+  provenance: "資料來源脈絡",
+  freshnessFresh: "最新",
+  noFreshSource: "無最新來源",
+  ageUnavailable: "資料時間未知",
+  cloudCoverageNote: "廣域網路來源；可用性取決於網路與服務連線。",
+  noCoverageNote: "目前沒有最新即時來源；畫面可能保留已標示的快取或較舊資料。",
+  demoCoverageNote: "明確啟用的示範資料，並非即時來源。",
+  provenanceCloud: "雲端網路 AIS 來源",
+  provenanceEdge: "本地無線電 AIS 接收器",
+  provenanceReplay: "錄製 AIS 重播（模擬）",
+  provenanceNoSource: "無最新來源；快取或較舊資料仍保留標示",
+  provenanceDemo: "離線示範資料（模擬）",
 
   logistics: {
     navLiveMap: "即時地圖",
@@ -448,6 +526,30 @@ const en: Dict = {
   showNearbyVessels: "Show nearby vessels",
   reconnectingAis: "Reacquiring live AIS…",
   collectingForAnalysis: "Collecting data for analysis",
+  intelligenceTitle: "Vessel Intelligence",
+  intelligenceIdentity: "Identity",
+  intelligenceName: "Name",
+  intelligenceType: "Type",
+  intelligenceFlag: "Flag",
+  intelligenceImo: "IMO",
+  intelligenceBehavior: "Behavior Summary",
+  intelligenceObservations: "Observations (this session)",
+  intelligenceSessionSpan: "Session span",
+  intelligenceTypicalRoute: "Typical route",
+  intelligenceUsualArea: "Usual operating area",
+  intelligenceReviewNotes: "Review Notes",
+  intelligenceNoReasons: "No evidence to review yet this session; collecting data for analysis.",
+  intelligenceNoBaseline: "No historical baseline available for route-deviation review.",
+  intelligenceHumanReview: "Human review required",
+  intelligenceReasonLoitering: "Low-speed dwell observed this session",
+  intelligenceReasonSpeedChange: "Speed changed this session",
+  intelligenceReasonCourseChange: "Course changed this session",
+  intelligenceThisSession: "this session",
+  provenanceOfficial: "official",
+  provenanceObserved: "observed",
+  provenanceDerived: "derived",
+  provenanceUnknown: "unknown",
+  valueUnknown: "Unknown",
   illustrativeAirspace: "Illustrative Airspace",
 
   loading: "Loading…",
@@ -474,6 +576,20 @@ const en: Dict = {
   cloudToEdge: "Cloud AIS unavailable — switched to local AIS receiver",
   cloudRestored: "Cloud AIS restored",
   simulatedPrefix: "SIMULATED",
+  operatingStatusTitle: "Operating status",
+  coverageStatus: "Coverage",
+  provenance: "Provenance",
+  freshnessFresh: "Fresh",
+  noFreshSource: "No fresh source",
+  ageUnavailable: "age unavailable",
+  cloudCoverageNote: "Broad network feed; availability depends on Internet and service connectivity.",
+  noCoverageNote: "No fresh live source; labeled cached or stale records may remain visible.",
+  demoCoverageNote: "Explicit demo data, not a live source.",
+  provenanceCloud: "Cloud network AIS feed",
+  provenanceEdge: "Local RF AIS receiver",
+  provenanceReplay: "Recorded AIS replay (simulated)",
+  provenanceNoSource: "No fresh source; cached or stale records remain labeled",
+  provenanceDemo: "Offline demo data (simulated)",
 
   logistics: {
     navLiveMap: "LIVE MAP",

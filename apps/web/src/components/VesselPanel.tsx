@@ -5,6 +5,7 @@ import { classifyVessel, formatAge } from "../lib/integrity";
 import { normalizeOrientation } from "../lib/orientation";
 import { friendlySource, vesselTypeLabel } from "../lib/display";
 import { IntegrityBadge } from "./IntegrityBadge";
+import { VesselIntelligenceCard } from "../features/intelligence/VesselIntelligenceCard";
 
 interface VesselPanelProps {
   vessel: LiveVesselFeature | null;
@@ -131,6 +132,9 @@ export function VesselPanel({
         <h3>{t.reviewPriority}</h3>
         <p className="muted collecting">{t.collectingForAnalysis}</p>
       </section>
+
+      {/* Explainable Vessel Intelligence — collapsed, additive, review support */}
+      <VesselIntelligenceCard vessel={vessel} track={track} />
 
       {/* Advanced analysis — collapsed, technical fields live here */}
       <section className="advanced-analysis">
