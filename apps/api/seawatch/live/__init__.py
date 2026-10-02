@@ -16,6 +16,7 @@ from .runtime import (
     EdgeLiveState,
     LiveRuntime,
     get_live_runtime,
+    get_resilience_status,
     reset_live_runtime,
 )
 from .schema import LiveVesselObservation, TrajectoryPoint, VesselState
@@ -37,6 +38,7 @@ __all__ = [
     "EdgeLiveState",
     "LiveRuntime",
     "get_live_runtime",
+    "get_resilience_status",
     "reset_live_runtime",
     "get_store",
     "get_consumer",

@@ -12,7 +12,7 @@ from .edge_ingest import EdgeAisConsumer
 from .identity import VesselIdentityRegistry
 from .ingest import AisIngestConsumer
 from .open_waters import OpenWatersProvider
-from .resilience import ResilienceModeManager
+from .resilience import ResilienceModeManager, ResilienceStatus, SourceHealthSnapshot
 from .store import LiveVesselStore
 
 
@@ -65,7 +65,7 @@ def _build_runtime() -> LiveRuntime:
         edge=EdgeLiveState(store=edge_store, consumer=edge_consumer),
         config=config,
         identity_registry=identity_registry,
-        active_view=ActiveVesselView(store, identity_registry),
+        active_view=ActiveVesselView(store, edge_store, identity_registry),
         mode_manager=ResilienceModeManager(config),
     )
 
@@ -82,3 +82,31 @@ def reset_live_runtime() -> None:
 
     global _runtime
     _runtime = None
+
+
+def get_resilience_status(runtime: LiveRuntime | None = None) -> ResilienceStatus:
+    active_runtime = runtime or get_live_runtime()
+    cloud_store = active_runtime.cloud.store
+    edge_store = active_runtime.edge.store
+    edge_consumer = active_runtime.edge.consumer
+    cloud = SourceHealthSnapshot(
+        source="open_waters",
+        connected=active_runtime.cloud.consumer.health.connected,
+        last_message_at=cloud_store.last_message_at(),
+        last_message_monotonic=cloud_store.last_message_monotonic(),
+        vessel_count=cloud_store.vessel_count(),
+        input_kind=None,
+    )
+    edge = SourceHealthSnapshot(
+        source="edge_ais",
+        connected=edge_consumer.health.receiver_active,
+        last_message_at=edge_consumer.health.last_valid_ais_at,
+        last_message_monotonic=edge_consumer.last_valid_monotonic,
+        vessel_count=edge_store.vessel_count(),
+        input_kind=edge_consumer.health.input_kind,
+    )
+    return active_runtime.mode_manager.evaluate(
+        cloud,
+        edge,
+        offline_demo=active_runtime.config.offline_demo,
+    )

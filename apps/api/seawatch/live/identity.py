@@ -38,6 +38,7 @@ class VesselIdentityRegistry:
         self._token_factory = token_factory or (lambda: secrets.token_urlsafe(18))
         self._lock = threading.RLock()
         self._bindings: dict[str, IdentityBinding] = {}
+        self._source_bindings: dict[str, dict[tuple[str, str], IdentityBinding]] = {}
         self._source_ids: dict[tuple[str, str], str] = {}
 
     @staticmethod
@@ -78,6 +79,7 @@ class VesselIdentityRegistry:
                 mmsi=observation.mmsi if self._valid_mmsi(observation.mmsi) else None,
             )
             self._bindings.setdefault(public_id, binding)
+            self._source_bindings.setdefault(public_id, {})[source_identity] = binding
             self._source_ids[source_identity] = public_id
             return public_id
 
@@ -85,9 +87,22 @@ class VesselIdentityRegistry:
         with self._lock:
             return self._bindings.get(public_id)
 
+    def resolve_for_source(
+        self, public_id: str, source_name: str, source_key: str
+    ) -> IdentityBinding | None:
+        with self._lock:
+            return self._source_bindings.get(public_id, {}).get(
+                (source_name, source_key)
+            )
+
+    def bindings(self, public_id: str) -> tuple[IdentityBinding, ...]:
+        with self._lock:
+            return tuple(self._source_bindings.get(public_id, {}).values())
+
     def expire(self, public_id: str) -> None:
         with self._lock:
             self._bindings.pop(public_id, None)
+            self._source_bindings.pop(public_id, None)
             stale_sources = [
                 source for source, bound_id in self._source_ids.items() if bound_id == public_id
             ]

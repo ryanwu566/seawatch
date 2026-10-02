@@ -13,6 +13,7 @@ and ``observed_at`` always reflects the upstream report time.
 from __future__ import annotations
 
 import threading
+import time
 from datetime import datetime, timedelta
 from typing import Iterable
 
@@ -41,6 +42,7 @@ class LiveVesselStore:
         self._stale_after = stale_after
         self._max_trajectory_points = max_trajectory_points
         self._last_message_at: datetime | None = None
+        self._last_message_monotonic: float | None = None
         self._message_count = 0
 
     # -- writes ------------------------------------------------------------ #
@@ -55,6 +57,7 @@ class LiveVesselStore:
         with self._lock:
             self._message_count += 1
             self._last_message_at = utcnow()
+            self._last_message_monotonic = time.monotonic()
             existing = self._states.get(observation.provider_id)
             if existing is None:
                 state = VesselState(
@@ -137,6 +140,10 @@ class LiveVesselStore:
         with self._lock:
             return self._message_count
 
+    def last_message_monotonic(self) -> float | None:
+        with self._lock:
+            return self._last_message_monotonic
+
     def snapshot(self, *, bbox: BoundingBox | None = None) -> list[LiveVesselObservation]:
         """Return the latest observation for every (optionally bbox-filtered) vessel."""
 
@@ -164,4 +171,5 @@ class LiveVesselStore:
         with self._lock:
             self._states.clear()
             self._last_message_at = None
+            self._last_message_monotonic = None
             self._message_count = 0
