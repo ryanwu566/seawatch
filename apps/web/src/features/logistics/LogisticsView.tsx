@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../i18n/I18nContext";
+import { MapCanvas } from "../../components/MapCanvas";
+import { DEFAULT_LAYER_STATE } from "../../lib/layerState";
+import { buildLogisticsOverlays } from "./logisticsLayers";
 import {
   fetchScenarioContext,
   fetchScenarios,
@@ -77,6 +80,13 @@ export function LogisticsView({
 
   const scenarioName = (s: ScenarioSummary) => (lang === "zh-Hant" ? s.name_zh : s.name_en);
 
+  // Build the generic overlay payload fed into the reused Phase 8 MapCanvas
+  // seam. Logistics owns all map-specific knowledge in logisticsLayers.ts.
+  const overlays = useMemo(
+    () => buildLogisticsOverlays(context, brief?.recommended_allocations ?? []),
+    [context, brief],
+  );
+
   return (
     <section className="logistics-view" aria-label={L.title}>
       <header className="logistics-header">
@@ -122,11 +132,29 @@ export function LogisticsView({
 
       {error && <p role="alert" className="logistics-error">{error}</p>}
 
+      <div className="logistics-map-shell">
+        <MapCanvas
+          vessels={[]}
+          layers={DEFAULT_LAYER_STATE}
+          selectedId={null}
+          selectedTrack={null}
+          follow={false}
+          onSelectVessel={noop}
+          onDeselect={noop}
+          onViewportChange={noop}
+          overlays={overlays}
+        />
+      </div>
+
       <div className="logistics-result" data-has-result={brief ? "true" : "false"}>
         {renderResult ? renderResult({ context, brief }) : null}
       </div>
     </section>
   );
+}
+
+function noop() {
+  /* no-op: the logistics map is read-only context, not an interactive selector */
 }
 
 function commodityLabel(commodity: string, L: ReturnType<typeof useI18n>["t"]["logistics"]) {

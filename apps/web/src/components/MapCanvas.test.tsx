@@ -503,4 +503,133 @@ describe("MapCanvas", () => {
     expect(sym).toBeTruthy();
     expect(sym?.type).toBe("symbol");
   });
+
+  // --- Generic overlay seam (Phase 9 approved extension) ------------------- //
+
+  const sampleOverlays = {
+    sources: {
+      "ext-points": {
+        type: "FeatureCollection" as const,
+        features: [
+          {
+            type: "Feature" as const,
+            geometry: { type: "Point" as const, coordinates: [120.5, 23.0] },
+            properties: { kind: "x" },
+          },
+        ],
+      },
+      "ext-lines": { type: "FeatureCollection" as const, features: [] },
+    },
+    layers: [
+      { id: "ext-points-layer", type: "circle" as const, source: "ext-points" },
+      { id: "ext-lines-layer", type: "line" as const, source: "ext-lines" },
+    ],
+  };
+
+  it("preserves current behavior exactly when overlays are absent", () => {
+    render(<MapCanvas {...baseProps()} />);
+    // No source/layer ids other than the built-in vessel/track/port/airspace set.
+    const builtInSources = ["live-vessels", "selected-track", "ports", "airspace"];
+    expect(state.sources.every((s) => builtInSources.includes(s))).toBe(true);
+    expect(state.layers.every((l) => !l.id.startsWith("ext-"))).toBe(true);
+  });
+
+  it("installs caller overlay sources and layers when provided", () => {
+    render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    expect(state.sources).toContain("ext-points");
+    expect(state.sources).toContain("ext-lines");
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "ext-lines-layer")).toBeTruthy();
+  });
+
+  it("keeps built-in vessel layers intact alongside overlays", () => {
+    render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    expect(state.sources).toContain("live-vessels");
+    expect(state.layers.find((l) => l.id === "live-vessels-dot")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "live-vessels-symbols")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "ports-circle")).toBeTruthy();
+  });
+
+  it("overlay layers are installed above the built-in layers", () => {
+    render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    const ids = state.layers.map((l) => l.id);
+    expect(ids.indexOf("ext-points-layer")).toBeGreaterThan(ids.indexOf("live-vessels-symbols"));
+  });
+
+  it("restores caller overlays after a basemap style reload", () => {
+    const { rerender } = render(
+      <MapCanvas {...baseProps({ layers: DEFAULT_LAYER_STATE, overlays: sampleOverlays })} />,
+    );
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+
+    // Switch basemap -> setStyle() wipes custom layers/sources.
+    rerender(
+      <MapCanvas
+        {...baseProps({
+          layers: { ...DEFAULT_LAYER_STATE, baseMap: "nlsc-photo" },
+          overlays: sampleOverlays,
+        })}
+      />,
+    );
+    expect(typeof state.styledataCb).toBe("function");
+    state.styledataCb?.();
+
+    // Overlays reinstalled after the style reload.
+    expect(state.sources).toContain("ext-points");
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "ext-lines-layer")).toBeTruthy();
+  });
+
+  it("restores caller overlays after a PMTiles/emergency fallback", () => {
+    render(<MapCanvas {...baseProps({ operatingMode: "CLOUD_LIVE", overlays: sampleOverlays })} />);
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+
+    // NLSC fails -> PMTiles fallback wipes and re-styles.
+    act(() => state.handlers.error?.({ error: new Error("NLSC tile fetch failed") }));
+    expect(typeof state.styledataCb).toBe("function");
+    state.styledataCb?.();
+
+    expect(state.sources).toContain("ext-points");
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+  });
+
+  it("does not duplicate overlay source/layer registration on re-render", () => {
+    const { rerender } = render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    rerender(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    expect(state.sources.filter((s) => s === "ext-points")).toHaveLength(1);
+    expect(state.layers.filter((l) => l.id === "ext-points-layer")).toHaveLength(1);
+    expect(state.layers.filter((l) => l.id === "ext-lines-layer")).toHaveLength(1);
+  });
+
+  it("updates overlay source data via setData when overlays change (no new source)", () => {
+    const { rerender } = render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    const updated = {
+      ...sampleOverlays,
+      sources: {
+        ...sampleOverlays.sources,
+        "ext-points": {
+          type: "FeatureCollection" as const,
+          features: [
+            {
+              type: "Feature" as const,
+              geometry: { type: "Point" as const, coordinates: [121.0, 24.0] },
+              properties: { kind: "y" },
+            },
+            {
+              type: "Feature" as const,
+              geometry: { type: "Point" as const, coordinates: [121.5, 24.5] },
+              properties: { kind: "z" },
+            },
+          ],
+        },
+      },
+    };
+    rerender(<MapCanvas {...baseProps({ overlays: updated })} />);
+    // Source not re-added.
+    expect(state.sources.filter((s) => s === "ext-points")).toHaveLength(1);
+    // Latest data pushed via setData.
+    const push = [...state.setDataPayloads].reverse().find((p) => p.id === "ext-points");
+    expect(push).toBeTruthy();
+    expect(push.data.features).toHaveLength(2);
+  });
 });

@@ -59,6 +59,18 @@ vi.mock("./logisticsApi", () => ({
     runSimulation(id, weights, signal),
 }));
 
+// The logistics map reuses the shared MapCanvas; mock it so the view test does
+// not spin up MapLibre in jsdom. We expose the overlay source ids so the test
+// can assert the generic seam is fed.
+vi.mock("../../components/MapCanvas", () => ({
+  MapCanvas: (props: { overlays?: { sources: Record<string, unknown> } | null }) => (
+    <div
+      data-testid="logistics-map"
+      data-overlay-sources={props.overlays ? Object.keys(props.overlays.sources).join(",") : ""}
+    />
+  ),
+}));
+
 import { LogisticsView } from "./LogisticsView";
 
 function renderView(renderResult?: Parameters<typeof LogisticsView>[0]["renderResult"]) {
@@ -115,6 +127,17 @@ describe("LogisticsView", () => {
     ));
     await waitFor(() => expect(screen.getByTestId("result")).toBeInTheDocument());
     expect(received).toMatchObject({ scenario_id: "kaohsiung-disruption" });
+  });
+
+  it("feeds logistics overlays into the shared MapCanvas seam", async () => {
+    renderView();
+    const map = await screen.findByTestId("logistics-map");
+    await waitFor(() => expect(fetchScenarioContext).toHaveBeenCalled());
+    await waitFor(() => {
+      const sources = map.getAttribute("data-overlay-sources") ?? "";
+      expect(sources).toContain("logistics-disrupted-ports");
+      expect(sources).toContain("logistics-selected-routes");
+    });
   });
 
   it("renders English and Chinese nav/title copy from the dictionary", async () => {

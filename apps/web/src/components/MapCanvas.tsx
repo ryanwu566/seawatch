@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { type StyleSpecification } from "maplibre-gl";
+import maplibregl, { type LayerSpecification, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { LiveVesselFeature, OperatingMode } from "../api/live";
 import type { LayerState } from "../lib/layerState";
@@ -46,6 +46,22 @@ interface MapCanvasProps {
   onUserInteract?: () => void;
   onBaseMapError?: (message: string | null) => void;
   operatingMode?: OperatingMode;
+  /**
+   * Optional, generic GeoJSON overlay layer groups rendered ABOVE the built-in
+   * overlays. This is a logistics-agnostic seam: the caller supplies named
+   * GeoJSON sources and MapLibre layer specs; MapCanvas installs them and
+   * re-installs them after every style/basemap change (NLSC → PMTiles →
+   * emergency). ``undefined``/``null`` preserves exactly the current behavior
+   * (no extra sources or layers are touched). MapCanvas holds no knowledge of
+   * what the overlay represents.
+   */
+  overlays?: MapOverlays | null;
+}
+
+/** Generic overlay payload: named GeoJSON sources + MapLibre layer specs. */
+export interface MapOverlays {
+  sources: Record<string, GeoJSON.FeatureCollection>;
+  layers: LayerSpecification[];
 }
 
 const VESSEL_SOURCE = "live-vessels";
@@ -89,6 +105,7 @@ export function MapCanvas({
   onUserInteract,
   onBaseMapError,
   operatingMode = "CLOUD_LIVE",
+  overlays = null,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -102,6 +119,7 @@ export function MapCanvas({
   const programmaticMoveRef = useRef(false);
   const failureRef = useRef<OnlineFailureState>("healthy");
   const operatingModeRef = useRef(operatingMode);
+  const overlaysRef = useRef<MapOverlays | null>(overlays);
   const initialStage = selectOfflineBasemap(operatingMode, "healthy");
   const stageRef = useRef<BasemapStage>(initialStage);
   const [basemapStage, setBasemapStage] = useState<BasemapStage>(initialStage);
@@ -111,6 +129,7 @@ export function MapCanvas({
   selectedIdRef.current = selectedId;
   followRef.current = follow;
   operatingModeRef.current = operatingMode;
+  overlaysRef.current = overlays;
 
   // Initialize the map once.
   useEffect(() => {
@@ -144,7 +163,7 @@ export function MapCanvas({
           setBasemapStage(nextStage);
           map.setStyle(styleForStage(nextStage, layers.baseMap));
           map.once("styledata", () =>
-            restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current),
+            restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current, overlaysRef.current),
           );
         }
       }
@@ -152,7 +171,7 @@ export function MapCanvas({
 
     map.on("load", () => {
       loadedRef.current = true;
-      installOverlays(map);
+      installOverlays(map, overlaysRef.current);
       applyVessels(map, vesselsRef.current, selectedIdRef.current);
       applyLayerVisibility(map, layers, selectedIdRef.current);
       applyPorts(map, layers);
@@ -222,7 +241,7 @@ export function MapCanvas({
     setBasemapStage(nextStage);
     map.setStyle(styleForStage(nextStage, layers.baseMap));
     map.once("styledata", () =>
-      restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current),
+      restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current, overlaysRef.current),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operatingMode]);
@@ -237,7 +256,7 @@ export function MapCanvas({
     onBaseMapError?.(null);
     map.setStyle(nlscStyle(layers.baseMap));
     map.once("styledata", () => {
-      installOverlays(map);
+      installOverlays(map, overlaysRef.current);
       applyVessels(map, vesselsRef.current, selectedIdRef.current);
       applyLayerVisibility(map, layers, selectedIdRef.current);
       applyPorts(map, layers);
@@ -255,6 +274,14 @@ export function MapCanvas({
     applyPorts(map, layers);
     applyAirspace(map, layers);
   }, [vessels, layers, selectedId]);
+
+  // Install/refresh generic caller overlays when they change. Null preserves
+  // current behavior (nothing extra is touched).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    installGenericOverlays(map, overlays);
+  }, [overlays]);
 
   // Update selected feature-state (never rebuilds the source).
   useEffect(() => {
@@ -336,7 +363,7 @@ export function MapCanvas({
 
 // --- helpers (module scope so the animation loop can reuse them) ------------ //
 
-function installOverlays(map: maplibregl.Map) {
+function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
   if (!map.hasImage(SHIP_ICON)) {
     const icon = makeShipIcon();
     // Register as SDF so the symbol layer's data-driven icon-color is valid.
@@ -532,6 +559,29 @@ function installOverlays(map: maplibregl.Map) {
       paint: { "line-color": "#a855f7", "line-width": 1.5, "line-dasharray": [2, 2] },
     });
   }
+  // Generic, caller-provided overlays (logistics-agnostic). Installed last so
+  // they render above the built-in layers, and re-installed on every style
+  // change via restoreOverlays. Idempotent: existing sources are updated via
+  // setData and existing layers are not re-added (no duplicate registration).
+  installGenericOverlays(map, overlays);
+}
+
+/** Install/refresh generic caller overlays without duplicating registrations. */
+function installGenericOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
+  if (!overlays) return;
+  for (const [sourceId, data] of Object.entries(overlays.sources)) {
+    const existing = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+    if (existing) {
+      existing.setData(data);
+    } else {
+      map.addSource(sourceId, { type: "geojson", data });
+    }
+  }
+  for (const layer of overlays.layers) {
+    if (!map.getLayer(layer.id)) {
+      map.addLayer(layer);
+    }
+  }
 }
 
 function styleForStage(stage: BasemapStage, baseMap: LayerState["baseMap"]): StyleSpecification {
@@ -545,8 +595,9 @@ function restoreOverlays(
   layers: LayerState,
   vessels: LiveVesselFeature[],
   selectedId: string | null,
+  overlays?: MapOverlays | null,
 ) {
-  installOverlays(map);
+  installOverlays(map, overlays);
   applyVessels(map, vessels, selectedId);
   applyLayerVisibility(map, layers, selectedId);
   applyPorts(map, layers);
