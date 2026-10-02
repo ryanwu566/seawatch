@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import alerts, health, live, logistics, resilience, tracks
+from .api import alerts, context, health, live, logistics, resilience, tracks
 from .live import get_live_runtime
 from .live.config import LiveRuntimeConfig
 from .web.serving import configure_local_web
@@ -119,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(live.router)
     app.include_router(resilience.router)
     app.include_router(logistics.router)
+    app.include_router(context.router)
     configure_local_web(app, LiveRuntimeConfig.from_env())
     return app
 
