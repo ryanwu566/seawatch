@@ -141,6 +141,48 @@ export interface Dict {
   cloudToEdge: string;
   cloudRestored: string;
   simulatedPrefix: string;
+
+  // Phase 9 resilience logistics (RESPOND)
+  logistics: LogisticsDict;
+}
+
+/** Phase 9 Resilience Logistics bilingual strings (additive, self-contained). */
+export interface LogisticsDict {
+  navLiveMap: string;
+  navLogistics: string;
+  title: string;
+  subtitle: string;
+  scenarioLabel: string;
+  selectScenario: string;
+  disruptedPort: string;
+  criticalDemand: string;
+  priority: string;
+  alternatives: string;
+  runSimulation: string;
+  running: string;
+  recommendedAllocation: string;
+  decisionBrief: string;
+  tradeOffs: string;
+  unmetDemand: string;
+  noUnmetDemand: string;
+  colPort: string;
+  colEta: string;
+  colDistance: string;
+  colCost: string;
+  colCapacity: string;
+  colRisk: string;
+  colUnits: string;
+  etaHours: string;
+  distanceKm: string;
+  capacityUnits: string;
+  truthBadgeTitle: string;
+  schematicConnector: string;
+  assumptions: string;
+  loadError: string;
+  commodityMedical: string;
+  commodityFood: string;
+  commodityFuel: string;
+  contextEdgeBanner: string;
 }
 
 const zhHant: Dict = {
@@ -265,6 +307,44 @@ const zhHant: Dict = {
   cloudToEdge: "雲端 AIS 無法使用，已切換至本地 AIS 接收器",
   cloudRestored: "雲端 AIS 已恢復",
   simulatedPrefix: "模擬",
+
+  logistics: {
+    navLiveMap: "即時地圖",
+    navLogistics: "韌性物流",
+    title: "韌性物流決策支援",
+    subtitle: "民用港口中斷情境的規劃估計值，供人工審查，並非指示或預測。",
+    scenarioLabel: "情境",
+    selectScenario: "選擇情境",
+    disruptedPort: "中斷港口",
+    criticalDemand: "關鍵民生需求",
+    priority: "優先序",
+    alternatives: "替代港口",
+    runSimulation: "執行模擬",
+    running: "模擬中…",
+    recommendedAllocation: "建議配置",
+    decisionBrief: "決策摘要",
+    tradeOffs: "權衡取捨",
+    unmetDemand: "未滿足需求",
+    noUnmetDemand: "在此情境資料集內所有需求皆可滿足。",
+    colPort: "港口",
+    colEta: "預估抵達",
+    colDistance: "距離",
+    colCost: "相對成本",
+    colCapacity: "容量使用",
+    colRisk: "風險",
+    colUnits: "單位",
+    etaHours: "小時",
+    distanceKm: "公里",
+    capacityUnits: "單位/日",
+    truthBadgeTitle: "資料來源說明",
+    schematicConnector: "示意連線（SCHEMATIC CONNECTOR）",
+    assumptions: "假設",
+    loadError: "無法載入物流情境資料。",
+    commodityMedical: "醫療",
+    commodityFood: "食品",
+    commodityFuel: "燃料",
+    contextEdgeBanner: "目前為邊緣模式——物流使用本地情境資料集。",
+  },
 };
 
 const en: Dict = {
@@ -390,6 +470,45 @@ const en: Dict = {
   cloudToEdge: "Cloud AIS unavailable — switched to local AIS receiver",
   cloudRestored: "Cloud AIS restored",
   simulatedPrefix: "SIMULATED",
+
+  logistics: {
+    navLiveMap: "LIVE MAP",
+    navLogistics: "RESILIENCE LOGISTICS",
+    title: "Resilience Logistics Decision Support",
+    subtitle:
+      "Scenario-based planning estimates for a civilian port disruption, for human review — not an instruction or a prediction.",
+    scenarioLabel: "Scenario",
+    selectScenario: "Select a scenario",
+    disruptedPort: "Disrupted port",
+    criticalDemand: "Critical civilian demand",
+    priority: "priority",
+    alternatives: "Alternative ports",
+    runSimulation: "Run Simulation",
+    running: "Running…",
+    recommendedAllocation: "Recommended allocation",
+    decisionBrief: "Decision brief",
+    tradeOffs: "Trade-offs",
+    unmetDemand: "Unmet demand",
+    noUnmetDemand: "All demand satisfied within this scenario dataset.",
+    colPort: "Port",
+    colEta: "ETA",
+    colDistance: "Distance",
+    colCost: "Relative cost",
+    colCapacity: "Capacity use",
+    colRisk: "Risk",
+    colUnits: "Units",
+    etaHours: "h",
+    distanceKm: "km",
+    capacityUnits: "units/day",
+    truthBadgeTitle: "Data provenance",
+    schematicConnector: "SCHEMATIC CONNECTOR / 示意連線",
+    assumptions: "Assumptions",
+    loadError: "Failed to load logistics scenario data.",
+    commodityMedical: "Medical",
+    commodityFood: "Food",
+    commodityFuel: "Fuel",
+    contextEdgeBanner: "Running in Edge mode — logistics uses the local scenario dataset.",
+  },
 };
 
 export const DICTIONARIES: Record<Lang, Dict> = {
