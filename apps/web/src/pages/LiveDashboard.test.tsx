@@ -182,9 +182,13 @@ describe("LiveDashboard interaction", () => {
     const enDict = DICTIONARIES["en"];
     expect(screen.getByText(zh.productTagline)).toBeInTheDocument();
     expect(screen.getAllByText(zh.modeCloud).length).toBeGreaterThanOrEqual(1);
+    const operatingStatus = screen.getByTestId("operating-status-panel");
+    expect(operatingStatus).toHaveAttribute("data-mode", "CLOUD_LIVE");
+    expect(operatingStatus.textContent).toContain("open_waters");
+    expect(operatingStatus.textContent).toContain(zh.provenanceCloud);
     fireEvent.click(screen.getByLabelText("Toggle language"));
     expect(screen.getByText(enDict.productTagline)).toBeInTheDocument();
-    expect(screen.getByText(enDict.modeCloud)).toBeInTheDocument();
+    expect(screen.getAllByText(enDict.modeCloud).length).toBeGreaterThan(0);
   });
 
   it("searches a loaded vessel and selects it from the search box", async () => {

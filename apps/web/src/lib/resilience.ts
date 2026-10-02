@@ -15,6 +15,13 @@ export interface ModePresentation {
   powerNote: string;
 }
 
+export interface OperatingStatusPresentation extends ModePresentation {
+  source: string;
+  freshness: string;
+  coverageDetail: string;
+  provenance: string;
+}
+
 export function modePresentation(status: ResilienceStatus, t: Dict): ModePresentation {
   const labels: Record<OperatingMode, string> = {
     CLOUD_LIVE: t.modeCloud,
@@ -42,6 +49,52 @@ export function modePresentation(status: ResilienceStatus, t: Dict): ModePresent
     powerLabel: status.power_mode === "battery_ups" ? t.batteryUps : t.externalPower,
     powerNote: t.powerRequirement,
   };
+}
+
+export function operatingStatusPresentation(
+  status: ResilienceStatus,
+  t: Dict,
+): OperatingStatusPresentation {
+  const base = modePresentation(status, t);
+  const activeSource =
+    status.mode === "CLOUD_LIVE"
+      ? status.cloud
+      : status.mode === "EDGE_LIVE" || status.mode === "EDGE_REPLAY"
+        ? status.edge
+        : null;
+  const coverageDetail: Record<OperatingMode, string> = {
+    CLOUD_LIVE: t.cloudCoverageNote,
+    EDGE_LIVE: t.edgeCoverageNote,
+    EDGE_REPLAY: `${t.edgeCoverageNote} ${t.replayRecordedNote}`,
+    NO_LIVE_SOURCE: t.noCoverageNote,
+    OFFLINE_DEMO: t.demoCoverageNote,
+  };
+  const provenance: Record<OperatingMode, string> = {
+    CLOUD_LIVE: t.provenanceCloud,
+    EDGE_LIVE: t.provenanceEdge,
+    EDGE_REPLAY: t.provenanceReplay,
+    NO_LIVE_SOURCE: t.provenanceNoSource,
+    OFFLINE_DEMO: t.provenanceDemo,
+  };
+
+  return {
+    ...base,
+    source: activeSource?.source ?? "—",
+    freshness: activeSource
+      ? activeSource.fresh
+        ? `${t.freshnessFresh} · ${formatFreshnessAge(activeSource.message_age_seconds, t)}`
+        : t.staleData
+      : t.noFreshSource,
+    coverageDetail: coverageDetail[status.mode],
+    provenance: provenance[status.mode],
+  };
+}
+
+function formatFreshnessAge(ageSeconds: number | null, t: Dict): string {
+  if (ageSeconds === null) return t.ageUnavailable;
+  if (ageSeconds < 5) return t.justNow;
+  if (ageSeconds < 60) return t.secondsAgo(Math.round(ageSeconds));
+  return t.minutesAgo(Math.round(ageSeconds / 60));
 }
 
 export type TransitionEvent = {

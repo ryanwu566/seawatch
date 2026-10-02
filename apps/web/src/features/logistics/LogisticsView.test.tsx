@@ -74,16 +74,32 @@ vi.mock("../../components/MapCanvas", () => ({
 // Slice J read-only integration seam: the operating-mode hook is mocked so the
 // view test controls whether a Phase 8 resilience mode is present or absent.
 let operatingMode: string | null = null;
+function operatingStatus(mode: string | null) {
+  if (!mode) return null;
+  const edge = mode === "EDGE_LIVE" || mode === "EDGE_REPLAY";
+  return {
+    mode,
+    coverage: mode === "CLOUD_LIVE" ? "taiwan_wide_network_feed" : edge ? "local_rf" : "none",
+    simulated: mode === "EDGE_REPLAY",
+    internet_available: mode === "CLOUD_LIVE",
+    power_mode: "external",
+    cloud: { source: "open_waters", fresh: mode === "CLOUD_LIVE", message_age_seconds: 3, vessel_count: 10, connected: mode === "CLOUD_LIVE", input_kind: null },
+    edge: { source: mode === "EDGE_REPLAY" ? "edge_replay" : "edge_ais", fresh: edge, message_age_seconds: edge ? 4 : null, vessel_count: edge ? 3 : 0, connected: edge, input_kind: mode === "EDGE_REPLAY" ? "replay" : edge ? "udp" : "disabled" },
+  };
+}
 vi.mock("./useOperatingMode", () => ({
-  useOperatingMode: () => ({ mode: operatingMode }),
+  useOperatingMode: () => ({ mode: operatingMode, status: operatingStatus(operatingMode) }),
 }));
 
 import { LogisticsView } from "./LogisticsView";
 
-function renderView(renderResult?: Parameters<typeof LogisticsView>[0]["renderResult"]) {
+function renderView(
+  renderResult?: Parameters<typeof LogisticsView>[0]["renderResult"],
+  props: Partial<Parameters<typeof LogisticsView>[0]> = {},
+) {
   return render(
     <I18nProvider>
-      <LogisticsView renderResult={renderResult} />
+      <LogisticsView renderResult={renderResult} {...props} />
     </I18nProvider>,
   );
 }
@@ -162,20 +178,41 @@ describe("LogisticsView", () => {
     );
   });
 
-  it("shows the operating-context banner when a Phase 8 mode is available", async () => {
+  it("shows the full Phase 8 operating status when it is available", async () => {
     operatingMode = "EDGE_REPLAY";
     renderView();
-    const banner = await screen.findByTestId("operating-context");
-    expect(banner).toBeInTheDocument();
-    // Mode is rendered via the shared bilingual mode label (zh-Hant default).
-    expect(banner.textContent).toContain(DICTIONARIES["zh-Hant"].modeReplay);
-    expect(banner).toHaveAttribute("data-mode", "EDGE_REPLAY");
+    const panel = await screen.findByTestId("operating-status-panel");
+    expect(panel.textContent).toContain(DICTIONARIES["zh-Hant"].modeReplay);
+    expect(panel.textContent).toContain("edge_replay");
+    expect(panel.textContent).toContain(DICTIONARIES["zh-Hant"].provenanceReplay);
+    expect(panel).toHaveAttribute("data-mode", "EDGE_REPLAY");
   });
 
-  it("renders no operating-context banner when the status is unavailable (graceful fallback)", async () => {
+  it("preselects the approved resilience demo scenario but never runs it automatically", async () => {
+    renderView(undefined, {
+      demoMode: true,
+      initialScenarioId: "kaohsiung-disruption",
+    });
+
+    const select = await screen.findByRole("combobox", {
+      name: DICTIONARIES["zh-Hant"].logistics.selectScenario,
+    });
+    await waitFor(() => expect(select).toHaveValue("kaohsiung-disruption"));
+    expect(runSimulation).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Illustrative workflow / 演示流程")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: DICTIONARIES["zh-Hant"].logistics.runSimulation,
+      }),
+    );
+    await waitFor(() => expect(runSimulation).toHaveBeenCalledTimes(1));
+  });
+
+  it("renders no operating-status panel when the status is unavailable (graceful fallback)", async () => {
     operatingMode = null;
     renderView();
     await waitFor(() => expect(fetchScenarios).toHaveBeenCalled());
-    expect(screen.queryByTestId("operating-context")).toBeNull();
+    expect(screen.queryByTestId("operating-status-panel")).toBeNull();
   });
 });

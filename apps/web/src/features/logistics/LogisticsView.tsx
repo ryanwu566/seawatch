@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../../i18n/I18nContext";
 import { MapCanvas } from "../../components/MapCanvas";
+import { OperatingStatusPanel } from "../../components/OperatingStatusPanel";
+import { DemoNarrative } from "./DemoNarrative";
 import { DEFAULT_LAYER_STATE } from "../../lib/layerState";
 import { buildLogisticsOverlays } from "./logisticsLayers";
 import { useOperatingMode } from "./useOperatingMode";
@@ -14,8 +16,6 @@ import type {
   ScenarioContext,
   ScenarioSummary,
 } from "./logisticsTypes";
-import type { OperatingMode } from "../../api/live";
-import type { Dict } from "../../i18n/dictionaries";
 
 /**
  * Resilience Logistics (RESPOND) view: scenario select → load context →
@@ -25,20 +25,24 @@ import type { Dict } from "../../i18n/dictionaries";
  */
 export function LogisticsView({
   renderResult,
+  demoMode = false,
+  initialScenarioId,
 }: {
   // Injected by Slice I. Kept optional so Slice G stands alone.
   renderResult?: (args: {
     context: ScenarioContext | null;
     brief: DecisionBrief | null;
   }) => React.ReactNode;
+  demoMode?: boolean;
+  initialScenarioId?: string;
 }) {
   const { t, lang } = useI18n();
   const L = t.logistics;
 
-  const { mode: operatingMode } = useOperatingMode();
+  const { status: operatingStatus } = useOperatingMode();
 
   const [scenarios, setScenarios] = useState<ScenarioSummary[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selectedId, setSelectedId] = useState<string>(initialScenarioId ?? "");
   const [context, setContext] = useState<ScenarioContext | null>(null);
   const [brief, setBrief] = useState<DecisionBrief | null>(null);
   const [running, setRunning] = useState(false);
@@ -52,7 +56,10 @@ export function LogisticsView({
       .then((res) => {
         setScenarios(res.scenarios);
         if (res.scenarios.length > 0) {
-          setSelectedId((prev) => prev || res.scenarios[0].id);
+          setSelectedId((prev) => {
+            if (prev && res.scenarios.some((scenario) => scenario.id === prev)) return prev;
+            return res.scenarios[0].id;
+          });
         }
       })
       .catch(() => setError(L.loadError));
@@ -99,21 +106,9 @@ export function LogisticsView({
         <p className="logistics-subtitle">{L.subtitle}</p>
       </header>
 
-      {operatingMode && operatingModeLabel(operatingMode, t) ? (
-        <aside
-          className="logistics-operating-context"
-          data-testid="operating-context"
-          data-mode={operatingMode}
-          role="note"
-          aria-label={L.operatingContext}
-        >
-          <strong>{L.operatingContext}:</strong>{" "}
-          <span className="logistics-operating-mode">
-            {operatingModeLabel(operatingMode, t)}
-          </span>
-          <span className="logistics-operating-note"> · {L.operatingContextNote}</span>
-        </aside>
-      ) : null}
+      {demoMode ? <DemoNarrative /> : null}
+
+      {operatingStatus ? <OperatingStatusPanel status={operatingStatus} /> : null}
 
       <div className="logistics-controls">
         <label htmlFor="logistics-scenario">{L.scenarioLabel}</label>
@@ -153,6 +148,7 @@ export function LogisticsView({
 
       {error && <p role="alert" className="logistics-error">{error}</p>}
 
+      <div className="logistics-workspace" data-has-result={brief ? "true" : "false"}>
       <div className="logistics-map-shell">
         <MapCanvas
           vessels={[]}
@@ -170,30 +166,13 @@ export function LogisticsView({
       <div className="logistics-result" data-has-result={brief ? "true" : "false"}>
         {renderResult ? renderResult({ context, brief }) : null}
       </div>
+      </div>
     </section>
   );
 }
 
 function noop() {
   /* no-op: the logistics map is read-only context, not an interactive selector */
-}
-
-/**
- * Map a Phase 8 operating mode to its shared bilingual label. Returns null for
- * any unknown/unexpected value so the banner degrades silently rather than
- * showing a raw enum. Uses the existing top-level mode labels (no new vocab for
- * the modes themselves), keeping the bilingual UI style consistent with the
- * live view.
- */
-function operatingModeLabel(mode: OperatingMode, t: Dict): string | null {
-  const labels: Record<OperatingMode, string> = {
-    CLOUD_LIVE: t.modeCloud,
-    EDGE_LIVE: t.modeEdge,
-    EDGE_REPLAY: t.modeReplay,
-    NO_LIVE_SOURCE: t.modeNoSource,
-    OFFLINE_DEMO: t.modeDemo,
-  };
-  return labels[mode] ?? null;
 }
 
 function commodityLabel(commodity: string, L: ReturnType<typeof useI18n>["t"]["logistics"]) {

@@ -14,6 +14,7 @@ import {
 import { useI18n } from "../i18n/I18nContext";
 import { AppHeader } from "../components/AppHeader";
 import { ResilienceBanner } from "../components/ResilienceBanner";
+import { OperatingStatusPanel } from "../components/OperatingStatusPanel";
 import { StatusCards } from "../components/StatusCards";
 import { LayerControl } from "../components/LayerControl";
 import { SearchControl } from "../components/SearchControl";
@@ -225,14 +226,6 @@ export function LiveDashboard() {
       <AppHeader presentation={presentation} />
       <ResilienceBanner status={effectiveResilience} previousMode={previousMode} />
 
-      {(effectiveResilience.mode === "EDGE_LIVE" ||
-        effectiveResilience.mode === "EDGE_REPLAY") && (
-        <div className="edge-context" role="note">
-          <strong>{presentation.coverageLabel}</strong> · {presentation.detail} · {presentation.powerLabel}.{" "}
-          {presentation.powerNote}
-        </div>
-      )}
-
       {effectiveResilience.mode === "OFFLINE_DEMO" && <div className="offline-banner">{t.offlineDemoNote}</div>}
       {status === "reconnecting" && <div className="warn-banner">{t.reconnectingAis}</div>}
       {error && (
@@ -260,6 +253,7 @@ export function LiveDashboard() {
         />
 
         <div className="map-overlay-top-left">
+          <OperatingStatusPanel status={effectiveResilience} />
           <SearchControl
             vessels={vessels}
             onSelectVessel={handleSelectVessel}

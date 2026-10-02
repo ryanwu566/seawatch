@@ -38,6 +38,10 @@ the `/resilience/status` endpoint is absent.
 
 ## Demo story: SENSE → SURVIVE → RESPOND
 
+The on-screen rail is labeled **Illustrative workflow / 演示流程**. It is a
+presenter-guided narrative, not a report of an actual network failure, not an
+automatic failover, and not a real-time transition.
+
 ### SENSE — existing maritime awareness
 
 The LIVE MAP view is the existing SeaWatch product: Taiwan maritime situational
@@ -62,11 +66,13 @@ shown and logistics still works.
 
 ### RESPOND — Kaohsiung Port Disruption decision support
 
-1. Start the backend and open the built UI (same-origin, per the Phase 8
-   offline-startup runbook). For a pure RESPOND-only demo no live source is
-   required.
-2. Switch the top navigation from **LIVE MAP** to **RESILIENCE LOGISTICS**.
-3. Select the **Kaohsiung Port Disruption** scenario. The context shows that
+1. Start the backend and open the built UI at `?demo=resilience` (same-origin,
+   per the Phase 8 offline-startup runbook). For a pure RESPOND-only demo no
+   live source is required.
+2. The demo entry opens **RESILIENCE LOGISTICS** with **Kaohsiung Port
+   Disruption** preselected. It does not start a simulation or manufacture a
+   live-source transition.
+3. Review the scenario context. It shows that
    Kaohsiung is the disrupted port and that southern medical, food, and fuel
    demand must be absorbed by alternative civilian ports (Taichung, Keelung).
 4. Click **Run Simulation**. The view renders the allocation table, the

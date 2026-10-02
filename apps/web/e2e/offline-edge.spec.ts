@@ -57,7 +57,9 @@ test("offline Edge stays same-origin and renders the emergency map", async ({ pa
   await expect(page.locator(".app-header")).toBeVisible();
   await expect(page.locator('[data-basemap-stage="emergency"] canvas')).toBeVisible();
   await expect(page.getByLabel("Taiwan maritime map")).toBeVisible();
-  await expect(page.getByText(/即時資料無法使用|LIVE DATA UNAVAILABLE/)).toBeVisible();
+  await expect(
+    page.locator(".live-pill").filter({ hasText: /即時資料無法使用|LIVE DATA UNAVAILABLE/ }),
+  ).toBeVisible();
   await expect(page.locator(".map-canvas")).toBeVisible();
 
   expect(observed.some((url) => url.includes("/live/vessels"))).toBe(true);

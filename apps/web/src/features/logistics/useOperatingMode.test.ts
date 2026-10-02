@@ -56,13 +56,16 @@ afterEach(() => {
 });
 
 describe("useOperatingMode", () => {
-  it("exposes the operating mode when the resilience status endpoint is available", async () => {
-    const fetchMock = okFetch(status("EDGE_REPLAY"));
+  it("exposes the existing Phase 8 status without creating another state model", async () => {
+    const response = status("EDGE_REPLAY");
+    const fetchMock = okFetch(response);
     vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() => useOperatingMode());
 
-    await waitFor(() => expect(result.current.mode).toBe("EDGE_REPLAY"));
+    await waitFor(() => expect(result.current.status).toEqual(response));
+    expect(result.current.mode).toBe("EDGE_REPLAY");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("gracefully falls back to null when the status endpoint fails (logistics still works)", async () => {
@@ -80,6 +83,7 @@ describe("useOperatingMode", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     // Mode remains null; the hook never throws.
     expect(result.current.mode).toBeNull();
+    expect(result.current.status).toBeNull();
   });
 
   it("gracefully falls back to null when the fetch itself rejects (network/absent)", async () => {
@@ -90,6 +94,7 @@ describe("useOperatingMode", () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(result.current.mode).toBeNull();
+    expect(result.current.status).toBeNull();
   });
 
   it("PUBLIC CLOUD: reads /resilience/status from the explicit Render origin (shared getBaseUrl)", async () => {
@@ -99,7 +104,7 @@ describe("useOperatingMode", () => {
 
     const { result } = renderHook(() => useOperatingMode());
 
-    await waitFor(() => expect(result.current.mode).toBe("CLOUD_LIVE"));
+    await waitFor(() => expect(result.current.status?.mode).toBe("CLOUD_LIVE"));
     expect(fetchMock.mock.calls[0][0]).toBe(
       "https://seawatch-bgsi.onrender.com/resilience/status",
     );
@@ -112,7 +117,7 @@ describe("useOperatingMode", () => {
 
     const { result } = renderHook(() => useOperatingMode());
 
-    await waitFor(() => expect(result.current.mode).toBe("NO_LIVE_SOURCE"));
+    await waitFor(() => expect(result.current.status?.mode).toBe("NO_LIVE_SOURCE"));
     const url = fetchMock.mock.calls[0][0] as string;
     expect(url).toBe("/resilience/status");
     const pageOrigin = "http://127.0.0.1:8000";

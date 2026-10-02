@@ -156,8 +156,21 @@ vi.mock("../../components/MapCanvas", () => ({
 
 // SURVIVE: the read-only Phase 8 operating-mode hook is mocked per test.
 let operatingMode: string | null = null;
+function resilienceStatus(mode: string | null) {
+  if (!mode) return null;
+  const edge = mode === "EDGE_LIVE" || mode === "EDGE_REPLAY";
+  return {
+    mode,
+    coverage: mode === "CLOUD_LIVE" ? "taiwan_wide_network_feed" : edge ? "local_rf" : "none",
+    simulated: mode === "EDGE_REPLAY",
+    internet_available: mode === "CLOUD_LIVE",
+    power_mode: "external",
+    cloud: { source: "open_waters", fresh: mode === "CLOUD_LIVE", message_age_seconds: 3, vessel_count: 10, connected: mode === "CLOUD_LIVE", input_kind: null },
+    edge: { source: mode === "EDGE_REPLAY" ? "edge_replay" : "edge_ais", fresh: edge, message_age_seconds: edge ? 4 : null, vessel_count: edge ? 3 : 0, connected: edge, input_kind: mode === "EDGE_REPLAY" ? "replay" : edge ? "udp" : "disabled" },
+  };
+}
 vi.mock("./useOperatingMode", () => ({
-  useOperatingMode: () => ({ mode: operatingMode }),
+  useOperatingMode: () => ({ mode: operatingMode, status: resilienceStatus(operatingMode) }),
 }));
 
 import { LogisticsView } from "./LogisticsView";
@@ -167,6 +180,8 @@ function renderDemo() {
   return render(
     <I18nProvider>
       <LogisticsView
+        demoMode
+        initialScenarioId="kaohsiung-disruption"
         renderResult={({ context, brief }) => (
           <LogisticsPanel context={context} brief={brief} />
         )}
@@ -267,7 +282,7 @@ describe("Resilience demo — SURVIVE (read-only Phase 8 operating context)", ()
     const utils = renderDemo();
     await waitFor(() => expect(fetchScenarios).toHaveBeenCalled());
     // No operating-context banner is shown when the status is unavailable.
-    expect(utils.queryByTestId("operating-context")).toBeNull();
+    expect(utils.queryByTestId("operating-status-panel")).toBeNull();
     // The demo never auto-runs a simulation from any Phase 8 signal.
     expect(runSimulation).not.toHaveBeenCalled();
   });
@@ -282,7 +297,7 @@ describe("Resilience demo — SURVIVE (read-only Phase 8 operating context)", ()
     for (const [mode, label] of cases) {
       operatingMode = mode;
       const { unmount } = renderDemo();
-      const banner = await screen.findByTestId("operating-context");
+      const banner = await screen.findByTestId("operating-status-panel");
       expect(banner).toHaveAttribute("data-mode", mode);
       expect(banner.textContent).toContain(label);
       unmount();

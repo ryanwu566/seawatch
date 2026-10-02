@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ResilienceStatus, LiveVesselFeature, OperatingMode } from "../api/live";
 import { DICTIONARIES } from "../i18n/dictionaries";
-import { modePresentation, transitionEvent, vesselIntegrity } from "./resilience";
+import {
+  modePresentation,
+  operatingStatusPresentation,
+  transitionEvent,
+  vesselIntegrity,
+} from "./resilience";
 
 function status(mode: OperatingMode): ResilienceStatus {
   const edge = mode === "EDGE_LIVE" || mode === "EDGE_REPLAY";
@@ -78,6 +83,30 @@ describe("modePresentation", () => {
     for (const mode of ["CLOUD_LIVE", "EDGE_LIVE", "EDGE_REPLAY", "NO_LIVE_SOURCE", "OFFLINE_DEMO"] as const) {
       expect(JSON.stringify(modePresentation(status(mode), DICTIONARIES["zh-Hant"]))).not.toContain("�");
     }
+  });
+});
+
+describe("operatingStatusPresentation", () => {
+  it.each([
+    ["CLOUD_LIVE", "open_waters", "Fresh · just now", "Cloud network AIS feed"],
+    ["EDGE_LIVE", "edge_ais", "Fresh · just now", "Local RF AIS receiver"],
+    ["EDGE_REPLAY", "edge_ais", "Fresh · just now", "Recorded AIS replay (simulated)"],
+    ["NO_LIVE_SOURCE", "—", "No fresh source", "No fresh source; cached or stale records remain labeled"],
+  ] as const)("exposes source, freshness, and provenance for %s", (mode, source, freshness, provenance) => {
+    const result = operatingStatusPresentation(status(mode), DICTIONARIES.en);
+    expect(result.source).toBe(source);
+    expect(result.freshness).toBe(freshness);
+    expect(result.provenance).toBe(provenance);
+    expect(result.coverageLabel).not.toBe("");
+    expect(result.coverageDetail).not.toBe("");
+  });
+
+  it("shows unavailable age honestly without changing the source state", () => {
+    const cloud = status("CLOUD_LIVE");
+    cloud.cloud.message_age_seconds = null;
+    expect(operatingStatusPresentation(cloud, DICTIONARIES.en).freshness).toBe(
+      "Fresh · age unavailable",
+    );
   });
 });
 

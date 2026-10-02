@@ -14,9 +14,15 @@
 // same-origin) is inherited via `fetchResilienceStatus`.
 
 import { useEffect, useState } from "react";
-import { fetchResilienceStatus, type OperatingMode } from "../../api/live";
+import {
+  fetchResilienceStatus,
+  type OperatingMode,
+  type ResilienceStatus,
+} from "../../api/live";
 
 export interface OperatingModeState {
+  /** The unchanged Phase 8 resilience status response, when available. */
+  status: ResilienceStatus | null;
   /** The Phase 8 operating mode, or null when the status is unavailable. */
   mode: OperatingMode | null;
 }
@@ -29,7 +35,7 @@ export interface OperatingModeState {
  * value — it is display context only.
  */
 export function useOperatingMode(): OperatingModeState {
-  const [mode, setMode] = useState<OperatingMode | null>(null);
+  const [status, setStatus] = useState<ResilienceStatus | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -38,7 +44,7 @@ export function useOperatingMode(): OperatingModeState {
     fetchResilienceStatus(controller.signal)
       .then((status) => {
         if (active && status && typeof status.mode === "string") {
-          setMode(status.mode);
+          setStatus(status);
         }
       })
       .catch(() => {
@@ -52,5 +58,5 @@ export function useOperatingMode(): OperatingModeState {
     };
   }, []);
 
-  return { mode };
+  return { status, mode: status?.mode ?? null };
 }

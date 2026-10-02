@@ -625,11 +625,11 @@ describe("MapCanvas", () => {
   });
 
   it("restores caller overlays after a PMTiles/emergency fallback", () => {
-    render(<MapCanvas {...baseProps({ operatingMode: "CLOUD_LIVE", overlays: sampleOverlays })} />);
+    render(<MapCanvas {...baseProps({ operatingMode: "EDGE_LIVE", overlays: sampleOverlays })} />);
     expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
 
-    // NLSC fails -> PMTiles fallback wipes and re-styles.
-    act(() => state.handlers.error?.({ error: new Error("NLSC tile fetch failed") }));
+    // Edge starts on PMTiles; its failure wipes and installs emergency style.
+    act(() => state.handlers.error?.({ error: new Error("PMTiles source fetch failed") }));
     expect(typeof state.styledataCb).toBe("function");
     state.styledataCb?.();
 

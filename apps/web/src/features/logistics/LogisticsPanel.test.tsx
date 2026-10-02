@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import { I18nProvider } from "../../i18n/I18nContext";
+import { DICTIONARIES } from "../../i18n/dictionaries";
 import { LogisticsPanel } from "./LogisticsPanel";
 import { findForbiddenTerm } from "./forbiddenTerms";
 import type { DecisionBrief, ScenarioContext } from "./logisticsTypes";
@@ -96,6 +97,36 @@ describe("LogisticsPanel", () => {
   it("renders nothing when there is no brief", () => {
     const { container } = renderPanel(null);
     expect(container.querySelector('[data-testid="logistics-panel"]')).toBeNull();
+  });
+
+  it("leads with the decision summary, totals, priority allocation, trade-offs, and TruthBadge", () => {
+    renderPanel(brief());
+    const panel = screen.getByTestId("logistics-panel");
+    const hero = panel.firstElementChild as HTMLElement;
+
+    expect(hero).toHaveClass("decision-brief-hero");
+    expect(within(hero).getByText("80")).toBeInTheDocument();
+    expect(within(hero).getByText("0")).toBeInTheDocument();
+    expect(within(hero).getByText("taichung")).toBeInTheDocument();
+    expect(hero.querySelector(".priority-allocation")?.textContent).toContain("30");
+    expect(within(hero).getByText(/split across taichung, keelung/)).toBeInTheDocument();
+    expect(within(hero).getByTestId("truth-badge")).toBeInTheDocument();
+
+    const allocation = screen.getByLabelText(DICTIONARIES["zh-Hant"].logistics.recommendedAllocation);
+    expect(hero.compareDocumentPosition(allocation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows every port when the highest-priority allocation is split", () => {
+    const splitPriority = brief();
+    splitPriority.recommended_allocations = [splitPriority.recommended_allocations[1]];
+    renderPanel(splitPriority);
+
+    const priority = document.querySelector(".priority-allocation") as HTMLElement;
+    expect(priority.textContent).toContain("50");
+    expect(priority.textContent).toContain("30");
+    expect(priority.textContent).toContain("taichung");
+    expect(priority.textContent).toContain("20");
+    expect(priority.textContent).toContain("keelung");
   });
 
   it("renders the alternatives table with all metric columns", () => {

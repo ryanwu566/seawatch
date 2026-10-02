@@ -225,6 +225,11 @@ export interface LogisticsDict {
   contextEdgeBanner: string;
   operatingContext: string;
   operatingContextNote: string;
+  routedTotal: string;
+  unmetTotal: string;
+  highestPriority: string;
+  supportingDetail: string;
+  allocationTo: string;
 }
 
 const zhHant: Dict = {
@@ -426,6 +431,11 @@ const zhHant: Dict = {
     contextEdgeBanner: "目前為邊緣模式——物流使用本地情境資料集。",
     operatingContext: "目前運作情境",
     operatingContextNote: "僅供顯示的 Phase 8 即時來源狀態；物流決策支援不受其影響。",
+    routedTotal: "已安排總量",
+    unmetTotal: "未滿足總量",
+    highestPriority: "最高優先配置",
+    supportingDetail: "詳細依據",
+    allocationTo: "配置至",
   },
 };
 
@@ -631,6 +641,11 @@ const en: Dict = {
     operatingContext: "Current operating context",
     operatingContextNote:
       "Display-only Phase 8 live-source status; the logistics decision support is unaffected by it.",
+    routedTotal: "Routed total",
+    unmetTotal: "Unmet total",
+    highestPriority: "Highest-priority allocation",
+    supportingDetail: "Supporting detail",
+    allocationTo: "allocated to",
   },
 };
 

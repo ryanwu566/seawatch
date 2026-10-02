@@ -28,9 +28,55 @@ export function LogisticsPanel({
   if (!brief) return null;
 
   const summary = lang === "zh-Hant" ? brief.summary_zh : brief.summary_en;
+  const routedTotal = brief.recommended_allocations.reduce(
+    (total, allocation) => total + allocation.satisfied_units,
+    0,
+  );
+  const unmetTotal = brief.unmet_demand.reduce(
+    (total, demand) => total + demand.unmet_units,
+    0,
+  );
+  const priorityAllocation = brief.recommended_allocations[0];
 
   return (
     <div className="logistics-panel" data-testid="logistics-panel">
+      <section className="decision-brief-hero" aria-label={L.decisionBrief}>
+        <div className="decision-brief-heading">
+          <span>{L.decisionBrief}</span>
+          <h2>{summary}</h2>
+        </div>
+        <div className="decision-kpis">
+          <div><span>{L.routedTotal}</span><strong>{routedTotal}</strong></div>
+          <div><span>{L.unmetTotal}</span><strong>{unmetTotal}</strong></div>
+        </div>
+        {priorityAllocation && priorityAllocation.assignments.length > 0 ? (
+          <div className="priority-allocation">
+            <span>{L.highestPriority}</span>
+            <strong>{demandLabel(priorityAllocation.demand_id, L)}</strong>
+            <p>{priorityAllocation.satisfied_units} {L.colUnits}</p>
+            <ul>
+              {priorityAllocation.assignments.map((assignment, index) => (
+                <li key={`${assignment.port_id}-${index}`}>
+                  {assignment.units} {L.colUnits} {L.allocationTo}{" "}
+                  <b>{assignment.port_id}</b>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        <div className="decision-tradeoffs">
+          <h3>{L.tradeOffs}</h3>
+          <ul className="logistics-tradeoffs">
+            {brief.trade_offs.map((item, idx) => <li key={idx}>{item}</li>)}
+          </ul>
+        </div>
+        <TruthBadge
+          provenanceSummary={brief.provenance_summary}
+          provenanceNote={brief.provenance_note}
+        />
+      </section>
+
+      <h2 className="supporting-detail-heading">{L.supportingDetail}</h2>
       {/* Alternatives comparison (per-port metrics). */}
       <section className="logistics-alternatives" aria-label={L.alternatives}>
         <h2>{L.alternatives}</h2>
@@ -102,16 +148,8 @@ export function LogisticsPanel({
         </table>
       </section>
 
-      {/* Decision brief summary + trade-offs. */}
+      {/* Assumptions remain below the first-screen summary. */}
       <section className="logistics-brief" aria-label={L.decisionBrief}>
-        <h2>{L.decisionBrief}</h2>
-        <p className="logistics-summary">{summary}</p>
-        <h3>{L.tradeOffs}</h3>
-        <ul className="logistics-tradeoffs">
-          {brief.trade_offs.map((item, idx) => (
-            <li key={idx}>{item}</li>
-          ))}
-        </ul>
         <h3>{L.assumptions}</h3>
         <ul className="logistics-assumptions">
           {brief.assumptions.map((item, idx) => (
@@ -137,11 +175,6 @@ export function LogisticsPanel({
         )}
       </section>
 
-      {/* Always-visible truth badge. */}
-      <TruthBadge
-        provenanceSummary={brief.provenance_summary}
-        provenanceNote={brief.provenance_note}
-      />
     </div>
   );
 }

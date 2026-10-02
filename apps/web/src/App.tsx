@@ -21,10 +21,15 @@ function wantsResearch(): boolean {
 
 type View = "live" | "logistics";
 
+export function isResilienceDemo(search: string): boolean {
+  return new URLSearchParams(search).get("demo") === "resilience";
+}
+
 function MainNav() {
   const { t } = useI18n();
   const L = t.logistics;
-  const [view, setView] = useState<View>("live");
+  const demoMode = typeof window !== "undefined" && isResilienceDemo(window.location.search);
+  const [view, setView] = useState<View>(demoMode ? "logistics" : "live");
 
   return (
     <>
@@ -50,6 +55,8 @@ function MainNav() {
         <LiveDashboard />
       ) : (
         <LogisticsView
+          demoMode={demoMode}
+          initialScenarioId={demoMode ? "kaohsiung-disruption" : undefined}
           renderResult={({ context, brief }) => (
             <LogisticsPanel context={context} brief={brief} />
           )}
