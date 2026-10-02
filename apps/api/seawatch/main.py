@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import alerts, health, live, resilience, tracks
 from .live import get_live_runtime
+from .live.config import LiveRuntimeConfig
+from .web.serving import configure_local_web
 
 logger = logging.getLogger("seawatch.main")
 
@@ -116,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router)
     app.include_router(live.router)
     app.include_router(resilience.router)
+    configure_local_web(app, LiveRuntimeConfig.from_env())
     return app
 
 

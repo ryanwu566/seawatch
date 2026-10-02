@@ -9,12 +9,26 @@ import type {
   TrackListResponse,
 } from "../types";
 
-const DEFAULT_BASE_URL = "http://localhost:8000";
+// Vite replaces DEV at build time, so the localhost convenience value is
+// removed entirely from production/Edge artifacts.
+const DEFAULT_BASE_URL = import.meta.env.DEV ? "http://localhost:8000" : "";
 
-/** Resolve the API base URL from Vite env, trimming any trailing slash. */
+/** Select Cloud override, dev convenience, or production same-origin API. */
+export function resolveApiBaseUrl(
+  explicitBaseUrl: string | undefined,
+  isDevelopment: boolean,
+): string {
+  const explicit = explicitBaseUrl?.trim();
+  if (explicit) return explicit.replace(/\/+$/, "");
+  return isDevelopment ? DEFAULT_BASE_URL : "";
+}
+
+/** Resolve the API base URL from the actual Vite build environment. */
 export function getBaseUrl(): string {
-  const raw = import.meta.env?.VITE_API_BASE_URL ?? DEFAULT_BASE_URL;
-  return raw.replace(/\/+$/, "");
+  return resolveApiBaseUrl(
+    import.meta.env?.VITE_API_BASE_URL,
+    import.meta.env?.DEV ?? false,
+  );
 }
 
 export class ApiError extends Error {

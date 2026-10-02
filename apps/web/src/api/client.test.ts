@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, getAlert, getAlerts, getHealth, getBaseUrl } from "./client";
+import {
+  ApiError,
+  getAlert,
+  getAlerts,
+  getHealth,
+  getBaseUrl,
+  resolveApiBaseUrl,
+} from "./client";
 
 function mockFetch(status: number, body: unknown) {
   return vi.fn().mockResolvedValue({
@@ -18,6 +25,32 @@ describe("getBaseUrl", () => {
   it("falls back to localhost and trims trailing slashes", () => {
     // VITE_API_BASE_URL is unset in the test env, so the default applies.
     expect(getBaseUrl()).toBe("http://localhost:8000");
+  });
+
+  it("always honors and trims an explicit Cloud deployment URL", () => {
+    expect(resolveApiBaseUrl("https://seawatch-bgsi.onrender.com///", false)).toBe(
+      "https://seawatch-bgsi.onrender.com",
+    );
+    expect(resolveApiBaseUrl("https://seawatch-bgsi.onrender.com/", true)).toBe(
+      "https://seawatch-bgsi.onrender.com",
+    );
+  });
+
+  it("uses relative same-origin requests in production without an override", () => {
+    const base = resolveApiBaseUrl(undefined, false);
+    expect(base).toBe("");
+    expect(`${base}/health`).toBe("/health");
+    expect(`${base}/live/vessels`).toBe("/live/vessels");
+    expect(`${base}/resilience/status`).toBe("/resilience/status");
+    const pageOrigin = "http://127.0.0.1:8000";
+    expect(new URL(`${base}/live/vessels`, pageOrigin).origin).toBe(pageOrigin);
+    expect(new URL(`${base}/edge/health`, pageOrigin).hostname).toBe("127.0.0.1");
+  });
+
+  it("keeps localhost convenience development-only", () => {
+    expect(resolveApiBaseUrl(undefined, true)).toBe("http://localhost:8000");
+    expect(resolveApiBaseUrl("   ", true)).toBe("http://localhost:8000");
+    expect(resolveApiBaseUrl("   ", false)).toBe("");
   });
 });
 
