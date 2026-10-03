@@ -1,0 +1,82 @@
+{
+ "behaviour": [
+  {
+   "window_start": 1789948800.0,
+   "vessels": 7037,
+   "alerts": 155,
+   "listed_present": 21,
+   "listed_flagged": 0,
+   "rest_flagged_rate": 0.0224,
+   "listed_flagged_rate": 0.0,
+   "auc": 0.4888112884834664,
+   "listed_alert_kinds": {}
+  },
+  {
+   "window_start": 1790553600.0,
+   "vessels": 7910,
+   "alerts": 219,
+   "listed_present": 15,
+   "listed_flagged": 0,
+   "rest_flagged_rate": 0.0281,
+   "listed_flagged_rate": 0.0,
+   "auc": 0.48594046865104495,
+   "listed_alert_kinds": {}
+  }
+ ],
+ "identity_screen_all_vessels_INFLATED": {
+  "positives": 84,
+  "vessels": 30599,
+  "random_folds": {
+   "flag_type_prior": {
+    "roc_auc": 0.865,
+    "pr_auc": 0.25
+   },
+   "profile": {
+    "roc_auc": 0.947,
+    "pr_auc": 0.17
+   }
+  },
+  "leave_one_program_out": {
+   "flag_type_prior": {
+    "roc_auc": 0.645,
+    "pr_auc": 0.083
+   },
+   "profile": {
+    "roc_auc": 0.709,
+    "pr_auc": 0.03
+   }
+  }
+ },
+ "identity_screen": {
+  "positives": 84,
+  "vessels": 7182,
+  "random_folds": {
+   "flag_type_prior": {
+    "roc_auc": 0.943,
+    "pr_auc": 0.358
+   },
+   "profile": {
+    "roc_auc": 0.951,
+    "pr_auc": 0.35
+   }
+  },
+  "leave_one_program_out": {
+   "flag_type_prior": {
+    "roc_auc": 0.746,
+    "pr_auc": 0.135
+   },
+   "profile": {
+    "roc_auc": 0.745,
+    "pr_auc": 0.066
+   }
+  }
+ },
+ "listed_by_program": {
+  "sanctions:GLOMAG": 31,
+  "sanctions:IRAN": 28,
+  "sanctions:RUSSIA": 9,
+  "sanctions:SDGT": 8,
+  "sanctions:UKRAINE": 5,
+  "sanctions:DPRK4": 3
+ }
+}

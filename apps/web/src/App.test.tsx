@@ -1,11 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./pages/Dashboard", () => ({ Dashboard: () => <div>research</div> }));
+vi.mock("./pages/Dashboard", () => ({ Dashboard: () => <div data-testid="research-view">research</div> }));
 vi.mock("./pages/LiveDashboard", () => ({
   LiveDashboard: (props: { vesselDemo?: boolean }) => (
     <div data-testid="live-view" data-vessel-demo={String(Boolean(props.vesselDemo))} />
   ),
+}));
+vi.mock("./features/watch/WatchFloor", () => ({
+  WatchFloor: () => <div data-testid="watch-floor">watch-floor</div>,
 }));
 vi.mock("./features/logistics/LogisticsPanel", () => ({ LogisticsPanel: () => null }));
 vi.mock("./features/logistics/LogisticsView", () => ({
@@ -21,6 +24,43 @@ vi.mock("./features/logistics/LogisticsView", () => ({
 import App, { isResilienceDemo, isVesselDemo } from "./App";
 
 afterEach(() => window.history.replaceState({}, "", "/"));
+
+describe("application views", () => {
+  it("keeps the live dashboard as the default and Watch Floor closed", () => {
+    render(<App />);
+
+    expect(screen.getByTestId("live-view")).toHaveAttribute("data-vessel-demo", "false");
+    expect(screen.queryByTestId("watch-floor")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "WATCH FLOOR" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("preserves the explicit research view", () => {
+    window.history.replaceState({}, "", "/?research");
+    render(<App />);
+
+    expect(screen.getByTestId("research-view")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "SeaWatch primary navigation" })).not.toBeInTheDocument();
+  });
+
+  it("opens Watch Floor from primary navigation", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "WATCH FLOOR" }));
+
+    expect(screen.getByTestId("watch-floor")).toBeInTheDocument();
+    expect(screen.queryByTestId("live-view")).not.toBeInTheDocument();
+  });
+
+  it("returns to the vessel demo after visiting Watch Floor", () => {
+    window.history.replaceState({}, "", "/?demo=vessel");
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "WATCH FLOOR" }));
+    fireEvent.click(screen.getByRole("button", { name: /LIVE MAP|即時地圖/ }));
+
+    expect(screen.getByTestId("live-view")).toHaveAttribute("data-vessel-demo", "true");
+  });
+});
 
 describe("resilience demo entry", () => {
   it("recognizes only the approved demo query", () => {

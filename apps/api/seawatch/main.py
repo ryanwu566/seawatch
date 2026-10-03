@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import alerts, context, health, historical, live, logistics, resilience, tracks
+from .api import alerts, context, detection, health, historical, live, logistics, resilience, tracks
 from .live import get_live_runtime
 from .live.config import LiveRuntimeConfig
 from .web.serving import configure_local_web
@@ -66,6 +66,21 @@ def _live_ingest_enabled() -> bool:
 async def _lifespan(app: FastAPI):
     """Start/stop independent Cloud and explicitly enabled Edge consumers."""
 
+    if os.environ.get("SEAWATCH_WARM_DETECTION", "true").strip().lower() in {"1", "true", "yes", "on"}:
+        import threading
+
+        def _warm() -> None:
+            try:
+                from .detection.service import get_service
+
+                svc = get_service()
+                svc.alerts()  # builds the scenario and runs detection once so the first screen opens instantly
+                logger.info("Detection service ready (region=%s)", svc.region)
+            except Exception as exc:  # noqa: BLE001 - monitoring UI must start even if the data is missing
+                logger.warning("Detection warm-up failed: %s", exc)
+
+        threading.Thread(target=_warm, daemon=True, name="detection-warmup").start()
+
     runtime = get_live_runtime()
     consumer = None
     edge_consumer = None
@@ -110,7 +125,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST", "PUT"],
         allow_headers=["*"],
     )
     app.include_router(health.router)
@@ -121,6 +136,7 @@ def create_app() -> FastAPI:
     app.include_router(logistics.router)
     app.include_router(context.router)
     app.include_router(historical.router)
+    app.include_router(detection.router)
     configure_local_web(app, LiveRuntimeConfig.from_env())
     return app
 
