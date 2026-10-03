@@ -50,3 +50,24 @@ the same code runs on a new coast with no hand-built zones.
 
 Mark false alarm (with reason - similar alerts are down-weighted), confirm, escalate, add notes, allow-list vessels, adjust
 thresholds live (Tuning lab). Everything is under `/detection/*` (see `/docs`).
+
+## What "detected" means - and what it does not
+
+Every recall/precision figure here is measured against **behaviours we defined and added ourselves** (see *Regions*).
+It shows the detectors find the *patterns* we describe (dark gap, loiter, rendezvous, ...), not that they find vessels
+that were *actually* illegal, sanctioned or hostile. The NOAA archive carries no such labels, and neither will most raw
+AIS archives from Taiwan.
+
+To measure against real outcomes we need labelled sources, for example enforcement or detention records, sanctions/IUU
+vessel lists (match on MMSI/IMO), Global Fishing Watch events (adapter scaffold in `adapters/gfw.py`, token required),
+or publicly reported incidents with a known vessel and time. Each must be checked for licence and for selection bias:
+enforcement labels only record what authorities already chose to examine. Until then the system's job is *prioritising
+unusual behaviour for a human to review*, with the evidence and the benign alternatives shown.
+
+## Tuning harness
+
+`python scripts/tune_sf.py --seeds 11 12 13 14 15 16 [--set loiter_min_minutes=60]` rebuilds the SF world for several
+seeds and reports per-behaviour recall, alerts on the benign regatta look-alike, and unverified alerts on real traffic.
+Current (6 seeds): cluster 6/6, rendezvous 6/6, dark transfer 6/6, dark gap 24/24, jump 24/24, zone entry 12/12,
+MMSI clone 18/24, loitering 14/24; ~12 unverified alerts per scenario on real traffic (mostly tugs/ferries/ships waiting).
+Loitering misses are mostly pleasure craft near marinas and vessels whose own history shows they dwell there routinely.

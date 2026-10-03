@@ -21,7 +21,7 @@ import numpy as np
 from .context import TrafficBaseline
 from .geo import NM_M, circle_polygon, haversine_m
 from .inject import inject
-from .learned import LearnedContext
+from .learned import LearnedContext, VesselHabits
 from .models import Receiver, Scenario, Track, TruthEvent, Zone
 from .simulator import KN_MS, Mover, _World
 
@@ -248,23 +248,43 @@ def build_sf_scenario(days: list[list[Track]], seed: int = 11, live_index: int =
     mb = _add_vessel(w, b, "tanker")
     w.label("dark_sts", [ma, mb], t_dark0, dark_end, "Tanker A goes dark, meets slow tanker B in quiet water, resumes")
 
-    # 3) cluster of six small vessels at quiet spot Q5
+    # 3) cluster of small vessels at quiet spot Q5 (size / duration / tightness vary with the seed)
     C = quiet[5]
     members = []
     t_c = tev(6, 16)
-    for k in range(6):
-        ang = np.radians(60 * k + rng.uniform(-10, 10))
+    n_c = int(rng.integers(4, 8))
+    hold_c = float(rng.uniform(45, 120))
+    spread = float(rng.uniform(0.004, 0.012))
+    for k in range(n_c):
+        ang = np.radians(360 / n_c * k + rng.uniform(-10, 10))
         s_pt = (C[0] + 0.03 * np.cos(ang), C[1] + 0.04 * np.sin(ang))
-        route = grid.path(s_pt if grid.water[grid.ij([s_pt[0]], [s_pt[1]])[0][0], grid.ij([s_pt[0]], [s_pt[1]])[1][0]] else busy[k % len(busy)], C)
+        ij = grid.ij([s_pt[0]], [s_pt[1]])
+        route = grid.path(s_pt if grid.water[ij[0][0], ij[1][0]] else busy[k % len(busy)], C)
         lead = sum(float(haversine_m(*route[i], *route[i + 1])) for i in range(len(route) - 1)) / (6 * KN_MS)
         m = Mover(rng, *route[0], t_c - lead)
         for pt in route[1:]:
-            m.go_to(pt[0] + rng.normal(0, 0.003), pt[1] + rng.normal(0, 0.003), 6)
-        m.hold(100, 1.0, jitter_nm=0.1)
+            m.go_to(pt[0] + rng.normal(0, spread), pt[1] + rng.normal(0, spread), 6)
+        m.hold(hold_c, 1.0, jitter_nm=0.1)
         for pt in reversed(route[:-1]):
             m.go_to(*pt, 6)
         members.append(_add_vessel(w, m, "fishing"))
-    w.label("cluster", members, t_c, t_c + 100 * 60 + 600, "Six small vessels assemble in open water outside any anchorage")
+    w.label("cluster", members, t_c, t_c + hold_c * 60 + 600, f"{n_c} small vessels assemble in open water outside any anchorage")
+
+    # benign look-alike: a sailing regatta (pleasure craft milling about for a while) - should NOT alert
+    R = quiet[3]
+    reg = []
+    t_r = tev(8, 16)
+    for k in range(int(rng.integers(6, 10))):
+        route = grid.path(busy[k % len(busy)], R)
+        lead = sum(float(haversine_m(*route[i], *route[i + 1])) for i in range(len(route) - 1)) / (5 * KN_MS)
+        m = Mover(rng, *route[0], t_r - lead)
+        for pt in route[1:]:
+            m.go_to(pt[0] + rng.normal(0, 0.006), pt[1] + rng.normal(0, 0.006), 5)
+        m.circle(R[0] + rng.normal(0, 0.004), R[1] + rng.normal(0, 0.004), rng.uniform(0.2, 0.5), rng.uniform(60, 110), 3.0)
+        for pt in reversed(route[:-1]):
+            m.go_to(*pt, 5)
+        reg.append(_add_vessel(w, m, "pleasure"))
+    w.label("regatta", reg, t_r, t_r + 110 * 60, "Sailing regatta: many pleasure craft mill about together (benign)", True)
 
     # 4) zone entries (restricted + cable), one scripted vessel each
     for zid, kind, note, stype, hold_min, start_pt in (
@@ -304,4 +324,5 @@ def make_context(scn: Scenario, parts: dict):
 
     ctx = DetectionContext(scn.zones, [], parts["baseline"], learned=parts["learned"], bounds=parts["bounds"])
     ctx.habitual = learn_zone_habits(parts["history"], ctx, DetectionConfig())
+    ctx.habits = VesselHabits().fit(parts["history"])
     return ctx

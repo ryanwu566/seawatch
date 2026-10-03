@@ -225,10 +225,13 @@ def _loiter_event(tr: Track, i: int, j: int, dur: float, med_sog: float, ctx: De
     elif tr.ship_type in ("passenger", "ferry") and port_nm < 0.5:
         sev -= 12
         ev.append("Passenger vessels lay over at terminals between runs; weighting reduced.")
-    elif tr.ship_type == "pleasure" and port_nm < 0.5:
-        sev -= 10
-        ev.append("Recreational craft often drift or idle; weighting reduced.")
+    elif tr.ship_type == "pleasure":
+        sev -= 20
+        ev.append("Recreational craft often drift, circle or idle; weighting reduced.")
     conf = 0.35 + 0.45 * _data_quality(tr, i, j, ctx)
+    if ctx.habits is not None and ctx.habits.is_habitual(tr.mmsi, la, lo):
+        sev -= 28
+        ev.append("This vessel has dwelled in this same spot before in its own history - part of its usual pattern.")
     if in_fish:
         sev -= 10
     return Event("", "loitering", [tr.mmsi], float(tr.t[i]), float(tr.t[j]), la, lo, _clip(sev), _clip(conf, 0.1, 0.95),
@@ -370,6 +373,8 @@ def detect_proximity(tracks: list[Track], t0: float, t1: float, ctx: DetectionCo
         if dur < cfg.rendezvous_min_minutes * 60 or steps < 0.6 * (k1 - k0 + 1):
             continue
         a, b = tracks[va], tracks[vb]
+        if a.ship_type == "pleasure" and b.ship_type == "pleasure":
+            continue  # recreational boats rafting up / racing together
         la, lo = float(np.nanmean(LAT[[va, vb], k0:k1 + 1])), float(np.nanmean(LON[[va, vb], k0:k1 + 1]))
         sep = float(np.nanmean(haversine_m(LAT[va, k0:k1 + 1], LON[va, k0:k1 + 1], LAT[vb, k0:k1 + 1], LON[vb, k0:k1 + 1]))) / NM_M
         port_nm = ctx.nearest_port_nm(la, lo)
@@ -598,6 +603,22 @@ def detect_status_mismatch(tracks: list[Track], ctx: DetectionContext, cfg: Dete
 DETECTORS: dict[str, Callable] = {}
 
 
+def _group_context(events: list[Event]) -> None:
+    """A loiterer surrounded by several other *notable* loiterers is part of a gathering, not a lone dweller."""
+
+    loit = [e for e in events if e.kind == "loitering" and e.severity >= 35 and "gathering" not in e.metrics]
+    for e in list(loit):
+        if any("same spot before" in z for z in e.evidence):
+            continue  # already explained by the vessel's own routine
+        near = [o for o in loit if o is not e and o.mmsis != e.mmsis and o.t_start <= e.t_end and o.t_end >= e.t_start
+                and float(haversine_m(e.lat, e.lon, o.lat, o.lon)) <= 3 * NM_M]
+        if len(near) >= 3:
+            e.severity = _clip(e.severity - 18)
+            e.evidence.append(f"{len(near)} other vessels were loitering within 3 nm at the same time - a gathering "
+                              "(regatta, fleet activity, weather refuge) rather than a lone vessel.")
+            e.metrics["gathering"] = len(near) + 1
+
+
 def run_all(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, cfg: DetectionConfig) -> list[Event]:
     events: list[Event] = []
     events += detect_gaps(tracks, ctx, cfg)
@@ -607,6 +628,7 @@ def run_all(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, cf
     events += detect_kinematics(tracks, ctx, cfg)
     events += detect_status_mismatch(tracks, ctx, cfg)
     events += detect_route_deviation(tracks, ctx, cfg)
+    _group_context(events)
     events.sort(key=lambda e: e.t_start)
     for n, e in enumerate(events, 1):
         e.id = f"E{n:03d}"

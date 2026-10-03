@@ -79,6 +79,7 @@ class DetectionContext:
     def __init__(self, zones: list[Zone], receivers: list[Receiver], baseline: TrafficBaseline | None = None,
                  allowlist: set[str] | None = None, learned=None,
                  bounds: tuple[float, float, float, float] | None = None):
+        self.habits = None  # VesselHabits: where each vessel routinely dwells (its own pattern of life)
         self.habitual: dict[str, set[str]] = {}  # zone id -> vessels that routinely enter it (learned from history)
         self.bounds = bounds  # (min_lat, min_lon, max_lat, max_lon) of the monitored area, if clipped from a bigger feed
         self.learned = learned  # LearnedContext: stands in for hand-drawn zones/receivers on regions we only know from history

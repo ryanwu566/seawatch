@@ -217,7 +217,7 @@ def _make_alert(evs: list[Event], meta: dict[str, Track], cfg: DetectionConfig, 
     ben = list(dict.fromkeys(b for e in evs for b in e.benign_explanations))
     unc = list(dict.fromkeys(u for e in evs for u in e.uncertainty))
     unc.append("Assessment uses AIS only - it infers behaviour from self-reported positions that can be missing, wrong or falsified.")
-    weights = [max(e.confidence, 0.05) * e.severity for e in evs]
+    weights = [max(e.confidence, 0.05) * max(e.severity, 1.0) for e in evs]
     conf = sum(e.confidence * w for e, w in zip(evs, weights)) / sum(weights)
     title = "Possible dark ship-to-ship transfer" if "dark_rendezvous" in kinds else " + ".join(KIND_LABEL.get(k, k) for k in kinds[:3])
     lead = max(evs, key=lambda e: e.severity)

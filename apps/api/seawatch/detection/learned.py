@@ -102,3 +102,34 @@ class LearnedContext:
     def expected_interval_s(self, lat: float, lon: float) -> float:
         ci, cj = self._cells(np.array([lat]), np.array([lon]))
         return self.median_dt.get((int(ci[0]), int(cj[0])), self.global_dt)
+
+
+class VesselHabits:
+    """Per-vessel pattern of life: where each vessel has habitually dwelled (slow / stopped) in its own history."""
+
+    def __init__(self, cell_deg: float = 0.02, min_dwell_s: float = 20 * 60):
+        self.cell_deg, self.min_dwell_s = cell_deg, min_dwell_s
+        self.cells: dict[str, set[tuple[int, int]]] = {}
+
+    def fit(self, tracks: list[Track]) -> "VesselHabits":
+        for tr in tracks:
+            if len(tr) < 3:
+                continue
+            dt = np.diff(tr.t)
+            slow = (np.nan_to_num(tr.sog, nan=0.0)[:-1] < 1.5) & (dt <= 1800)
+            ci = np.floor(tr.lat[:-1] / self.cell_deg).astype(int)
+            cj = np.floor(tr.lon[:-1] / self.cell_deg).astype(int)
+            acc: dict[tuple[int, int], float] = {}
+            for a, b, d in zip(ci[slow].tolist(), cj[slow].tolist(), dt[slow].tolist()):
+                acc[(a, b)] = acc.get((a, b), 0.0) + d
+            keep = {k for k, v in acc.items() if v >= self.min_dwell_s}
+            if keep:
+                self.cells.setdefault(tr.mmsi, set()).update(keep)
+        return self
+
+    def is_habitual(self, mmsi: str, lat: float, lon: float) -> bool:
+        cells = self.cells.get(mmsi)
+        if not cells:
+            return False
+        a, b = int(np.floor(lat / self.cell_deg)), int(np.floor(lon / self.cell_deg))
+        return any((a + i, b + j) in cells for i in (-1, 0, 1) for j in (-1, 0, 1))
