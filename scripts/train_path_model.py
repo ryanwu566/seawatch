@@ -36,8 +36,8 @@ if conf.exists():
     import pandas as pd
 
     c = pd.read_csv(conf, comment="#")
-    c["a"] = pd.to_datetime(c["t_start"], utc=True).astype("int64") / 1e9
-    c["b"] = pd.to_datetime(c["t_end"], utc=True).astype("int64") / 1e9
+    c["a"] = (pd.to_datetime(c["t_start"], utc=True) - pd.Timestamp(0, tz="UTC")).dt.total_seconds()
+    c["b"] = (pd.to_datetime(c["t_end"], utc=True) - pd.Timestamp(0, tz="UTC")).dt.total_seconds()
     n = 0
     for w in ws:
         hit = c[(c["mmsi"].astype(str) == w.mmsi) & (c["a"] <= w.t1) & (c["b"] >= w.t0)]

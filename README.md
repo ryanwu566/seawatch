@@ -144,7 +144,7 @@ AIS (real / simulated)  ->  tracks (Track objects)  ->  context learned from his
 
 Code: `apps/api/seawatch/detection/` (Python), API: `apps/api/seawatch/api/detection.py`, UI: `apps/web/src/features/watch/`.
 Longer write-ups: `docs/detection-stack.md`, `docs/rulebook.md` (generated from the live thresholds), `docs/taiwan-real-data.md`,
-`docs/research-vessel-data.md`, `docs/path-analysis.md`, `docs/real-outcomes.md`.
+`docs/research-vessel-data.md`, `docs/path-analysis.md`, `docs/integration-answers.md`, `docs/real-outcomes.md`.
 
 ### 2. Run it
 
@@ -239,6 +239,7 @@ down-weight or suppress similar alerts through `FeedbackStore` (`state.py`).
 | Isolation Forest + HistGradientBoosting second opinion (`ml.py`, `regionml.py`, `features.py`) | `data/models/ml_<region>.joblib` | 15 portable window features (reporting ratio, speed, radius, turning, implied speed, familiarity of water, stop-area share ...). Trained per region on history windows with injected behaviours as weak positives. Each alert gets `ml.agreement = agree / rules_only`, scores and the deviating features | Taiwan-GFW held-out days: rules flag 329 vessels (17 on added events); rules confirmed by the ML flag 99 (still 17) = ~74% fewer unverified alerts at no recall loss. GB ROC-AUC 0.99 is flattering (same generator as the tests); the robust finding is the confirmation filter |
 | Region transfer test (`transfer.py`) | `transfer_models.joblib` | SF-trained model on Taiwan | does **not** transfer; train per region |
 | Survey-shape classifier (`surveyml.py`) | `survey_shape.joblib` | learns zig-zag shapes from synthetic positives | experimental, **not used** (learned "synthetic vs real" shortcuts) |
+| Path-analysis agent (`pathagent.py`, `scripts/evaluate_path_agent.py`) | none (rules + optional Claude) | advisory reviewer of slow windows of research-type vessels: research gate -> speed gate -> shape features -> category (survey lines under tow, lawnmower, station-keeping work, transit, port, drift, fishing, unclear) with reasons, caveats and a rendered picture; Claude version (`SEAWATCH_PATH_AGENT=claude`, `ANTHROPIC_API_KEY`) uses the same output format and falls back to the offline rules | On the five analyst-supplied examples (`data/labels/confirmed_paths.csv`): flags 3/5 vessels inside the marked +-12 h and 5/5 within +-36 h (the marked moment is often the fast leg between two working stretches); surfaces 7 other vessels (41 episodes in total) for review. Claude reviewer not run against the live API in this repo (no key); unit-tested with a stub |
 | Path-shape model (`pathml.py`, `scripts/train_path_model.py`) | none saved | stage 1 slow-vessel filter (1.5-7 kn median, >= 8 nm path), 17 path-only features, weak labels from announced towing / restricted status | **not usable yet**: 21 windows on 9 vessels, vessel-grouped ROC-AUC 0.45; speed steadiness alone 0.68. Trained models are only worth trusting once confirmed tracks exist (`data/labels/confirmed_paths.csv` overrides the weak labels) |
 
 Real-outcome checks (`realoutcomes.py`, `docs/real-outcomes.md`): behaviour rules do not separate OFAC-sanctioned vessels (AUC ~0.49;
@@ -259,6 +260,7 @@ PRC research vessels (Heritage BG3977 Table 2, `data/labels/osint_vessels.csv`) 
 | `GET /evaluation`, `GET /truth`, `GET /ml` | measured accuracy against labels (simulated / injected regions), the labels, ML benchmark |
 | `GET /assessment` | signal-vs-noise: funnel (vessels -> events -> alerts -> HIGH), per-detector discards with reasons, factor combination table, classifications, top survey-threat vessels |
 | `GET /rulebook` | every rule with live thresholds, innocent explanations and limits |
+| `GET /path-reviews`, `GET /path-reviews/{id}/image`, `POST /path-reviews/{id}/decision`, `GET /path-reviews-export` | path-agent reviews (advisory), the picture it looked at, analyst accept / reject, accepted / rejected rows for `confirmed_paths.csv`. Alert detail also carries `path_reviews[]` |
 | `GET /layers` | GeoJSON for cables, landing points and the 12 nm / 24 nm / EEZ limit lines |
 
 For a `survey_threat` event, `metrics` contains `classification`, `rule` (R0-R7), `transit`, `mode`, and `factors` with keys
@@ -295,17 +297,18 @@ Natural Earth coastlines (public domain), not legal baselines; the GFW, OFAC and
 
 ### 9. Planned next
 
-1. **Path-analysis agent.** A language-model agent that reviews the slow windows surviving the speed filter: it is shown a picture of
-   the track, the shape-feature table and AIS context and answers what it sees (tow, lawnmower, trawl, drift, port approach) with
-   reasons. Analyst accept/reject decisions are stored and become the confirmed-path set.
-2. **Confirmed tracks.** Obtain confirmed illegal-research tracks and matched ordinary slow tracks (fishing, tugs, cable ships) from
+1. **Path-analysis agent: built (offline rules + Claude reviewer); next** is running the Claude reviewer with a key, comparing it with the
+   offline rules on the five confirmed examples, and growing the confirmed set from analyst accept / reject decisions.
+2. **Integration with the live SeaWatch system:** see `docs/integration-answers.md` (entry point `engine.analyze`, capability gating,
+   `redact()` for public ids, runtimes, open items). Review of the full rule set is the step before that.
+3. **Confirmed tracks.** Obtain confirmed illegal-research tracks and matched ordinary slow tracks (fishing, tugs, cable ships) from
    the mentor/OSINT; load them through `data/labels/confirmed_paths.csv`; retrain `pathml` and report vessel-grouped accuracy. Until then
    the learned path model stays out of the alert score.
-3. **Longer message-level history** for Taiwan to learn per-vessel routines and cut the `taiwan-day` noise; re-measure with the funnel.
-4. **UI work:** highlight the survey legs of the selected `survey_threat` event on the map, show the filtered slow-window candidates,
+4. **Longer message-level history** for Taiwan to learn per-vessel routines and cut the `taiwan-day` noise; re-measure with the funnel.
+5. **UI work:** highlight the survey legs of the selected `survey_threat` event on the map, show the filtered slow-window candidates,
    and add an agent-review panel with accept/reject.
-5. **Official geometry:** replace the modelled territorial/EEZ lines and the public cable routes with official data when available.
-6. **Sensors beyond AIS** (SAR, RF) for vessels that go dark, as an extension of `dark_rendezvous`.
+6. **Official geometry:** replace the modelled territorial/EEZ lines and the public cable routes with official data when available.
+7. **Sensors beyond AIS** (SAR, RF) for vessels that go dark, as an extension of `dark_rendezvous`.
 
 ---
 

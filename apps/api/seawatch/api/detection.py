@@ -75,7 +75,14 @@ def alerts(
 
 @router.get("/alerts/{alert_id}", summary="One alert: reasons, score breakdown, timeline, uncertainty")
 def alert_detail(alert_id: str) -> dict[str, Any]:
-    return _require(alert_id).detail()
+    a = _require(alert_id)
+    d = a.detail()
+    try:  # advisory path reviews of the same vessels in the same period (message-level regions only)
+        revs, _, _ = get_service().path_reviews()
+        d["path_reviews"] = [r.to_dict() for r in revs if r.mmsi in a.mmsis and r.flag and r.t1 >= a.t_start - 86400 and r.t0 <= a.t_end + 86400][:12]
+    except Exception:  # noqa: BLE001 - advisory only
+        d["path_reviews"] = []
+    return d
 
 
 @router.post("/alerts/{alert_id}/status", summary="Set review status (e.g. false_alarm)")
@@ -156,6 +163,61 @@ def layers() -> dict[str, Any]:
 
     return {"cables": read("taiwan_cables.geojson"), "landing": read("taiwan_landing_points.geojson"), "limits": read("taiwan_zone_lines.geojson"),
             "attribution": "Cables: TeleGeography Submarine Cable Map (CC BY-NC-SA 4.0), approximate. Limits: modelled from public coastlines, not legal baselines."}
+
+
+class ReviewDecision(BaseModel):
+    decision: str
+    operator: str = "analyst"
+    note: str = ""
+
+
+@router.get("/path-reviews", summary="Path-analysis agent: reviews of slow research-vessel windows (advisory)")
+def path_reviews(flagged_only: bool = True) -> dict[str, Any]:
+    from ..detection import pathagent
+
+    revs, funnel, reviewer = get_service().path_reviews()
+    items = [r for r in revs if r.flag or not flagged_only]
+    return {"reviewer": reviewer, "funnel": funnel, "categories": pathagent.CATEGORIES, "count": len(items),
+            "episodes": pathagent.episodes(revs), "reviews": [r.to_dict() for r in sorted(items, key=lambda r: (-r.confidence, r.t0))][:500],
+            "note": "Advisory interpretation of the path. It never changes deterministic alerts; accept / reject decisions are stored as training labels."}
+
+
+@router.get("/path-reviews/{review_id}/image", summary="Rendered track picture the agent looks at")
+def path_review_image(review_id: str):
+    from fastapi.responses import Response
+
+    import numpy as np
+
+    from ..detection import pathagent
+
+    svc = get_service()
+    revs, _, _ = svc.path_reviews()
+    r = next((x for x in revs if x.id == review_id), None)
+    if r is None:
+        raise HTTPException(status_code=404, detail="unknown review")
+    tr = next(t for t in svc.scenario.tracks if t.mmsi == r.mmsi)
+    i, j = int(np.searchsorted(tr.t, r.t0, "left")), int(np.searchsorted(tr.t, r.t1, "right"))
+    return Response(content=pathagent.render_png(tr, i, j), media_type="image/png")
+
+
+@router.post("/path-reviews/{review_id}/decision", summary="Analyst accepts or rejects an agent review")
+def path_review_decision(review_id: str, body: ReviewDecision) -> dict[str, Any]:
+    svc = get_service()
+    revs, _, _ = svc.path_reviews()
+    if not any(x.id == review_id for x in revs):
+        raise HTTPException(status_code=404, detail="unknown review")
+    try:
+        svc.review_store().decide(review_id, body.decision, body.operator, body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"id": review_id, "decision": body.decision}
+
+
+@router.get("/path-reviews-export", summary="Accepted / rejected reviews as confirmed_paths.csv rows")
+def path_review_export() -> dict[str, Any]:
+    svc = get_service()
+    revs, _, _ = svc.path_reviews()
+    return {"csv": svc.review_store().export_labels(revs)}
 
 
 @router.get("/truth", summary="Ground-truth labels (demo 'reveal answers')")

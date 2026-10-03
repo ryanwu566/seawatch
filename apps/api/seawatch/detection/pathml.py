@@ -52,16 +52,16 @@ def _angdiff(a):
     return d
 
 
-def window_features(lat, lon, speed, t) -> dict[str, float] | None:
+def window_features(lat, lon, speed, t, min_path: float = MIN_PATH_NM, min_moving: int = 8) -> dict[str, float] | None:
     """Path-only features for one resampled window (arrays on the STEP_S grid)."""
 
     x, y = _xy(lat, lon)
     hd, d = _headings(x, y)
     path = float(d.sum())
-    if path < MIN_PATH_NM:
+    if path < min_path:
         return None
     moving = d > 0.05  # > 0.3 kn
-    if moving.sum() < 8:
+    if moving.sum() < min_moving:
         return None
     hdm = hd[moving]
     turns = np.abs(_angdiff(hdm))
@@ -128,11 +128,12 @@ class Window:
     declared_by: str
 
 
-def windows_for(tr: Track, window_s: float = WINDOW_S, hop_s: float = HOP_S) -> list[Window]:
+def windows_for(tr: Track, window_s: float = WINDOW_S, hop_s: float = HOP_S, min_kn: float = MIN_MEDIAN_KN, max_kn: float = MAX_MEDIAN_KN,
+                min_path: float = MIN_PATH_NM, min_moving: int = 8, max_gap_s: float = 2400.0, min_pts: int = 12) -> list[Window]:
     """All slow, moving windows of one track (stage 1 + feature extraction), with weak labels from what the vessel broadcast."""
 
     out: list[Window] = []
-    if len(tr) < 20:
+    if len(tr) < min(20, 2 * min_pts):
         return out
     t = tr.t
     tw = (tr.extra or {}).get("tow_t")
@@ -140,25 +141,25 @@ def windows_for(tr: Track, window_s: float = WINDOW_S, hop_s: float = HOP_S) -> 
     while start + window_s <= t[-1]:
         i, j = np.searchsorted(t, start, "left"), np.searchsorted(t, start + window_s, "right")
         start += hop_s
-        if j - i < 12:
+        if j - i < min_pts:
             continue
         tt = t[i:j]
-        if np.max(np.diff(tt)) > 2400.0 or (tt[-1] - tt[0]) < 0.9 * window_s:
+        if np.max(np.diff(tt)) > max_gap_s or (tt[-1] - tt[0]) < 0.9 * window_s:
             continue
         grid = np.arange(tt[0], tt[0] + window_s, STEP_S)
         lat = np.interp(grid, tt, tr.lat[i:j])
         lon = np.interp(grid, tt, tr.lon[i:j])
         raw_sp = tr.sog[i:j]
         sp = np.interp(grid, tt, np.where(np.isfinite(raw_sp), raw_sp, 0.0))
-        if not (MIN_MEDIAN_KN <= np.median(sp) <= MAX_MEDIAN_KN):  # stage 1: transit is too fast, moored / anchored too slow
+        if not (min_kn <= np.median(sp) <= max_kn):  # stage 1: transit is too fast, moored / anchored too slow
             continue
-        f = window_features(lat, lon, sp, grid)
+        f = window_features(lat, lon, sp, grid, min_path, min_moving)
         if f is None:
             continue
         label, by = 0, ""
         if tw is not None and np.any((tw >= tt[0]) & (tw <= tt[-1])):
             label, by = 1, "towing text"
-        elif tr.status is not None and np.mean(np.asarray(tr.status[i:j]) == 3) >= 0.5 and np.median(raw_sp[np.isfinite(raw_sp)] if np.isfinite(raw_sp).any() else [0]) <= MAX_MEDIAN_KN:
+        elif tr.status is not None and np.mean(np.asarray(tr.status[i:j]) == 3) >= 0.5 and np.median(raw_sp[np.isfinite(raw_sp)] if np.isfinite(raw_sp).any() else [0]) <= max_kn:
             label, by = 1, "restricted manoeuvre"
         out.append(Window(tr.mmsi, float(tt[0]), float(tt[-1]), float(lat.mean()), float(lon.mean()), f, label, by))
     return out

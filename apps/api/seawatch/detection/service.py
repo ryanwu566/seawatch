@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 from typing import Any
 
@@ -274,6 +275,33 @@ class DetectionService:
         out = evaluate_alerts(al, self.scenario)
         out["real_background"] = self.info["data_kind"] == "real_plus_injected"
         return out
+
+    # -- path-analysis agent (advisory) ---------------------------------------- #
+    def path_reviews(self):
+        """Research-gate -> speed-gate -> shape features -> reviewer, for message-level regions. Cached; decisions come from the ReviewStore."""
+
+        from . import pathagent
+        from .cables import Cables
+        from .territory import Territory
+
+        if self.hourly:
+            return [], {"note": "Hourly presence data has no speed or status: the path agent needs message-level AIS."}, "none"
+        with self.lock:
+            if getattr(self, "_path", None) is None:
+                use_claude = os.environ.get("SEAWATCH_PATH_AGENT", "offline") == "claude" and pathagent.ClaudeReviewer.available()
+                reviewer = pathagent.ClaudeReviewer() if use_claude else pathagent.OfflineReviewer()
+                revs, funnel = pathagent.review_vessels(self.scenario.tracks, reviewer, Territory.default(), Cables.default())
+                self._path = (revs, funnel, reviewer.name)
+            if getattr(self, "_review_store", None) is None:
+                self._review_store = pathagent.ReviewStore()
+            revs, funnel, rn = self._path
+            for r in revs:
+                self._review_store.apply(r)
+            return revs, funnel, rn
+
+    def review_store(self):
+        self.path_reviews()
+        return self._review_store
 
     def assessment(self) -> dict[str, Any]:
         """How well activity is identified and how signal is separated from noise: funnel, per-detector discards, factor table, recall."""

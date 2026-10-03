@@ -1,3 +1,4 @@
+import { PathReviews } from "./PathReviews";
 import { FactorCards } from "./Insight";
 import { useState } from "react";
 import type { AlertDetail, ReviewStatus } from "./api";
@@ -157,6 +158,8 @@ export function AlertPanel({ detail, loading, busy, onStatus, onNote, onClose }:
             })}
           </ol>
         </section>
+
+        <PathReviews items={detail.path_reviews ?? []} />
 
         <section className="wf-two">
           <div>

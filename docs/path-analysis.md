@@ -39,3 +39,22 @@ cable ships, fishing boats and tugs (negatives); the negatives are what keeps a 
 A language-model agent is a better fit than a classifier at this data size: render the slow windows that survive the filter as a
 picture plus the feature table and the vessel's AIS context, and have the agent say what it sees (tow, lawnmower, trawl, drift,
 port approach) with its reasoning, for the analyst to accept or reject. Accepted and rejected cases then become the confirmed set above.
+
+
+## Update: the agent, and the analyst's confirmed examples
+
+Five tracks the analyst marked after reviewing the research files in kepler.gl are in `data/labels/confirmed_paths.csv` (HAIYANGDIZHI BAHAO
+11 Apr, DONG FANG HONG 3 6 Apr, XIANG YANG HONG 01 3 Apr, LIAO YUE 16 Apr, TAN SUO ER HAO 4 Apr). Plotting them showed three kinds of activity:
+survey lines under tow (BAHAO: restricted-manoeuvre status, 'TOWING 5NM CABLE(S)', steady 4 kn, five parallel legs; XIANG YANG HONG 01: a hooked
+slow line), station-keeping in restricted status (LIAO YUE and DONG FANG HONG 3: under 2 kn inside a few nm), and a tow joined to a fast run
+(TAN SUO ER HAO). Hence the agent categories and the rule that a research-declared vessel holding restricted status at low speed in a small area is
+reported as station-keeping work.
+
+`pathagent.py` implements the pipeline: research gate (declared name / registry class / towing text; restricted status alone is not enough
+because wind-farm and offshore-construction vessels hold it for weeks) -> speed gate (median <= 7 kn, parked included) -> shape features -> reviewer.
+Result on the April data: 7,548 vessels -> 32-39 pass the research gate -> 261-279 slow windows -> 87 flagged (41 episodes). The five confirmed
+vessels: 3/5 flagged inside the marked +-12 h, 5/5 within +-36 h. The two that miss the narrow range (DONG FANG HONG 3, TAN SUO ER HAO) were marked at
+the fast leg between two working stretches; the agent flags the working stretches either side.
+Retraining the learned path model with these labels is not worth reporting: they add 4 windows to the 21 weak positives.
+
+Use: `python scripts/evaluate_path_agent.py [--images DIR] [--claude]`; API `/detection/path-reviews`; UI "Path review (advisory)" in the alert panel.

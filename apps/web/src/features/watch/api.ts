@@ -77,6 +77,7 @@ export interface MlOpinion {
 }
 
 export interface AlertDetail extends AlertSummary {
+  path_reviews?: PathReviewDto[];
   ml: MlOpinion | null;
   reasons: string[];
   breakdown: BreakdownItem[];
@@ -173,6 +174,27 @@ export interface TruthEvent {
   benign: boolean;
 }
 
+export interface PathReviewDto {
+  id: string;
+  mmsi: string;
+  name: string;
+  t0: number;
+  t1: number;
+  lat: number;
+  lon: number;
+  category: string;
+  category_description: string;
+  flag: boolean;
+  confidence: number;
+  summary: string;
+  reasons: string[];
+  caveats: string[];
+  features: Record<string, number>;
+  context: Record<string, unknown>;
+  reviewer: string;
+  decision: "pending" | "accepted" | "rejected";
+}
+
 export interface Assessment {
   region: string;
   data_kind: string;
@@ -245,6 +267,9 @@ export const watchApi = {
   evaluation: () => request<Evaluation>("/detection/evaluation"),
   assessment: () => request<Assessment>("/detection/assessment"),
   rulebook: () => request<Rulebook>("/detection/rulebook"),
+  pathReviews: () => request<{ reviewer: string; funnel: Record<string, number>; reviews: PathReviewDto[] }>("/detection/path-reviews"),
+  decidePathReview: (id: string, decision: "accepted" | "rejected") =>
+    request<{ id: string; decision: string }>(`/detection/path-reviews/${encodeURIComponent(id)}/decision`, { method: "POST", body: JSON.stringify({ decision }) }),
   layers: () => request<{ cables: GeoJSON.FeatureCollection; landing: GeoJSON.FeatureCollection; limits: GeoJSON.FeatureCollection; attribution: string }>("/detection/layers"),
   truth: () => request<{ truth: TruthEvent[] }>("/detection/truth").then((r) => r.truth),
   resetFeedback: () => post<{ status: string }>("/detection/feedback/reset", {}),
