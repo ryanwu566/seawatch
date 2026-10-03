@@ -37,6 +37,11 @@ export function PathReviews({ items }: { items: PathReviewDto[] }) {
                 </span>
               </div>
               <div>{r.summary}</div>
+              {r.second_reader && (
+                <div className="wf-fine">
+                  Language-model reader {r.second_reader.agrees ? "agrees" : `disagrees (reads it as ${r.second_reader.category.replace(/_/g, " ")})`}.
+                </div>
+              )}
               <button type="button" className="wf-link" onClick={() => setOpen(open === r.id ? null : r.id)}>
                 {open === r.id ? "hide picture and reasons" : "show picture and reasons"}
               </button>

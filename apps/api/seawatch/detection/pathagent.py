@@ -27,6 +27,7 @@ import json
 import os
 import re
 import threading
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,7 @@ class PathReview:
     context: dict[str, Any]
     reviewer: str  # offline | claude:<model> | offline (claude failed: ...)
     decision: str = "pending"  # pending | accepted | rejected
+    second_reader: dict[str, Any] | None = None  # language-model reading of the same window, when one is configured
 
     def to_dict(self, with_image: bool = False) -> dict[str, Any]:
         d = asdict(self)
@@ -290,11 +292,14 @@ def review_vessels(tracks: list[Track], reviewer=None, terr=None, cab=None, with
             c = _context(tr, i, j, terr, cab)
             c["gate"] = why
             img = render_png(tr, i, j, w) if (with_images or isinstance(reviewer, ClaudeReviewer)) else None
+            if hasattr(reviewer, 'path'):
+                reviewer.path = describe_path(tr, i, j)
             r = reviewer.review(w.feats, c, img)
             rid = f"P-{tr.mmsi}-{int(w.t0)}"
             rv = PathReview(rid, tr.mmsi, tr.name, w.t0, w.t1, w.lat, w.lon, r["category"], bool(r.get("flag", r["category"] in FLAGGED)), r["confidence"],
                             r["summary"], r["reasons"], r["caveats"], {k: round(float(v), 3) for k, v in w.feats.items()}, c,
-                            reviewer.name + (f" (fallback: {r['fallback_reason']})" if r.get("fallback_reason") else ""))
+                            reviewer.name + (f" (fallback: {r['fallback_reason']})" if r.get("fallback_reason") else ""),
+                            second_reader=r.get("second_reader"))
             funnel["flagged"] += int(rv.flag)
             out.append(rv)
     return out, funnel
@@ -366,3 +371,145 @@ class ReviewStore:
                 b = dt.datetime.fromtimestamp(r.t1, dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 rows.append(f"{r.mmsi},{a},{b},{1 if d == 'accepted' else 0},analyst review {r.id} ({r.category})")
         return "\n".join(rows) + "\n"
+
+
+# --------------------------------------------------------------------------- #
+# Text-only reviewer for OpenAI-compatible hosts (Featherless.ai and similar): no image, a compact numeric description of the path
+# --------------------------------------------------------------------------- #
+TEXT_SYSTEM = (
+    "You review one ship's track for a maritime decision-support tool. You get numbers only (no picture): shape features, AIS context and "
+    "a resampled path. Decide what the movement looks like. You never decide intent or legality. Answer with ONE JSON object and nothing else, "
+    "keys: category, flag, confidence, summary, reasons, caveats. 'category' must be exactly one of the listed names. 'flag' is true only for "
+    "survey_lines_under_tow, lawnmower_survey, station_keeping_work or tow_then_transit. 'reasons' cites the numbers. Prefer other_unclear when unsure."
+)
+
+
+def describe_path(tr: Track, i: int, j: int, n: int = 16) -> list[dict[str, float]]:
+    """Compact text description of the path: n points with position offsets from the start (nm), speed and heading."""
+
+    idx = np.unique(np.linspace(i, j - 1, min(n, j - i)).astype(int))
+    lat0, lon0 = float(tr.lat[idx[0]]), float(tr.lon[idx[0]])
+    out = []
+    for k in idx:
+        dn = (float(tr.lat[k]) - lat0) * 60.0
+        de = (float(tr.lon[k]) - lon0) * 60.0 * float(np.cos(np.radians(lat0)))
+        out.append({"h": round((tr.t[k] - tr.t[idx[0]]) / 3600.0, 2), "north_nm": round(dn, 1), "east_nm": round(de, 1),
+                    "kn": round(float(tr.sog[k]), 1) if np.isfinite(tr.sog[k]) else None})
+    return out
+
+
+class OpenAICompatReviewer:
+    """Chat-completions reviewer for any OpenAI-compatible host. Text only. Falls back to the offline rules on any failure."""
+
+    def __init__(self, base_url: str, model: str, key: str, name: str = "llm", timeout: float = 60.0):
+        self.base_url, self.model, self._key, self.timeout = base_url.rstrip("/"), model, key, timeout
+        self.name = f"{name}:{model}"
+        self._fallback = OfflineReviewer()
+        self.path: list[dict[str, float]] = []
+
+    def review(self, f: dict[str, float], c: dict[str, Any], image_png: bytes | None = None) -> dict[str, Any]:
+        import urllib.error
+        import urllib.request
+
+        facts = {"features": {k: round(float(v), 3) for k, v in f.items()}, "context": {k: v for k, v in c.items() if k != "declared_reasons"},
+                 "path": self.path, "categories": CATEGORIES}
+        body = json.dumps({"model": self.model, "max_tokens": 500, "temperature": 0.1,
+                           "messages": [{"role": "system", "content": TEXT_SYSTEM}, {"role": "user", "content": "Review this window.\n" + json.dumps(facts)}]}).encode()
+        req = urllib.request.Request(self.base_url + "/chat/completions", data=body,
+                                     headers={"Content-Type": "application/json", "Authorization": "Bearer " + self._key, "User-Agent": "seawatch/1.0"})
+        try:
+            text = ""
+            for attempt in range(3):  # busy host (HTTP 429 / 5xx): wait and retry, then fall back to the rules
+                try:
+                    with urllib.request.urlopen(req, timeout=self.timeout) as r:
+                        text = json.load(r)["choices"][0]["message"]["content"]
+                    break
+                except urllib.error.HTTPError as he:
+                    if he.code not in (429, 500, 502, 503) or attempt == 2:
+                        raise
+                    time.sleep(2.0 * (attempt + 1))
+            m = re.search(r"\{.*\}", text, re.S)
+            data = json.loads(m.group(0)) if m else {}
+            cat = data.get("category")
+            if cat not in CATEGORIES:
+                raise ValueError("unknown category")
+            return {"category": cat, "confidence": float(min(1.0, max(0.0, float(data.get("confidence", 0.5))))), "summary": str(data.get("summary", ""))[:300],
+                    "reasons": [str(x)[:240] for x in data.get("reasons", [])][:8], "caveats": [str(x)[:240] for x in data.get("caveats", [])][:5],
+                    "flag": cat in FLAGGED}  # the category decides; small models contradict their own flag field
+        except Exception as exc:  # noqa: BLE001 - advisory only; never break monitoring
+            res = self._fallback.review(f, c, image_png)
+            res["fallback_reason"] = type(exc).__name__
+            return res
+
+
+def featherless_reviewer(model: str | None = None):
+    """Reviewer backed by Featherless.ai if FEATHERLESS_API (or _KEY) is set in the environment / .env, else None."""
+
+    from .llmenv import secret
+
+    key = secret("FEATHERLESS_API")
+    if not key:
+        return None
+    return OpenAICompatReviewer("https://api.featherless.ai/v1", model or os.environ.get("SEAWATCH_FEATHERLESS_MODEL", "Qwen/Qwen2.5-7B-Instruct"), key, "featherless")
+
+
+class EnsembleReviewer:
+    """Rules decide the flag; a language model reads the same window as a second opinion. Disagreement is shown, never hidden.
+
+    A small hosted model is cheap but unreliable on its own, so it can neither create nor remove a flag: it adjusts confidence (+0.1 when it
+    agrees on the flag, -0.15 when it does not) and adds its own reading to the reasons and caveats.
+    """
+
+    def __init__(self, primary, second):
+        self.primary, self.second = primary, second
+        self.name = f"{primary.name}+{second.name}"
+        self.path: list[dict[str, float]] = []
+
+    def review(self, f: dict[str, float], c: dict[str, Any], image_png: bytes | None = None) -> dict[str, Any]:
+        r = self.primary.review(f, c, image_png)
+        if hasattr(self.second, "path"):
+            self.second.path = self.path
+        s = self.second.review(f, c, image_png)
+        if "fallback_reason" in s:  # the second reader failed: keep the rules' answer and say so
+            r.setdefault("caveats", []).append(f"Second reader unavailable ({s['fallback_reason']}); rules only.")
+            return r
+        agree = bool(s["flag"]) == bool(r.get("flag", r["category"] in FLAGGED))
+        r["confidence"] = round(float(min(0.99, max(0.05, r["confidence"] + (0.1 if agree else -0.15)))), 2)
+        r["reasons"] = list(r["reasons"]) + [f"Second reader ({self.second.name}) says: {s['category'].replace('_', ' ')} - {s['summary']}"]
+        if not agree:
+            r["caveats"] = list(r["caveats"]) + [f"The language-model reader disagrees on whether this deserves attention ({s['category'].replace('_', ' ')})."]
+        r["second_reader"] = {"category": s["category"], "flag": bool(s["flag"]), "agrees": agree}
+        return r
+
+
+def add_second_readings(reviews: list[PathReview], tracks: dict[str, Track], second, workers: int = 3, only_flagged: bool = True) -> int:
+    """Ask a language-model reader about the flagged windows (in parallel) and merge its answer into each review in place. Returns how many were read.
+
+    Same rules as ``EnsembleReviewer``: the rules keep the flag; the reader adjusts confidence and adds its reading or its disagreement.
+    """
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    todo = [r for r in reviews if (r.flag or not only_flagged) and r.second_reader is None]
+
+    def one(r: PathReview) -> bool:
+        tr = tracks.get(r.mmsi)
+        if tr is None:
+            return False
+        i, j = int(np.searchsorted(tr.t, r.t0, "left")), int(np.searchsorted(tr.t, r.t1, "right"))
+        rd = OpenAICompatReviewer(second.base_url, second.model, second._key, "featherless", second.timeout)
+        rd.path = describe_path(tr, i, j)
+        s = rd.review(r.features, r.context)
+        if "fallback_reason" in s:
+            return False
+        agree = bool(s["flag"]) == r.flag
+        r.confidence = round(float(min(0.99, max(0.05, r.confidence + (0.1 if agree else -0.15)))), 2)
+        r.reasons = list(r.reasons) + [f"Second reader ({second.name}) says: {s['category'].replace('_', ' ')} - {s['summary']}"]
+        if not agree:
+            r.caveats = list(r.caveats) + [f"The language-model reader disagrees on whether this deserves attention ({s['category'].replace('_', ' ')})."]
+        r.second_reader = {"category": s["category"], "flag": bool(s["flag"]), "agrees": agree}
+        r.reviewer = f"{r.reviewer}+{second.name}"
+        return True
+
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        return sum(ex.map(one, todo))

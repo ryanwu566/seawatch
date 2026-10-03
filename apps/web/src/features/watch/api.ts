@@ -193,6 +193,7 @@ export interface PathReviewDto {
   context: Record<string, unknown>;
   reviewer: string;
   decision: "pending" | "accepted" | "rejected";
+  second_reader?: { category: string; flag: boolean; agrees: boolean } | null;
 }
 
 export interface Assessment {

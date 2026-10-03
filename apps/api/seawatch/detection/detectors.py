@@ -668,6 +668,9 @@ def run_all(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, cf
         from .threat import detect_survey_threat
 
         events += detect_survey_threat(tracks, ctx, cfg)
+        from .cableactivity import detect_cable_activity
+
+        events += detect_cable_activity(tracks, ctx, cfg)
     else:
         from .survey import detect_survey_pattern
 

@@ -31,6 +31,7 @@ export const KIND_META: Record<string, KindMeta> = {
   zone_entry: { label: "Zone entry", short: "ZONE", color: "#ff6b6b", what: "Entering a protected, restricted or cable zone." },
   position_jump: { label: "Position anomaly", short: "SPOOF?", color: "#74c0fc", what: "Reported position jumps in a physically impossible way." },
   identity_conflict: { label: "Identity conflict", short: "CLONE?", color: "#63e6be", what: "One MMSI reported from two places at once." },
+  cable_activity: { label: "Slow on a submarine cable", short: "CABLE", color: "#22d3ee", what: "A vessel of any type, fishing included, slow or stopped on a charted cable away from harbours." },
   survey_threat: { label: "Suspected unauthorised survey", short: "SURVEY THREAT", color: "#ff6b35", what: "A survey-like vessel in or near Taiwan's waters: territory, speed, AIS declaration and track pattern." },
   survey_pattern: { label: "Survey-like track", short: "SURVEY", color: "#ff922b", what: "Back-and-forth lawnmower or zig-zag legs typical of seabed / cable survey work." },
   status_mismatch: { label: "Status mismatch", short: "STATUS", color: "#a5d8ff", what: "Declares itself anchored or moored but is under way." },

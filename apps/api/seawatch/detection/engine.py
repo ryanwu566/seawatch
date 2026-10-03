@@ -42,6 +42,7 @@ REQUIREMENTS: dict[str, dict[str, Any]] = {
     "status_mismatch": {"min_points": 5, "min_span_s": 900, "fields": ["status"], "densities": ["message_level", "sparse_live"]},
     "route_deviation": {"min_points": 8, "min_span_s": 3600, "fields": ["sog"], "densities": ["message_level", "hourly_presence"]},
     "survey_pattern": {"min_points": 24, "min_span_s": 12 * 3600, "fields": [], "densities": ["message_level", "hourly_presence"]},
+    "cable_activity": {"min_points": 6, "min_span_s": 2700, "fields": [], "densities": ["message_level", "sparse_live"]},
     "survey_threat": {"min_points": 4, "min_span_s": 0, "fields": [], "densities": ["message_level", "sparse_live", "hourly_presence"]},
 }
 #: event kinds produced by each requirement entry (dark_rendezvous comes from ais_gap + loitering/rendezvous/cluster)

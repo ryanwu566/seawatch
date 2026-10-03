@@ -30,7 +30,7 @@ REGIONS: dict[str, dict[str, Any]] = {
         "note": "Real hourly AIS presence (Global Fishing Watch, ~11 km cells, 1-29 Sep 2026) with labelled behaviours added. "
                 "History (1-25 Sep) trains the baselines; the last 4 days are monitored. Not message-level AIS.",
         "model_path": "data/models/ml_taiwan-gfw.joblib", "features": PORTABLE, "hourly": True,
-        "only": ("survey_threat", "survey_pattern", "zone_entry", "position_jump"),
+        "only": ("survey_threat", "survey_pattern", "zone_entry", "position_jump", "cable_activity"),
     },
     "taiwan-research": {
         "label": "Research vessels near Taiwan - real AIS (1-16 Apr 2026)", "timezone": "Asia/Taipei", "data_kind": "real",
@@ -43,7 +43,7 @@ REGIONS: dict[str, dict[str, Any]] = {
         "note": "Real message-level AIS of the whole area (hackathon-supplied) with research vessels included. Nothing injected; learned from 2 Apr, monitored 3 Apr.",
         "model_path": "data/models/none.joblib", "features": None, "dense": True,
         # national-threat focus: gaps, loitering, rendezvous and clusters are not reliable enough here (see docs/rules-walkthrough.md)
-        "only": ("survey_threat", "survey_pattern", "zone_entry", "position_jump", "identity_conflict"),
+        "only": ("survey_threat", "survey_pattern", "zone_entry", "position_jump", "identity_conflict", "cable_activity"),
     },
     "taiwan": {
         "label": "Taiwan waters (simulated)", "timezone": "Asia/Taipei", "data_kind": "simulated",
@@ -98,6 +98,7 @@ _DETECT_LAG = {
     "status_mismatch": lambda e, c: e.t_start + 900,
     "survey_pattern": lambda e, c: e.t_start + 0.6 * (e.t_end - e.t_start),
     "survey_threat": lambda e, c: e.t_start + 0.5 * (e.t_end - e.t_start),
+    "cable_activity": lambda e, c: e.t_start + 0.6 * (e.t_end - e.t_start),
 }
 
 
@@ -299,10 +300,16 @@ class DetectionService:
             return [], {"note": "Hourly presence data has no speed or status: the path agent needs message-level AIS."}, "none"
         with self.lock:
             if getattr(self, "_path", None) is None:
-                use_claude = os.environ.get("SEAWATCH_PATH_AGENT", "offline") == "claude" and pathagent.ClaudeReviewer.available()
-                reviewer = pathagent.ClaudeReviewer() if use_claude else pathagent.OfflineReviewer()
+                mode = os.environ.get("SEAWATCH_PATH_AGENT", "offline")
+                reviewer = pathagent.OfflineReviewer()
+                if mode == "claude" and pathagent.ClaudeReviewer.available():
+                    reviewer = pathagent.ClaudeReviewer()
+                second = pathagent.featherless_reviewer() if mode == "featherless" else None
                 revs, funnel = pathagent.review_vessels(self.scenario.tracks, reviewer, Territory.default(), Cables.default())
                 self._path = (revs, funnel, reviewer.name)
+                if second is not None:  # rules answer immediately; the language-model second reading fills in from a background thread
+                    by_id = {t.mmsi: t for t in self.scenario.tracks}
+                    threading.Thread(target=lambda: pathagent.add_second_readings(revs, by_id, second), daemon=True).start()
             if getattr(self, "_review_store", None) is None:
                 self._review_store = pathagent.ReviewStore()
             revs, funnel, rn = self._path

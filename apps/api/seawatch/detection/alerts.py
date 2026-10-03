@@ -22,11 +22,11 @@ from .models import Event, Track
 KIND_LABEL = {
     "ais_gap": "AIS silence", "loitering": "Loitering", "rendezvous": "Slow rendezvous", "cluster": "Vessel cluster",
     "zone_entry": "Protected-zone entry", "position_jump": "Position anomaly", "identity_conflict": "Identity conflict",
-    "route_deviation": "Off-route", "status_mismatch": "Status mismatch", "survey_pattern": "Survey-like track", "survey_threat": "Suspected unauthorised survey", "dark_rendezvous": "Possible dark transfer",
+    "route_deviation": "Off-route", "status_mismatch": "Status mismatch", "survey_pattern": "Survey-like track", "survey_threat": "Suspected unauthorised survey", "cable_activity": "Slow on a submarine cable", "dark_rendezvous": "Possible dark transfer",
 }
 KIND_WEIGHT = {
     "ais_gap": 0.90, "loitering": 0.80, "rendezvous": 1.00, "cluster": 0.90, "zone_entry": 1.00,
-    "position_jump": 0.90, "identity_conflict": 1.00, "route_deviation": 0.70, "status_mismatch": 0.60, "survey_pattern": 1.00, "survey_threat": 1.00, "dark_rendezvous": 1.00,
+    "position_jump": 0.90, "identity_conflict": 1.00, "route_deviation": 0.70, "status_mismatch": 0.60, "survey_pattern": 1.00, "survey_threat": 1.00, "cable_activity": 1.00, "dark_rendezvous": 1.00,
 }
 ACTIONS = {
     "HIGH": "Escalate: task an ISR/patrol asset or request SAR / RF-emission confirmation of the area now.",
