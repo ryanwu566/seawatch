@@ -22,6 +22,12 @@ import {
   type BasemapStage,
   type OnlineFailureState,
 } from "../config/offlineMap";
+import {
+  MARITIME_REFERENCE_LAYER_IDS,
+  MARITIME_REFERENCE_SOURCES,
+  isMaritimeReferenceSourceId,
+  maritimeReferenceUrl,
+} from "../config/maritimeReference";
 import { projectPosition, type MeasuredFix } from "../lib/interpolation";
 import { normalizeOrientation } from "../lib/orientation";
 import { makeShipIcon } from "../lib/shipIcon";
@@ -111,6 +117,53 @@ const ALL_VESSEL_INTERACTIVE_LAYERS = [...VESSEL_INTERACTIVE_LAYERS, AREA_VESSEL
 
 const FOLLOW_ZOOM = 11;
 
+const MARITIME_REFERENCE_LAYER_SPECS: LayerSpecification[] = [
+  {
+    id: MARITIME_REFERENCE_LAYER_IDS.eez.fill,
+    type: "fill",
+    source: "seawatch-eez-reference",
+    paint: { "fill-color": "#38bdf8", "fill-opacity": 0.05 },
+  },
+  {
+    id: MARITIME_REFERENCE_LAYER_IDS.contiguousZone24Nm.fill,
+    type: "fill",
+    source: "seawatch-contiguous-zone-24nm",
+    paint: { "fill-color": "#f59e0b", "fill-opacity": 0.055 },
+  },
+  {
+    id: MARITIME_REFERENCE_LAYER_IDS.territorialSea12Nm.fill,
+    type: "fill",
+    source: "seawatch-territorial-sea-12nm",
+    paint: { "fill-color": "#2dd4bf", "fill-opacity": 0.075 },
+  },
+  {
+    id: MARITIME_REFERENCE_LAYER_IDS.eez.line,
+    type: "line",
+    source: "seawatch-eez-reference",
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": "#38bdf8", "line-opacity": 0.72, "line-width": 1.2 },
+  },
+  {
+    id: MARITIME_REFERENCE_LAYER_IDS.contiguousZone24Nm.line,
+    type: "line",
+    source: "seawatch-contiguous-zone-24nm",
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: {
+      "line-color": "#fbbf24",
+      "line-opacity": 0.88,
+      "line-width": 1.5,
+      "line-dasharray": [2, 1.5],
+    },
+  },
+  {
+    id: MARITIME_REFERENCE_LAYER_IDS.territorialSea12Nm.line,
+    type: "line",
+    source: "seawatch-territorial-sea-12nm",
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: { "line-color": "#5eead4", "line-opacity": 0.92, "line-width": 1.8 },
+  },
+];
+
 /**
  * The product map. All live vessels render through ONE GeoJSON source + a halo
  * circle layer and a symbol layer (no DOM element per vessel). The selected
@@ -147,6 +200,7 @@ export function MapCanvas({
   const vesselsRef = useRef<LiveVesselFeature[]>([]);
   const rafRef = useRef<number | null>(null);
   const currentBaseRef = useRef<string>(layers.baseMap);
+  const layersRef = useRef<LayerState>(layers);
   const selectedIdRef = useRef<string | null>(selectedId);
   const selectedSourceRef = useRef<"live" | "datalastic" | null>(selectedSource);
   const followRef = useRef<boolean>(follow);
@@ -172,6 +226,7 @@ export function MapCanvas({
 
   // Keep latest props in refs for the animation loop and event handlers.
   vesselsRef.current = vessels;
+  layersRef.current = layers;
   selectedIdRef.current = selectedId;
   selectedSourceRef.current = selectedSource;
   followRef.current = follow;
@@ -197,6 +252,7 @@ export function MapCanvas({
     map.addControl(new maplibregl.NavigationControl(), "top-right");
 
     map.on("error", (e) => {
+      if (isMaritimeReferenceSourceId((e as { sourceId?: unknown }).sourceId)) return;
       const msg = (e?.error && (e.error as Error).message) || "";
       const basemapFailed =
         stageRef.current === "pmtiles" || /tile|source|network|fetch|response code/i.test(msg);
@@ -213,11 +269,11 @@ export function MapCanvas({
           failureRef.current = nextFailure;
           stageRef.current = nextStage;
           setBasemapStage(nextStage);
-          map.setStyle(styleForStage(nextStage, layers.baseMap));
+          map.setStyle(styleForStage(nextStage, layersRef.current.baseMap));
           map.once("styledata", () =>
             restoreOverlays(
               map,
-              layers,
+              layersRef.current,
               vesselsRef.current,
               selectedIdRef.current,
               selectedSourceRef.current,
@@ -242,11 +298,11 @@ export function MapCanvas({
       if (desiredStage !== stageRef.current) {
         stageRef.current = desiredStage;
         setBasemapStage(desiredStage);
-        map.setStyle(styleForStage(desiredStage, layers.baseMap));
+        map.setStyle(styleForStage(desiredStage, layersRef.current.baseMap));
         map.once("styledata", () =>
           restoreOverlays(
             map,
-            layers,
+            layersRef.current,
             vesselsRef.current,
             selectedIdRef.current,
             selectedSourceRef.current,
@@ -272,9 +328,9 @@ export function MapCanvas({
         selectedIdRef.current,
         selectedSourceRef.current,
       );
-      applyLayerVisibility(map, layers, selectedIdRef.current);
-      applyPorts(map, layers);
-      applyAirspace(map, layers);
+      applyLayerVisibility(map, layersRef.current, selectedIdRef.current);
+      applyPorts(map, layersRef.current);
+      applyAirspace(map, layersRef.current);
       emitViewport(map, onViewportChange);
     });
 
@@ -506,11 +562,11 @@ export function MapCanvas({
     if (nextStage === stageRef.current) return;
     stageRef.current = nextStage;
     setBasemapStage(nextStage);
-    map.setStyle(styleForStage(nextStage, layers.baseMap));
+    map.setStyle(styleForStage(nextStage, layersRef.current.baseMap));
     map.once("styledata", () =>
       restoreOverlays(
         map,
-        layers,
+        layersRef.current,
         vesselsRef.current,
         selectedIdRef.current,
         selectedSourceRef.current,
@@ -541,9 +597,9 @@ export function MapCanvas({
         selectedIdRef.current,
         selectedSourceRef.current,
       );
-      applyLayerVisibility(map, layers, selectedIdRef.current);
-      applyPorts(map, layers);
-      applyAirspace(map, layers);
+      applyLayerVisibility(map, layersRef.current, selectedIdRef.current);
+      applyPorts(map, layersRef.current);
+      applyAirspace(map, layersRef.current);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layers.baseMap]);
@@ -713,6 +769,7 @@ export function MapCanvas({
 // --- helpers (module scope so the animation loop can reuse them) ------------ //
 
 function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
+  installMaritimeReferenceOverlays(map);
   if (!map.hasImage(SHIP_ICON)) {
     const icon = makeShipIcon();
     // Register as SDF so the symbol layer's data-driven icon-color is valid.
@@ -997,6 +1054,21 @@ function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
   // change via restoreOverlays. Idempotent: existing sources are updated via
   // setData and existing layers are not re-added (no duplicate registration).
   installGenericOverlays(map, overlays);
+}
+
+function installMaritimeReferenceOverlays(map: maplibregl.Map) {
+  for (const source of MARITIME_REFERENCE_SOURCES) {
+    if (!map.getSource(source.id)) {
+      map.addSource(source.id, {
+        type: "geojson",
+        data: maritimeReferenceUrl(source.route),
+        attribution: source.attribution,
+      });
+    }
+  }
+  for (const layer of MARITIME_REFERENCE_LAYER_SPECS) {
+    if (!map.getLayer(layer.id)) map.addLayer(layer);
+  }
 }
 
 /** Install/refresh generic caller overlays without duplicating registrations. */
@@ -1297,6 +1369,28 @@ function escapeHtml(s: string): string {
 }
 
 function applyLayerVisibility(map: maplibregl.Map, layers: LayerState, selectedId: string | null) {
+  setVisible(map, MARITIME_REFERENCE_LAYER_IDS.eez.fill, layers.eezReference);
+  setVisible(map, MARITIME_REFERENCE_LAYER_IDS.eez.line, layers.eezReference);
+  setVisible(
+    map,
+    MARITIME_REFERENCE_LAYER_IDS.territorialSea12Nm.fill,
+    layers.territorialSea12NmReference,
+  );
+  setVisible(
+    map,
+    MARITIME_REFERENCE_LAYER_IDS.territorialSea12Nm.line,
+    layers.territorialSea12NmReference,
+  );
+  setVisible(
+    map,
+    MARITIME_REFERENCE_LAYER_IDS.contiguousZone24Nm.fill,
+    layers.contiguousZone24NmReference,
+  );
+  setVisible(
+    map,
+    MARITIME_REFERENCE_LAYER_IDS.contiguousZone24Nm.line,
+    layers.contiguousZone24NmReference,
+  );
   setVisible(map, VESSEL_LAYER, layers.liveVessels);
   setVisible(map, HALO_LAYER, layers.liveVessels);
   // Trails are off by default, but the selected vessel's trail is always shown.

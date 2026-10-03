@@ -194,6 +194,7 @@ export interface Dict {
   layers: string;
   baseMaps: string;
   maritime: string;
+  maritimeBoundaries: string;
   airspace: string;
   analysis: string;
   layerTaiwanEmap: string;
@@ -201,6 +202,12 @@ export interface Dict {
   layerLiveVessels: string;
   layerVesselTracks: string;
   layerPorts: string;
+  layerEezReference: string;
+  layerTerritorialSea12NmReference: string;
+  layerContiguousZone24NmReference: string;
+  derivedReferencePolygon: string;
+  derivedReferenceBand: string;
+  maritimeReferenceCaveat: string;
   layerNavReference: string;
   layerRestrictedAirspace: string;
   layerPublicAirspace: string;
@@ -388,6 +395,7 @@ const zhHant: Dict = {
   layers: "圖層",
   baseMaps: "底圖",
   maritime: "海事圖層",
+  maritimeBoundaries: "海域界線",
   airspace: "空域圖層",
   analysis: "分析",
   layerTaiwanEmap: "OpenFreeMap Liberty",
@@ -395,6 +403,12 @@ const zhHant: Dict = {
   layerLiveVessels: "即時船舶",
   layerVesselTracks: "船舶航跡",
   layerPorts: "商港",
+  layerEezReference: "EEZ 參考範圍",
+  layerTerritorialSea12NmReference: "12 海里領海參考",
+  layerContiguousZone24NmReference: "24 海里鄰接區參考",
+  derivedReferencePolygon: "衍生參考多邊形",
+  derivedReferenceBand: "衍生 12–24 海里參考帶",
+  maritimeReferenceCaveat: "僅供參考，不得用於航行或法律裁決。",
   layerNavReference: "海事參考",
   layerRestrictedAirspace: "禁航／限航區",
   layerPublicAirspace: "公開空域資訊",
@@ -680,6 +694,7 @@ const en: Dict = {
   layers: "Layers",
   baseMaps: "Base Maps",
   maritime: "Maritime Layers",
+  maritimeBoundaries: "Maritime Boundaries",
   airspace: "Airspace Layers",
   analysis: "Analysis",
   layerTaiwanEmap: "OpenFreeMap Liberty",
@@ -687,6 +702,12 @@ const en: Dict = {
   layerLiveVessels: "Live Vessels",
   layerVesselTracks: "Vessel Tracks",
   layerPorts: "Commercial Ports",
+  layerEezReference: "EEZ Reference",
+  layerTerritorialSea12NmReference: "12 NM Territorial Sea Reference",
+  layerContiguousZone24NmReference: "24 NM Contiguous Zone Reference",
+  derivedReferencePolygon: "Derived reference polygon",
+  derivedReferenceBand: "Derived 12–24 NM reference band",
+  maritimeReferenceCaveat: "Reference only — not for navigation or legal adjudication.",
   layerNavReference: "Navigation Reference",
   layerRestrictedAirspace: "Prohibited / Restricted",
   layerPublicAirspace: "Public Airspace Info",

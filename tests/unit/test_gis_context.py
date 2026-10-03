@@ -8,6 +8,8 @@ read-only endpoint. No network, no DB, no live-store coupling.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -25,6 +27,8 @@ KAOHSIUNG_IN_ANCHORAGE = (120.23, 22.575)
 STRAIT_OPEN_WATER = (119.9, 24.0)
 # Outside the reference coverage bbox.
 OUT_OF_COVERAGE = (140.0, 10.0)
+REPO_ROOT = Path(__file__).resolve().parents[2]
+MARITIME_REFERENCE_DIR = REPO_ROOT / "data" / "gis" / "taiwan_maritime_reference"
 
 
 @pytest.fixture()
@@ -245,3 +249,63 @@ def test_endpoint_rejects_out_of_range_coordinates(client) -> None:
 def test_endpoint_requires_both_coordinates(client) -> None:
     resp = client.get("/context/geographic?lon=120.3")
     assert resp.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("route_name", "canonical_name"),
+    (
+        ("eez-reference.geojson", "eez_reference_areas.geojson"),
+        (
+            "territorial-sea-12nm-reference.geojson",
+            "territorial_sea_12nm_reference_polygon.geojson",
+        ),
+        (
+            "contiguous-zone-24nm-reference.geojson",
+            "contiguous_zone_12_24nm_reference_band.geojson",
+        ),
+    ),
+)
+def test_maritime_reference_endpoint_serves_canonical_bytes_unchanged(
+    client: TestClient,
+    route_name: str,
+    canonical_name: str,
+) -> None:
+    """Removing the allowlisted mapping or transforming geometry must fail."""
+
+    response = client.get(f"/context/maritime-reference/{route_name}")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/geo+json")
+    assert response.content == (MARITIME_REFERENCE_DIR / canonical_name).read_bytes()
+
+
+def test_eez_endpoint_preserves_overlapping_reference_features(client: TestClient) -> None:
+    """Filtering disputed/overlapping features out of the response must fail."""
+
+    response = client.get("/context/maritime-reference/eez-reference.geojson")
+
+    assert response.status_code == 200
+    features = response.json()["features"]
+    assert len(features) == 5
+    assert any(feature["properties"]["pol_type"] == "Overlapping claim" for feature in features)
+
+
+def test_maritime_reference_endpoint_rejects_non_allowlisted_files(
+    client: TestClient,
+) -> None:
+    """Replacing the fixed allowlist with arbitrary filesystem lookup must fail."""
+
+    response = client.get("/context/maritime-reference/source_metadata.json")
+
+    assert response.status_code in {404, 422}
+
+
+def test_maritime_reference_endpoint_is_read_only(client: TestClient) -> None:
+    """Adding a write method to the reference route must fail."""
+
+    response = client.post(
+        "/context/maritime-reference/eez-reference.geojson",
+        json={"type": "FeatureCollection", "features": []},
+    )
+
+    assert response.status_code == 405

@@ -144,6 +144,56 @@ describe("LayerControl", () => {
     fireEvent.click(ortho);
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ baseMap: "nlsc-photo" }));
   });
+
+  it("exposes neutral English maritime-boundary labels and derived geometry notes", () => {
+    wrap(<LayerControl layers={DEFAULT_LAYER_STATE} onChange={() => {}} />);
+    fireEvent.click(screen.getByText(t.layers));
+
+    expect(screen.getByText("Maritime Boundaries")).toBeInTheDocument();
+    expect(screen.getByText("EEZ Reference")).toBeInTheDocument();
+    expect(screen.getByText("12 NM Territorial Sea Reference")).toBeInTheDocument();
+    expect(screen.getByText("24 NM Contiguous Zone Reference")).toBeInTheDocument();
+    expect(screen.getByText("Derived reference polygon")).toBeInTheDocument();
+    expect(screen.getByText("Derived 12–24 NM reference band")).toBeInTheDocument();
+    expect(
+      screen.getByText("Reference only — not for navigation or legal adjudication."),
+    ).toBeInTheDocument();
+  });
+
+  it("toggles the three maritime reference layers independently", () => {
+    const onChange = vi.fn();
+    wrap(<LayerControl layers={DEFAULT_LAYER_STATE} onChange={onChange} />);
+    fireEvent.click(screen.getByText(t.layers));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /EEZ Reference/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /12 NM Territorial Sea Reference/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /24 NM Contiguous Zone Reference/ }));
+
+    expect(onChange).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        eezReference: false,
+        territorialSea12NmReference: true,
+        contiguousZone24NmReference: true,
+      }),
+    );
+    expect(onChange).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        eezReference: true,
+        territorialSea12NmReference: false,
+        contiguousZone24NmReference: true,
+      }),
+    );
+    expect(onChange).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        eezReference: true,
+        territorialSea12NmReference: true,
+        contiguousZone24NmReference: false,
+      }),
+    );
+  });
 });
 
 describe("StatusCards", () => {
