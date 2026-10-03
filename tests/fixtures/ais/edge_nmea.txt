@@ -1,0 +1,13 @@
+# label|recorded/minimal NMEA sentence
+class_a|!AIVDM,1,1,,A,16<f`0@01s`VMOP<ovH77mbt0000,0*6B
+class_a_moved|!AIVDM,1,1,,A,16<f`0@022`Vd90<qkT79Udv0000,0*3B
+class_b|!AIVDM,1,1,,A,B6<f`0P0DJ:NCP3BTT0p@e?40000,0*4E
+navigation_sentinels|!AIVDM,1,1,,A,16<f`0h0?w`VMOP<ovH>4?vt0000,0*05
+coordinate_sentinels|!AIVDM,1,1,,A,16<f`0h0?wdtSF0l4Q@>4?vt0000,0*70
+tagged|\c:1671620143*5A\!AIVDM,1,1,,A,16<f`0@01s`VMOP<ovH77mbt0000,0*6B
+multipart_b_1|!AIVDM,2,1,7,B,C5N3SRgPEnJGEBT>NhWAwwo862PaLE,0*3C
+multipart_b_2|!AIVDM,2,2,7,B,LTBJ:V00000000S0D:R220,0*11
+multipart_a_1|!AIVDM,2,1,7,A,C5N3SRgPEnJGEBT>NhWAwwo862PaLE,0*3F
+multipart_a_2|!AIVDM,2,2,7,A,LTBJ:V00000000S0D:R220,0*12
+static_1|!AIVDM,2,1,4,A,55O0W7`00001L@gCWGA2uItLth@DqtL5@F22220j1h742t0Ht0000000,0*08
+static_2|!AIVDM,2,2,4,A,000000000000000,2*20

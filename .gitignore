@@ -24,6 +24,7 @@ playwright-report/
 test-results/
 .coverage
 htmlcov/
+.measurements/
 
 # IDE / OS
 .vscode/
@@ -51,6 +52,7 @@ models/*
 *.pkl
 *.pickle
 *.joblib
+*.pmtiles
 
 # Logs / temp
 *.log
@@ -58,3 +60,16 @@ tmp/
 temp/
 .swtmp/
 .swtmp*
+data/labels/ofac_sdn.csv
+data/labels/uk_conlist.csv
+data/labels/eu_fsf.csv
+data/raw/dma/
+
+# generated models / caches
+data/models/*.joblib
+data/processed/*.pkl
+
+# Natural Earth downloads (rebuilt by scripts/build_taiwan_geo.py; the compact outputs are tracked)
+data/geo/ne_10m_*.geojson
+data/geo/cable-geo.json
+data/geo/landing-point-geo.json

@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { I18nProvider, useI18n } from "./I18nContext";
-import { DEFAULT_LANG } from "./dictionaries";
+import { DEFAULT_LANG, DICTIONARIES } from "./dictionaries";
 
 function Probe() {
   const { t, lang, toggleLang } = useI18n();
@@ -53,5 +53,15 @@ describe("i18n", () => {
     );
     fireEvent.click(screen.getByText("toggle"));
     expect(window.localStorage.getItem("seawatch.lang")).toBe("en");
+  });
+
+  it("ships exact bilingual resilience labels without replacement characters", () => {
+    expect(DICTIONARIES["zh-Hant"].modeCloud).toBe("雲端即時 AIS");
+    expect(DICTIONARIES["zh-Hant"].modeEdge).toBe("本地 AIS 接收");
+    expect(DICTIONARIES.en.modeReplay).toBe("EDGE REPLAY");
+    expect(DICTIONARIES.en.edgeCoverageNote).toBe(
+      "Shows only vessels receivable by the local antenna.",
+    );
+    expect(JSON.stringify(DICTIONARIES)).not.toContain("�");
   });
 });

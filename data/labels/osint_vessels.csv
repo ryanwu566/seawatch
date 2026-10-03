@@ -1,0 +1,12 @@
+# OSINT-reported PRC research / survey vessels operating around Taiwan. Identifiers and behaviours are as STATED in the cited
+# source, which is a think-tank report (not an official finding) using commercial AIS history. Treat as 'reported', not proven.
+# Source: Heritage Foundation Backgrounder No. 3977, "Science as Statecraft: Chinese Research Vessel Operations Around Taiwan",
+#         18 Aug 2026, Table 2 (https://www.heritage.org/sites/default/files/2026-08/BG3977.pdf)
+imo,names,category,observed,source_note
+9861342,DA YANG HAO,prc_research_vessel_reported,"Surveyed along the Gagua Ridge, SE of Taiwan, 8-18 Jun 2026",Heritage BG3977 Table 2
+7714375,HAIYANG DIZHI 12 HAO,prc_research_vessel_reported,"Grid pattern at the northern tip of the Manila Trench, SW of Taiwan, Jun-Jul 2026",Heritage BG3977 Table 2
+9776640,JIA GENG,prc_research_vessel_reported,"Surveyed along the Gagua Ridge, SE of Taiwan, Jun-Jul 2026",Heritage BG3977 Table 2
+9860049,LANHAI 201,prc_research_vessel_reported,"Surveyed Huatung Basin, E of Taiwan, 17-23 Jul 2026; described by PRC authorities as a fisheries research survey; abnormal speed/course changes",Heritage BG3977 Table 2 + text
+9860996,SHEN HAI YI HAO,prc_research_vessel_reported,"Surveyed across the Luzon Trough, S of Taiwan, Jun-Jul 2026",Heritage BG3977 Table 2
+9854349,XIANG YANG HONG 22,prc_research_vessel_reported,"Huatung Basin E of Taiwan 16-18 Jun; Okinawa Trough NE of Taiwan 27-30 Jun and 21-26 Jul 2026",Heritage BG3977 Table 2
+9927328,BEI DIAO 996,prc_research_vessel_reported,"Abnormally slow speeds around the Orchid Islands, 29 Jul - 2 Aug 2026",Heritage BG3977 Table 2

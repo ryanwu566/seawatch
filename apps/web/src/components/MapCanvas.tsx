@@ -1,16 +1,23 @@
-import { useEffect, useRef } from "react";
-import maplibregl from "maplibre-gl";
+import { useEffect, useRef, useState } from "react";
+import maplibregl, { type LayerSpecification, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { LiveVesselFeature } from "../api/live";
+import type { LiveVesselFeature, OperatingMode } from "../api/live";
 import type { LayerState } from "../lib/layerState";
 import {
-  MAPLIBRE_DEMO_STYLE,
   TAIWAN_CENTER,
   TAIWAN_ZOOM,
   airspaceGeoJson,
   nlscStyle,
   portsGeoJson,
 } from "../config/taiwanMap";
+import {
+  emergencyStyle,
+  pmtilesStyle,
+  registerPmtilesProtocol,
+  selectOfflineBasemap,
+  type BasemapStage,
+  type OnlineFailureState,
+} from "../config/offlineMap";
 import { projectPosition, type MeasuredFix } from "../lib/interpolation";
 import { normalizeOrientation } from "../lib/orientation";
 import { makeShipIcon } from "../lib/shipIcon";
@@ -38,6 +45,23 @@ interface MapCanvasProps {
   /** Fired when the user manually pans/zooms, so follow mode can pause. */
   onUserInteract?: () => void;
   onBaseMapError?: (message: string | null) => void;
+  operatingMode?: OperatingMode;
+  /**
+   * Optional, generic GeoJSON overlay layer groups rendered ABOVE the built-in
+   * overlays. This is a logistics-agnostic seam: the caller supplies named
+   * GeoJSON sources and MapLibre layer specs; MapCanvas installs them and
+   * re-installs them after every style/basemap change (NLSC → PMTiles →
+   * emergency). ``undefined``/``null`` preserves exactly the current behavior
+   * (no extra sources or layers are touched). MapCanvas holds no knowledge of
+   * what the overlay represents.
+   */
+  overlays?: MapOverlays | null;
+}
+
+/** Generic overlay payload: named GeoJSON sources + MapLibre layer specs. */
+export interface MapOverlays {
+  sources: Record<string, GeoJSON.FeatureCollection>;
+  layers: LayerSpecification[];
 }
 
 const VESSEL_SOURCE = "live-vessels";
@@ -80,6 +104,8 @@ export function MapCanvas({
   onViewportChange,
   onUserInteract,
   onBaseMapError,
+  operatingMode = "CLOUD_LIVE",
+  overlays = null,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -91,18 +117,27 @@ export function MapCanvas({
   const followRef = useRef<boolean>(follow);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const programmaticMoveRef = useRef(false);
+  const failureRef = useRef<OnlineFailureState>("healthy");
+  const operatingModeRef = useRef(operatingMode);
+  const overlaysRef = useRef<MapOverlays | null>(overlays);
+  const initialStage = selectOfflineBasemap(operatingMode, "healthy");
+  const stageRef = useRef<BasemapStage>(initialStage);
+  const [basemapStage, setBasemapStage] = useState<BasemapStage>(initialStage);
 
   // Keep latest props in refs for the animation loop and event handlers.
   vesselsRef.current = vessels;
   selectedIdRef.current = selectedId;
   followRef.current = follow;
+  operatingModeRef.current = operatingMode;
+  overlaysRef.current = overlays;
 
   // Initialize the map once.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    registerPmtilesProtocol();
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: nlscStyle(layers.baseMap),
+      style: styleForStage(stageRef.current, layers.baseMap),
       center: TAIWAN_CENTER,
       zoom: TAIWAN_ZOOM,
       attributionControl: { compact: true },
@@ -111,14 +146,32 @@ export function MapCanvas({
 
     map.on("error", (e) => {
       const msg = (e?.error && (e.error as Error).message) || "";
-      if (msg && /tile|source|network|fetch/i.test(msg)) {
+      const basemapFailed =
+        stageRef.current === "pmtiles" || /tile|source|network|fetch|response code/i.test(msg);
+      if (msg && stageRef.current !== "emergency" && basemapFailed) {
         onBaseMapError?.(msg);
+        const nextFailure =
+          stageRef.current === "nlsc"
+            ? "nlsc_failed"
+            : stageRef.current === "pmtiles"
+              ? "pmtiles_failed"
+              : failureRef.current;
+        const nextStage = selectOfflineBasemap(operatingModeRef.current, nextFailure);
+        if (nextStage !== stageRef.current) {
+          failureRef.current = nextFailure;
+          stageRef.current = nextStage;
+          setBasemapStage(nextStage);
+          map.setStyle(styleForStage(nextStage, layers.baseMap));
+          map.once("styledata", () =>
+            restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current, overlaysRef.current),
+          );
+        }
       }
     });
 
     map.on("load", () => {
       loadedRef.current = true;
-      installOverlays(map);
+      installOverlays(map, overlaysRef.current);
       applyVessels(map, vesselsRef.current, selectedIdRef.current);
       applyLayerVisibility(map, layers, selectedIdRef.current);
       applyPorts(map, layers);
@@ -177,16 +230,33 @@ export function MapCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Edge/no-source operation starts locally and never retries a latched remote
+  // source. Cloud mode always selects NLSC and handles tile failures in place.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    const nextStage = selectOfflineBasemap(operatingMode, failureRef.current);
+    if (nextStage === stageRef.current) return;
+    stageRef.current = nextStage;
+    setBasemapStage(nextStage);
+    map.setStyle(styleForStage(nextStage, layers.baseMap));
+    map.once("styledata", () =>
+      restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current, overlaysRef.current),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operatingMode]);
+
   // Switch base map when it changes.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
+    if (stageRef.current !== "nlsc") return;
     if (currentBaseRef.current === layers.baseMap) return;
     currentBaseRef.current = layers.baseMap;
     onBaseMapError?.(null);
     map.setStyle(nlscStyle(layers.baseMap));
     map.once("styledata", () => {
-      installOverlays(map);
+      installOverlays(map, overlaysRef.current);
       applyVessels(map, vesselsRef.current, selectedIdRef.current);
       applyLayerVisibility(map, layers, selectedIdRef.current);
       applyPorts(map, layers);
@@ -204,6 +274,14 @@ export function MapCanvas({
     applyPorts(map, layers);
     applyAirspace(map, layers);
   }, [vessels, layers, selectedId]);
+
+  // Install/refresh generic caller overlays when they change. Null preserves
+  // current behavior (nothing extra is touched).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    installGenericOverlays(map, overlays);
+  }, [overlays]);
 
   // Update selected feature-state (never rebuilds the source).
   useEffect(() => {
@@ -273,12 +351,19 @@ export function MapCanvas({
     rafRef.current = requestAnimationFrame(step);
   }
 
-  return <div ref={containerRef} className="map-canvas" aria-label="Taiwan maritime map" />;
+  return (
+    <div
+      ref={containerRef}
+      className="map-canvas"
+      data-basemap-stage={basemapStage}
+      aria-label="Taiwan maritime map"
+    />
+  );
 }
 
 // --- helpers (module scope so the animation loop can reuse them) ------------ //
 
-function installOverlays(map: maplibregl.Map) {
+function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
   if (!map.hasImage(SHIP_ICON)) {
     const icon = makeShipIcon();
     // Register as SDF so the symbol layer's data-driven icon-color is valid.
@@ -339,6 +424,10 @@ function installOverlays(map: maplibregl.Map) {
           "case",
           ["boolean", ["feature-state", "selected"], false],
           "#fde68a",
+          ["==", ["get", "displayState"], "stale"],
+          "#f59e0b",
+          ["==", ["get", "displayState"], "cached"],
+          "#67e8f9",
           ["get", "isInterpolated"],
           "#f59e0b",
           "#38bdf8",
@@ -470,6 +559,49 @@ function installOverlays(map: maplibregl.Map) {
       paint: { "line-color": "#a855f7", "line-width": 1.5, "line-dasharray": [2, 2] },
     });
   }
+  // Generic, caller-provided overlays (logistics-agnostic). Installed last so
+  // they render above the built-in layers, and re-installed on every style
+  // change via restoreOverlays. Idempotent: existing sources are updated via
+  // setData and existing layers are not re-added (no duplicate registration).
+  installGenericOverlays(map, overlays);
+}
+
+/** Install/refresh generic caller overlays without duplicating registrations. */
+function installGenericOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
+  if (!overlays) return;
+  for (const [sourceId, data] of Object.entries(overlays.sources)) {
+    const existing = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+    if (existing) {
+      existing.setData(data);
+    } else {
+      map.addSource(sourceId, { type: "geojson", data });
+    }
+  }
+  for (const layer of overlays.layers) {
+    if (!map.getLayer(layer.id)) {
+      map.addLayer(layer);
+    }
+  }
+}
+
+function styleForStage(stage: BasemapStage, baseMap: LayerState["baseMap"]): StyleSpecification {
+  if (stage === "pmtiles") return pmtilesStyle();
+  if (stage === "emergency") return emergencyStyle();
+  return nlscStyle(baseMap);
+}
+
+function restoreOverlays(
+  map: maplibregl.Map,
+  layers: LayerState,
+  vessels: LiveVesselFeature[],
+  selectedId: string | null,
+  overlays?: MapOverlays | null,
+) {
+  installOverlays(map, overlays);
+  applyVessels(map, vessels, selectedId);
+  applyLayerVisibility(map, layers, selectedId);
+  applyPorts(map, layers);
+  applyAirspace(map, layers);
 }
 
 /** Push vessels onto the single source, computing visual-interpolated positions. */
@@ -501,6 +633,7 @@ function applyVessels(
         provider_id: v.properties.provider_id,
         orientation: course ?? 0,
         isInterpolated,
+        displayState: v.properties.display_state ?? "live",
       },
     };
   });
@@ -630,6 +763,3 @@ function emitViewport(map: maplibregl.Map, cb: (v: Viewport) => void) {
     maxLon: b.getEast(),
   });
 }
-
-const MAPLIBRE_FALLBACK_STYLE = MAPLIBRE_DEMO_STYLE;
-export { MAPLIBRE_FALLBACK_STYLE };

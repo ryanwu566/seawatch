@@ -1,0 +1,157 @@
+{
+  "meta": {
+    "description": "Curated civilian resilience-logistics scenario dataset for SeaWatch Phase 9 (RESPOND). Capacity, cost, risk, and demand figures are scenario/synthetic planning values for human review, NOT real operational data. Port names and coordinates are public civilian facts; great-circle distances are derived from those public coordinates.",
+    "coordinate_reference_system": "EPSG:4326"
+  },
+  "ports": [
+    {
+      "id": "kaohsiung",
+      "name_zh": "高雄港",
+      "name_en": "Kaohsiung",
+      "lon": 120.30,
+      "lat": 22.60,
+      "capacity_units": 0.0,
+      "base_handling_cost": 1.0,
+      "source_type": "official",
+      "source_metadata": {
+        "source_name": "Taiwan International Ports Corporation (public civilian port register)",
+        "source_reference": "https://www.twport.com.tw/en/",
+        "as_of": "2024"
+      }
+    },
+    {
+      "id": "taichung",
+      "name_zh": "臺中港",
+      "name_en": "Taichung",
+      "lon": 120.52,
+      "lat": 24.29,
+      "capacity_units": 60.0,
+      "base_handling_cost": 1.0,
+      "source_type": "official",
+      "source_metadata": {
+        "source_name": "Taiwan International Ports Corporation (public civilian port register)",
+        "source_reference": "https://www.twport.com.tw/en/",
+        "as_of": "2024"
+      }
+    },
+    {
+      "id": "keelung",
+      "name_zh": "基隆港",
+      "name_en": "Keelung",
+      "lon": 121.74,
+      "lat": 25.14,
+      "capacity_units": 70.0,
+      "base_handling_cost": 1.15,
+      "source_type": "official",
+      "source_metadata": {
+        "source_name": "Taiwan International Ports Corporation (public civilian port register)",
+        "source_reference": "https://www.twport.com.tw/en/",
+        "as_of": "2024"
+      }
+    }
+  ],
+  "capacity_provenance": {
+    "source_type": "synthetic",
+    "note": "Port capacity_units are abstract planning cargo-units/day, synthetic placeholders, never real port throughput."
+  },
+  "demands": [
+    {
+      "id": "medical-south",
+      "commodity": "medical",
+      "priority": 1,
+      "quantity_units": 30.0,
+      "origin_demand_node": "south-node",
+      "normally_served_by": "kaohsiung",
+      "source_type": "scenario"
+    },
+    {
+      "id": "food-south",
+      "commodity": "food",
+      "priority": 2,
+      "quantity_units": 50.0,
+      "origin_demand_node": "south-node",
+      "normally_served_by": "kaohsiung",
+      "source_type": "scenario"
+    },
+    {
+      "id": "fuel-south",
+      "commodity": "fuel",
+      "priority": 3,
+      "quantity_units": 40.0,
+      "origin_demand_node": "south-node",
+      "normally_served_by": "kaohsiung",
+      "source_type": "scenario"
+    }
+  ],
+  "supplies": [
+    {
+      "id": "medical-supply",
+      "commodity": "medical",
+      "available_units": 100.0,
+      "entry_port_options": ["taichung", "keelung"],
+      "source_type": "scenario"
+    },
+    {
+      "id": "food-supply",
+      "commodity": "food",
+      "available_units": 100.0,
+      "entry_port_options": ["taichung", "keelung"],
+      "source_type": "scenario"
+    },
+    {
+      "id": "fuel-supply",
+      "commodity": "fuel",
+      "available_units": 100.0,
+      "entry_port_options": ["taichung", "keelung"],
+      "source_type": "scenario"
+    }
+  ],
+  "routes": [
+    {
+      "id": "taichung->south-node",
+      "from_port": "taichung",
+      "to_demand_node": "south-node",
+      "distance_km": 185.8,
+      "baseline_eta_hours": 9.5,
+      "per_unit_cost": 1.2,
+      "route_risk": 0.21,
+      "path_geometry": null,
+      "schematic": true,
+      "source_type": "derived",
+      "source_metadata": {
+        "derivation_method": "great-circle distance between public civilian port and demand-node coordinates (WGS84, R=6371.0088 km)"
+      }
+    },
+    {
+      "id": "keelung->south-node",
+      "from_port": "keelung",
+      "to_demand_node": "south-node",
+      "distance_km": 314.7,
+      "baseline_eta_hours": 15.0,
+      "per_unit_cost": 1.45,
+      "route_risk": 0.28,
+      "path_geometry": null,
+      "schematic": true,
+      "source_type": "derived",
+      "source_metadata": {
+        "derivation_method": "great-circle distance between public civilian port and demand-node coordinates (WGS84, R=6371.0088 km)"
+      }
+    }
+  ],
+  "route_planning_provenance": {
+    "source_type": "scenario",
+    "note": "baseline_eta_hours, per_unit_cost and route_risk are scenario/synthetic planning indices for human review, not measured transit figures."
+  },
+  "scenarios": [
+    {
+      "id": "kaohsiung-disruption",
+      "name_zh": "高雄港中斷情境",
+      "name_en": "Kaohsiung Port Disruption",
+      "disrupted_ports": ["kaohsiung"],
+      "capacity_overrides": {},
+      "description_zh": "高雄港在此情境中暫時無法使用（原因不明、未歸因）。南部的醫療、食品與燃料民生需求必須改由其他民用港口承接。此為供人工審查的規劃情境，並非真實事件或預測。",
+      "description_en": "In this scenario Kaohsiung Port is temporarily unavailable (cause unspecified and non-attributed). Southern civilian medical, food, and fuel demand must be absorbed by alternative civilian ports. This is a planning scenario for human review, not a real event or a prediction.",
+      "source_type": "scenario"
+    }
+  ]
+}

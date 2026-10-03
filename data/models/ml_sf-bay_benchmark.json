@@ -1,0 +1,136 @@
+{
+ "region": "sf-bay",
+ "features": [
+  "report_ratio",
+  "gap_ratio",
+  "sog_med",
+  "sog_p90",
+  "low_speed_frac",
+  "radius_nm",
+  "path_ratio",
+  "turn_per_h",
+  "max_implied_kn",
+  "n_jump",
+  "fam_mean",
+  "unfam_frac",
+  "stop_area_frac",
+  "slow_nbr_nm",
+  "group_size"
+ ],
+ "train": {
+  "days": 2,
+  "unlabeled_windows": 14246,
+  "labelled_windows": 14271,
+  "injected_windows": 214,
+  "behaviours_injected": [
+   "dark_gap",
+   "loitering",
+   "position_jump",
+   "identity_conflict"
+  ]
+ },
+ "test": {
+  "windows": 7183,
+  "positive_windows": 96,
+  "methods": {
+   "Rules": {
+    "roc_auc": 0.868,
+    "pr_auc": 0.482,
+    "flagged_vessels": 45,
+    "true": 25,
+    "false": 20,
+    "precision": 0.556,
+    "recall": 0.893,
+    "f1": 0.685
+   },
+   "Isolation Forest (unsupervised)": {
+    "roc_auc": 0.937,
+    "pr_auc": 0.142,
+    "flagged_vessels": 36,
+    "true": 12,
+    "false": 24,
+    "precision": 0.333,
+    "recall": 0.429,
+    "f1": 0.375
+   },
+   "Gradient boosting (supervised)": {
+    "roc_auc": 0.955,
+    "pr_auc": 0.486,
+    "flagged_vessels": 61,
+    "true": 17,
+    "false": 44,
+    "precision": 0.279,
+    "recall": 0.607,
+    "f1": 0.382
+   },
+   "Rules confirmed by ML": {
+    "roc_auc": null,
+    "pr_auc": null,
+    "flagged_vessels": 25,
+    "true": 15,
+    "false": 10,
+    "precision": 0.6,
+    "recall": 0.536,
+    "f1": 0.566
+   }
+  },
+  "by_kind": {
+   "rendezvous": {
+    "n": 1,
+    "rules": 1,
+    "gb": 0,
+    "if": 0,
+    "trained_on": false
+   },
+   "dark_sts": {
+    "n": 1,
+    "rules": 1,
+    "gb": 1,
+    "if": 1,
+    "trained_on": false
+   },
+   "cluster": {
+    "n": 1,
+    "rules": 1,
+    "gb": 0,
+    "if": 0,
+    "trained_on": false
+   },
+   "zone_entry": {
+    "n": 2,
+    "rules": 2,
+    "gb": 0,
+    "if": 0,
+    "trained_on": false
+   },
+   "dark_gap": {
+    "n": 4,
+    "rules": 4,
+    "gb": 4,
+    "if": 3,
+    "trained_on": true
+   },
+   "loitering": {
+    "n": 4,
+    "rules": 2,
+    "gb": 4,
+    "if": 1,
+    "trained_on": true
+   },
+   "position_jump": {
+    "n": 4,
+    "rules": 4,
+    "gb": 4,
+    "if": 4,
+    "trained_on": true
+   },
+   "identity_conflict": {
+    "n": 4,
+    "rules": 4,
+    "gb": 4,
+    "if": 3,
+    "trained_on": true
+   }
+  }
+ }
+}

@@ -67,6 +67,62 @@ export interface Dict {
   benchmarkSource: string;
   benchmarkDisclaimer: string;
 
+  // Vessel Intelligence Card (explainable, human-in-the-loop review support)
+  intelligenceTitle: string;
+  intelligenceIdentity: string;
+  intelligenceName: string;
+  intelligenceType: string;
+  intelligenceFlag: string;
+  intelligenceImo: string;
+  intelligenceBehavior: string;
+  intelligenceObservations: string;
+  intelligenceSessionSpan: string;
+  intelligenceTypicalRoute: string;
+  intelligenceUsualArea: string;
+  intelligenceReviewNotes: string;
+  intelligenceNoReasons: string;
+  intelligenceNoBaseline: string;
+  intelligenceHumanReview: string;
+  intelligenceReasonLoitering: string;
+  intelligenceReasonSpeedChange: string;
+  intelligenceReasonCourseChange: string;
+  intelligenceThisSession: string;
+  provenanceOfficial: string;
+  provenanceObserved: string;
+  provenanceDerived: string;
+  provenanceUnknown: string;
+  valueUnknown: string;
+
+  // Route Deviation evidence (route-deviation-1)
+  routeDeviationTitle: string;
+  routeDeviationStatus: string;
+  routeDeviationDetected: string;
+  routeWithinCorridor: string;
+  routeDeviationDistance: string;
+  routeDeviationBaseline: string;
+  routeDeviationConfidence: string;
+  routeDeviationSource: string;
+  routeDeviationExplanation: string;
+  routeDeviationUnknown: string;
+  confidenceHigh: string;
+  confidenceMedium: string;
+  confidenceLow: string;
+
+  // Maritime GIS context (gis-context-1)
+  gisContextTitle: string;
+  gisDistanceToCoast: string;
+  gisNearestPort: string;
+  gisDistanceToPort: string;
+  gisMaritimeArea: string;
+  gisNotWithinArea: string;
+  gisOutsideCoverage: string;
+
+  // DEMO fixture (frontend-only, illustrative)
+  demoIllustrativeLabel: string;
+  demoViewVessel: string;
+  demoPositionStatus: string;
+  demoSourceLabel: string;
+
   // Layers
   layers: string;
   baseMaps: string;
@@ -122,6 +178,88 @@ export interface Dict {
   corsNote: string;
   openLayers: string;
   statusLabel: string;
+
+  // Phase 8 resilience modes
+  modeCloud: string;
+  modeEdge: string;
+  modeReplay: string;
+  modeNoSource: string;
+  modeDemo: string;
+  coverageCloud: string;
+  coverageEdge: string;
+  coverageNone: string;
+  coverageDemo: string;
+  edgeCoverageNote: string;
+  replayRecordedNote: string;
+  externalPower: string;
+  batteryUps: string;
+  powerRequirement: string;
+  cloudToEdge: string;
+  cloudRestored: string;
+  simulatedPrefix: string;
+  operatingStatusTitle: string;
+  coverageStatus: string;
+  provenance: string;
+  freshnessFresh: string;
+  noFreshSource: string;
+  ageUnavailable: string;
+  cloudCoverageNote: string;
+  noCoverageNote: string;
+  demoCoverageNote: string;
+  provenanceCloud: string;
+  provenanceEdge: string;
+  provenanceReplay: string;
+  provenanceNoSource: string;
+  provenanceDemo: string;
+
+  // Phase 9 resilience logistics (RESPOND)
+  logistics: LogisticsDict;
+}
+
+/** Phase 9 Resilience Logistics bilingual strings (additive, self-contained). */
+export interface LogisticsDict {
+  navLiveMap: string;
+  navLogistics: string;
+  title: string;
+  subtitle: string;
+  scenarioLabel: string;
+  selectScenario: string;
+  disruptedPort: string;
+  criticalDemand: string;
+  priority: string;
+  alternatives: string;
+  runSimulation: string;
+  running: string;
+  recommendedAllocation: string;
+  decisionBrief: string;
+  tradeOffs: string;
+  unmetDemand: string;
+  noUnmetDemand: string;
+  colPort: string;
+  colEta: string;
+  colDistance: string;
+  colCost: string;
+  colCapacity: string;
+  colRisk: string;
+  colUnits: string;
+  etaHours: string;
+  distanceKm: string;
+  capacityUnits: string;
+  truthBadgeTitle: string;
+  schematicConnector: string;
+  assumptions: string;
+  loadError: string;
+  commodityMedical: string;
+  commodityFood: string;
+  commodityFuel: string;
+  contextEdgeBanner: string;
+  operatingContext: string;
+  operatingContextNote: string;
+  routedTotal: string;
+  unmetTotal: string;
+  highestPriority: string;
+  supportingDetail: string;
+  allocationTo: string;
 }
 
 const zhHant: Dict = {
@@ -221,6 +359,54 @@ const zhHant: Dict = {
   showNearbyVessels: "顯示附近船舶",
   reconnectingAis: "正在重新取得即時 AIS…",
   collectingForAnalysis: "分析資料累積中",
+  intelligenceTitle: "船舶情報",
+  intelligenceIdentity: "身分",
+  intelligenceName: "名稱",
+  intelligenceType: "類型",
+  intelligenceFlag: "船旗",
+  intelligenceImo: "IMO",
+  intelligenceBehavior: "行為摘要",
+  intelligenceObservations: "本次觀測點數",
+  intelligenceSessionSpan: "觀測時間跨度",
+  intelligenceTypicalRoute: "慣常航線",
+  intelligenceUsualArea: "慣常作業海域",
+  intelligenceReviewNotes: "複審註記",
+  intelligenceNoReasons: "本次尚無可供複審的證據，分析資料累積中。",
+  intelligenceNoBaseline: "無歷史航線基準，無法進行航線偏離複審。",
+  intelligenceHumanReview: "需人工複審",
+  intelligenceReasonLoitering: "本次觀測到低速滯留",
+  intelligenceReasonSpeedChange: "本次航速變化",
+  intelligenceReasonCourseChange: "本次航向變化",
+  intelligenceThisSession: "本次連線",
+  provenanceOfficial: "官方",
+  provenanceObserved: "觀測",
+  provenanceDerived: "推導",
+  provenanceUnknown: "未知",
+  valueUnknown: "未知",
+  routeDeviationTitle: "航線偏離",
+  routeDeviationStatus: "偏離狀態",
+  routeDeviationDetected: "偵測到航線偏離",
+  routeWithinCorridor: "位於歷史航廊範圍內",
+  routeDeviationDistance: "偏離距離",
+  routeDeviationBaseline: "歷史基準",
+  routeDeviationConfidence: "信賴度",
+  routeDeviationSource: "來源",
+  routeDeviationExplanation: "證據說明",
+  routeDeviationUnknown: "無航線偏離證據，狀態未知。",
+  confidenceHigh: "高",
+  confidenceMedium: "中",
+  confidenceLow: "低",
+  gisContextTitle: "地理情境",
+  gisDistanceToCoast: "離岸距離",
+  gisNearestPort: "最近港口",
+  gisDistanceToPort: "距港口距離",
+  gisMaritimeArea: "所在海域",
+  gisNotWithinArea: "不在任何命名區域內",
+  gisOutsideCoverage: "超出參考範圍",
+  demoIllustrativeLabel: "示範 / 說明用資料（非即時 AIS）",
+  demoViewVessel: "檢視示範船舶",
+  demoPositionStatus: "示範 / 說明用途",
+  demoSourceLabel: "示範資料",
   illustrativeAirspace: "示意空域",
 
   loading: "載入中…",
@@ -229,6 +415,82 @@ const zhHant: Dict = {
   corsNote: "官方圖資因瀏覽器 CORS 限制無法載入時，將顯示此註記。",
   openLayers: "開啟圖層選單",
   statusLabel: "即時狀態",
+  modeCloud: "雲端即時 AIS",
+  modeEdge: "本地 AIS 接收",
+  modeReplay: "本地接收重播",
+  modeNoSource: "即時資料無法使用",
+  modeDemo: "離線示範資料",
+  coverageCloud: "臺灣廣域網路 AIS",
+  coverageEdge: "本地無線電 AIS",
+  coverageNone: "無即時涵蓋",
+  coverageDemo: "示範資料",
+  edgeCoverageNote: "僅顯示本地天線可接收的船舶。",
+  replayRecordedNote: "此為錄製資料，非即時無線電 AIS。",
+  externalPower: "外部電源",
+  batteryUps: "電池／UPS",
+  powerRequirement: "韌性運作需要筆電電池或 UPS。",
+  cloudToEdge: "雲端 AIS 無法使用，已切換至本地 AIS 接收器",
+  cloudRestored: "雲端 AIS 已恢復",
+  simulatedPrefix: "模擬",
+  operatingStatusTitle: "運作狀態",
+  coverageStatus: "涵蓋範圍",
+  provenance: "資料來源脈絡",
+  freshnessFresh: "最新",
+  noFreshSource: "無最新來源",
+  ageUnavailable: "資料時間未知",
+  cloudCoverageNote: "廣域網路來源；可用性取決於網路與服務連線。",
+  noCoverageNote: "目前沒有最新即時來源；畫面可能保留已標示的快取或較舊資料。",
+  demoCoverageNote: "明確啟用的示範資料，並非即時來源。",
+  provenanceCloud: "雲端網路 AIS 來源",
+  provenanceEdge: "本地無線電 AIS 接收器",
+  provenanceReplay: "錄製 AIS 重播（模擬）",
+  provenanceNoSource: "無最新來源；快取或較舊資料仍保留標示",
+  provenanceDemo: "離線示範資料（模擬）",
+
+  logistics: {
+    navLiveMap: "即時地圖",
+    navLogistics: "韌性物流",
+    title: "韌性物流決策支援",
+    subtitle: "民用港口中斷情境的規劃估計值，供人工審查，並非指示或預測。",
+    scenarioLabel: "情境",
+    selectScenario: "選擇情境",
+    disruptedPort: "中斷港口",
+    criticalDemand: "關鍵民生需求",
+    priority: "優先序",
+    alternatives: "替代港口",
+    runSimulation: "執行模擬",
+    running: "模擬中…",
+    recommendedAllocation: "建議配置",
+    decisionBrief: "決策摘要",
+    tradeOffs: "權衡取捨",
+    unmetDemand: "未滿足需求",
+    noUnmetDemand: "在此情境資料集內所有需求皆可滿足。",
+    colPort: "港口",
+    colEta: "預估抵達",
+    colDistance: "距離",
+    colCost: "相對成本",
+    colCapacity: "容量使用",
+    colRisk: "風險",
+    colUnits: "單位",
+    etaHours: "小時",
+    distanceKm: "公里",
+    capacityUnits: "單位/日",
+    truthBadgeTitle: "資料來源說明",
+    schematicConnector: "示意連線（SCHEMATIC CONNECTOR）",
+    assumptions: "假設",
+    loadError: "無法載入物流情境資料。",
+    commodityMedical: "醫療",
+    commodityFood: "食品",
+    commodityFuel: "燃料",
+    contextEdgeBanner: "目前為邊緣模式——物流使用本地情境資料集。",
+    operatingContext: "目前運作情境",
+    operatingContextNote: "僅供顯示的 Phase 8 即時來源狀態；物流決策支援不受其影響。",
+    routedTotal: "已安排總量",
+    unmetTotal: "未滿足總量",
+    highestPriority: "最高優先配置",
+    supportingDetail: "詳細依據",
+    allocationTo: "配置至",
+  },
 };
 
 const en: Dict = {
@@ -328,6 +590,54 @@ const en: Dict = {
   showNearbyVessels: "Show nearby vessels",
   reconnectingAis: "Reacquiring live AIS…",
   collectingForAnalysis: "Collecting data for analysis",
+  intelligenceTitle: "Vessel Intelligence",
+  intelligenceIdentity: "Identity",
+  intelligenceName: "Name",
+  intelligenceType: "Type",
+  intelligenceFlag: "Flag",
+  intelligenceImo: "IMO",
+  intelligenceBehavior: "Behavior Summary",
+  intelligenceObservations: "Observations (this session)",
+  intelligenceSessionSpan: "Session span",
+  intelligenceTypicalRoute: "Typical route",
+  intelligenceUsualArea: "Usual operating area",
+  intelligenceReviewNotes: "Review Notes",
+  intelligenceNoReasons: "No evidence to review yet this session; collecting data for analysis.",
+  intelligenceNoBaseline: "No historical baseline available for route-deviation review.",
+  intelligenceHumanReview: "Human review required",
+  intelligenceReasonLoitering: "Low-speed dwell observed this session",
+  intelligenceReasonSpeedChange: "Speed changed this session",
+  intelligenceReasonCourseChange: "Course changed this session",
+  intelligenceThisSession: "this session",
+  provenanceOfficial: "official",
+  provenanceObserved: "observed",
+  provenanceDerived: "derived",
+  provenanceUnknown: "unknown",
+  valueUnknown: "Unknown",
+  routeDeviationTitle: "Route Deviation",
+  routeDeviationStatus: "Status",
+  routeDeviationDetected: "Route deviation detected",
+  routeWithinCorridor: "Within historical corridor",
+  routeDeviationDistance: "Distance",
+  routeDeviationBaseline: "Baseline",
+  routeDeviationConfidence: "Confidence",
+  routeDeviationSource: "Source",
+  routeDeviationExplanation: "Evidence",
+  routeDeviationUnknown: "No route-deviation evidence; status unknown.",
+  confidenceHigh: "HIGH",
+  confidenceMedium: "MEDIUM",
+  confidenceLow: "LOW",
+  gisContextTitle: "Geographic Context",
+  gisDistanceToCoast: "Distance to coast",
+  gisNearestPort: "Nearest port",
+  gisDistanceToPort: "Distance to port",
+  gisMaritimeArea: "Within area(s)",
+  gisNotWithinArea: "Not within a named area",
+  gisOutsideCoverage: "Outside reference coverage",
+  demoIllustrativeLabel: "DEMO / illustrative data (not live AIS)",
+  demoViewVessel: "View demo vessel",
+  demoPositionStatus: "DEMO / Illustrative",
+  demoSourceLabel: "Demo fixture",
   illustrativeAirspace: "Illustrative Airspace",
 
   loading: "Loading…",
@@ -337,6 +647,84 @@ const en: Dict = {
     "If an official map layer is blocked by browser CORS, this note is shown instead of faking success.",
   openLayers: "Open layer menu",
   statusLabel: "Live status",
+  modeCloud: "CLOUD LIVE",
+  modeEdge: "EDGE LIVE",
+  modeReplay: "EDGE REPLAY",
+  modeNoSource: "LIVE DATA UNAVAILABLE",
+  modeDemo: "OFFLINE DEMO",
+  coverageCloud: "Taiwan-wide network AIS",
+  coverageEdge: "Local RF AIS",
+  coverageNone: "No live coverage",
+  coverageDemo: "Demo data",
+  edgeCoverageNote: "Shows only vessels receivable by the local antenna.",
+  replayRecordedNote: "Recorded data — not live RF AIS.",
+  externalPower: "External Power",
+  batteryUps: "Battery / UPS",
+  powerRequirement: "Power resilience requires laptop battery or UPS.",
+  cloudToEdge: "Cloud AIS unavailable — switched to local AIS receiver",
+  cloudRestored: "Cloud AIS restored",
+  simulatedPrefix: "SIMULATED",
+  operatingStatusTitle: "Operating status",
+  coverageStatus: "Coverage",
+  provenance: "Provenance",
+  freshnessFresh: "Fresh",
+  noFreshSource: "No fresh source",
+  ageUnavailable: "age unavailable",
+  cloudCoverageNote: "Broad network feed; availability depends on Internet and service connectivity.",
+  noCoverageNote: "No fresh live source; labeled cached or stale records may remain visible.",
+  demoCoverageNote: "Explicit demo data, not a live source.",
+  provenanceCloud: "Cloud network AIS feed",
+  provenanceEdge: "Local RF AIS receiver",
+  provenanceReplay: "Recorded AIS replay (simulated)",
+  provenanceNoSource: "No fresh source; cached or stale records remain labeled",
+  provenanceDemo: "Offline demo data (simulated)",
+
+  logistics: {
+    navLiveMap: "LIVE MAP",
+    navLogistics: "RESILIENCE LOGISTICS",
+    title: "Resilience Logistics Decision Support",
+    subtitle:
+      "Scenario-based planning estimates for a civilian port disruption, for human review — not an instruction or a prediction.",
+    scenarioLabel: "Scenario",
+    selectScenario: "Select a scenario",
+    disruptedPort: "Disrupted port",
+    criticalDemand: "Critical civilian demand",
+    priority: "priority",
+    alternatives: "Alternative ports",
+    runSimulation: "Run Simulation",
+    running: "Running…",
+    recommendedAllocation: "Recommended allocation",
+    decisionBrief: "Decision brief",
+    tradeOffs: "Trade-offs",
+    unmetDemand: "Unmet demand",
+    noUnmetDemand: "All demand satisfied within this scenario dataset.",
+    colPort: "Port",
+    colEta: "ETA",
+    colDistance: "Distance",
+    colCost: "Relative cost",
+    colCapacity: "Capacity use",
+    colRisk: "Risk",
+    colUnits: "Units",
+    etaHours: "h",
+    distanceKm: "km",
+    capacityUnits: "units/day",
+    truthBadgeTitle: "Data provenance",
+    schematicConnector: "SCHEMATIC CONNECTOR / 示意連線",
+    assumptions: "Assumptions",
+    loadError: "Failed to load logistics scenario data.",
+    commodityMedical: "Medical",
+    commodityFood: "Food",
+    commodityFuel: "Fuel",
+    contextEdgeBanner: "Running in Edge mode — logistics uses the local scenario dataset.",
+    operatingContext: "Current operating context",
+    operatingContextNote:
+      "Display-only Phase 8 live-source status; the logistics decision support is unaffected by it.",
+    routedTotal: "Routed total",
+    unmetTotal: "Unmet total",
+    highestPriority: "Highest-priority allocation",
+    supportingDetail: "Supporting detail",
+    allocationTo: "allocated to",
+  },
 };
 
 export const DICTIONARIES: Record<Lang, Dict> = {

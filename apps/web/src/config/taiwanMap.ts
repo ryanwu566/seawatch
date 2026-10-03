@@ -40,9 +40,6 @@ export const NLSC_PHOTO_TILES =
 export const NLSC_ATTRIBUTION =
   "© 內政部國土測繪中心 NLSC Taiwan";
 
-// Fallback generic basemap (no key) used when NLSC is unavailable/CORS-blocked.
-export const MAPLIBRE_DEMO_STYLE = "https://demotiles.maplibre.org/style.json";
-
 export type BaseMapId = "nlsc-emap" | "nlsc-photo";
 
 /** Build a MapLibre style for an NLSC raster basemap. */

@@ -1,0 +1,101 @@
+{
+ "train_windows": 9642,
+ "test_windows": 7359,
+ "train_scenarios": 10,
+ "test_scenarios": 8,
+ "positive_window_rate": 0.0686,
+ "methods": {
+  "Rules": {
+   "roc_auc": 0.953,
+   "pr_auc": 0.491,
+   "flagged_vessels": 143,
+   "true": 107,
+   "false": 36,
+   "precision": 0.748,
+   "recall": 0.982,
+   "f1": 0.849
+  },
+  "Isolation Forest (unsupervised)": {
+   "roc_auc": 0.847,
+   "pr_auc": 0.393,
+   "flagged_vessels": 86,
+   "true": 37,
+   "false": 49,
+   "precision": 0.43,
+   "recall": 0.339,
+   "f1": 0.379
+  },
+  "Gradient boosting (supervised)": {
+   "roc_auc": 0.999,
+   "pr_auc": 0.991,
+   "flagged_vessels": 116,
+   "true": 109,
+   "false": 7,
+   "precision": 0.94,
+   "recall": 1.0,
+   "f1": 0.969
+  },
+  "Rules + ML hybrid": {
+   "roc_auc": 0.996,
+   "pr_auc": 0.95,
+   "flagged_vessels": 121,
+   "true": 109,
+   "false": 12,
+   "precision": 0.901,
+   "recall": 1.0,
+   "f1": 0.948
+  },
+  "Rules confirmed by ML": {
+   "roc_auc": null,
+   "pr_auc": null,
+   "flagged_vessels": 116,
+   "true": 107,
+   "false": 9,
+   "precision": 0.922,
+   "recall": 0.982,
+   "f1": 0.951
+  }
+ },
+ "top_features": [
+  {
+   "feature": "sens_dist_nm",
+   "label": "distance to protected zone",
+   "importance": 0.5529
+  },
+  {
+   "feature": "fam_mean",
+   "label": "route familiarity",
+   "importance": 0.1223
+  },
+  {
+   "feature": "max_gap_min",
+   "label": "longest silence",
+   "importance": 0.0737
+  },
+  {
+   "feature": "sog_p90",
+   "label": "top speed",
+   "importance": 0.0225
+  },
+  {
+   "feature": "max_implied_kn",
+   "label": "fastest implied jump",
+   "importance": 0.0221
+  },
+  {
+   "feature": "path_ratio",
+   "label": "path winding",
+   "importance": 0.0181
+  },
+  {
+   "feature": "group_size",
+   "label": "vessels within 3 nm",
+   "importance": 0.0135
+  },
+  {
+   "feature": "port_dist_nm",
+   "label": "distance to port",
+   "importance": 0.0066
+  }
+ ]
+}

@@ -1,0 +1,82 @@
+{
+ "vessels": 1818,
+ "vessel_days": 1818,
+ "alerts": 204,
+ "alerts_per_100_vessel_days": 11.2,
+ "high_alerts": 24,
+ "labelled": [
+  {
+   "mmsi": "352001906",
+   "name": "ANAYA",
+   "imo": "9326885",
+   "labels": [
+    "sanctions:IRAN-EO13902"
+   ],
+   "fixes": 671,
+   "max_risk": 0.0,
+   "alert_kinds": []
+  },
+  {
+   "mmsi": "352003222",
+   "name": "NEVE",
+   "imo": "9224465",
+   "labels": [
+    "sanctions:UKRAINE-EO13662] [RUSSIA-EO14024"
+   ],
+   "fixes": 1376,
+   "max_risk": 0.0,
+   "alert_kinds": []
+  },
+  {
+   "mmsi": "518999083",
+   "name": "CANGJIE",
+   "imo": "9299680",
+   "labels": [
+    "sanctions:UKRAINE-EO13662] [RUSSIA-EO14024"
+   ],
+   "fixes": 197,
+   "max_risk": 0.0,
+   "alert_kinds": []
+  },
+  {
+   "mmsi": "626278000",
+   "name": "YI MENG SHAN",
+   "imo": "9436941",
+   "labels": [
+    "sanctions:UKRAINE-EO13662] [RUSSIA-EO14024"
+   ],
+   "fixes": 968,
+   "max_risk": 0.0,
+   "alert_kinds": []
+  }
+ ],
+ "watchlist": {
+  "present": 4,
+  "flagged": 0,
+  "base_rate_flagged": 0.167,
+  "auc": 0.4164829106945976,
+  "note": "A watch-list entry is a legal designation of the vessel, not evidence of behaviour on these days."
+ },
+ "incidents": [
+  {
+   "category": "cable_damage_suspected",
+   "names": [
+    "YI PENG 3"
+   ],
+   "source": "https://en.wikipedia.org/wiki/2024_Baltic_Sea_submarine_cable_disruptions",
+   "confidence": "reported",
+   "window": [
+    1731807000.0,
+    1731895200.0
+   ],
+   "present_in_data": true,
+   "fixes_in_window": 0,
+   "first_seen": 1731917914.0,
+   "last_seen": 1731974344.0,
+   "alerts_near_window": [],
+   "max_risk": 37.1,
+   "rank_among_vessels": 234,
+   "vessels_with_any_alert": 303
+  }
+ ]
+}

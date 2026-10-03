@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import type { LiveVesselFeature } from "../api/live";
 
 // Record interactions with the mocked MapLibre map.
@@ -19,6 +19,8 @@ const state: {
   queryHits: any[];
   popupHtml: string[];
   styledataCb: ((e?: any) => void) | null;
+  events: string[];
+  styles: any[];
 } = {
   options: null,
   setDataPayloads: [],
@@ -35,11 +37,14 @@ const state: {
   queryHits: [],
   popupHtml: [],
   styledataCb: null,
+  events: [],
+  styles: [],
 };
 
 vi.mock("maplibre-gl", () => {
   class FakeMap {
     constructor(options: Record<string, unknown>) {
+      state.events.push("map");
       state.options = options;
     }
     addControl() {}
@@ -90,7 +95,8 @@ vi.mock("maplibre-gl", () => {
       state.featureStates.push({ id, state: s });
     }
     // setStyle wipes custom sources, layers, and images (real MapLibre behavior).
-    setStyle() {
+    setStyle(style: any) {
+      state.styles.push(style);
       state.layers = [];
       state.sources = [];
       state.images = [];
@@ -144,8 +150,10 @@ vi.mock("maplibre-gl", () => {
   }
   return {
     default: { Map: FakeMap, NavigationControl: class {}, Popup: FakePopup },
+    addProtocol: vi.fn(() => state.events.push("protocol")),
   };
 });
+vi.mock("pmtiles", () => ({ Protocol: class { tile() {} } }));
 vi.mock("maplibre-gl/dist/maplibre-gl.css", () => ({}));
 // Return a lightweight stub ImageData so the addImage registration path runs
 // (jsdom has no canvas 2d; the real icon is verified in the browser harness).
@@ -228,15 +236,90 @@ describe("MapCanvas", () => {
     state.queryHits = [];
     state.popupHtml = [];
     state.styledataCb = null;
+    state.events = [];
+    state.styles = [];
   });
 
   it("initializes centered on Taiwan", () => {
     render(<MapCanvas {...baseProps()} />);
+    expect(state.events.indexOf("protocol")).toBeGreaterThanOrEqual(0);
+    expect(state.events.indexOf("protocol")).toBeLessThan(state.events.indexOf("map"));
     const center = state.options?.center as [number, number];
     expect(center[0]).toBeGreaterThan(119);
     expect(center[0]).toBeLessThan(123);
     expect(center[1]).toBeGreaterThan(21);
     expect(center[1]).toBeLessThan(26);
+  });
+
+  it("bypasses NLSC in no-source mode and latches PMTiles failure to emergency", () => {
+    const { container } = render(
+      <MapCanvas {...baseProps({ operatingMode: "NO_LIVE_SOURCE" })} />,
+    );
+    expect(JSON.stringify(state.options?.style)).toContain("pmtiles:///offline/taiwan.pmtiles");
+
+    act(() => state.handlers.error?.({ error: new Error("PMTiles source fetch failed") }));
+    expect(JSON.stringify(state.styles[state.styles.length - 1])).not.toMatch(/https?:|pmtiles:/);
+    expect(container.querySelector(".map-canvas")).toHaveAttribute(
+      "data-basemap-stage",
+      "emergency",
+    );
+
+    const transitions = state.styles.length;
+    act(() => state.handlers.error?.({ error: new Error("network still unavailable") }));
+    expect(state.styles).toHaveLength(transitions);
+  });
+
+  it("warns on Cloud NLSC failure without invoking an offline fallback", () => {
+    const onBaseMapError = vi.fn();
+    const { container } = render(
+      <MapCanvas
+        {...baseProps({ operatingMode: "CLOUD_LIVE", onBaseMapError })}
+      />,
+    );
+    expect(JSON.stringify(state.options?.style)).toContain("wmts.nlsc.gov.tw");
+
+    act(() => state.handlers.error?.({ error: new Error("NLSC tile fetch failed") }));
+
+    expect(onBaseMapError).toHaveBeenCalledWith("NLSC tile fetch failed");
+    expect(state.styles).toHaveLength(0);
+    expect(container.querySelector(".map-canvas")).toHaveAttribute(
+      "data-basemap-stage",
+      "nlsc",
+    );
+
+    act(() => state.handlers.error?.({ error: new Error("NLSC tile retry failed") }));
+    expect(state.styles).toHaveLength(0);
+    expect(container.querySelector(".map-canvas")).toHaveAttribute(
+      "data-basemap-stage",
+      "nlsc",
+    );
+  });
+
+  it("preserves every MapCanvas overlay after a Cloud basemap warning", () => {
+    render(<MapCanvas {...baseProps({ operatingMode: "CLOUD_LIVE" })} />);
+    const sourcesBefore = [...state.sources];
+    const layersBefore = state.layers.map((layer) => layer.id);
+    expect(sourcesBefore).toEqual(
+      expect.arrayContaining(["live-vessels", "selected-track", "ports", "airspace"]),
+    );
+    expect(layersBefore).toEqual(
+      expect.arrayContaining([
+        "live-vessels-halo",
+        "live-vessels-dot",
+        "live-vessels-symbols",
+        "selected-track-line",
+        "ports-circle",
+        "ports-label",
+        "airspace-fill",
+        "airspace-line",
+      ]),
+    );
+
+    act(() => state.handlers.error?.({ error: new Error("CORS tile request blocked") }));
+
+    expect(state.styles).toHaveLength(0);
+    expect(state.sources).toEqual(sourcesBefore);
+    expect(state.layers.map((layer) => layer.id)).toEqual(layersBefore);
   });
 
   it("pushes all vessels onto a single GeoJSON source with valid orientation", () => {
@@ -249,6 +332,19 @@ describe("MapCanvas", () => {
     // v2: heading 511 is a sentinel -> falls back to COG (90), never 511.
     expect(vesselPush.data.features[1].properties.orientation).toBe(90);
     expect(vesselPush.data.features[1].properties.isInterpolated).toBe(true);
+  });
+
+  it("preserves authoritative cached and stale display states on map features", () => {
+    const classified = [
+      { ...vessels[0], properties: { ...vessels[0].properties, display_state: "cached" as const } },
+      { ...vessels[1], properties: { ...vessels[1].properties, display_state: "stale" as const } },
+    ];
+    render(<MapCanvas {...baseProps({ vessels: classified })} />);
+    const vesselPush = state.setDataPayloads.find((p) => p.id === "live-vessels");
+    expect(vesselPush.data.features.map((feature: any) => feature.properties.displayState)).toEqual([
+      "cached",
+      "stale",
+    ]);
   });
 
   it("emits the viewport bbox on load", () => {
@@ -450,5 +546,134 @@ describe("MapCanvas", () => {
     const sym = state.layers.find((l) => l.id === "live-vessels-symbols");
     expect(sym).toBeTruthy();
     expect(sym?.type).toBe("symbol");
+  });
+
+  // --- Generic overlay seam (Phase 9 approved extension) ------------------- //
+
+  const sampleOverlays = {
+    sources: {
+      "ext-points": {
+        type: "FeatureCollection" as const,
+        features: [
+          {
+            type: "Feature" as const,
+            geometry: { type: "Point" as const, coordinates: [120.5, 23.0] },
+            properties: { kind: "x" },
+          },
+        ],
+      },
+      "ext-lines": { type: "FeatureCollection" as const, features: [] },
+    },
+    layers: [
+      { id: "ext-points-layer", type: "circle" as const, source: "ext-points" },
+      { id: "ext-lines-layer", type: "line" as const, source: "ext-lines" },
+    ],
+  };
+
+  it("preserves current behavior exactly when overlays are absent", () => {
+    render(<MapCanvas {...baseProps()} />);
+    // No source/layer ids other than the built-in vessel/track/port/airspace set.
+    const builtInSources = ["live-vessels", "selected-track", "ports", "airspace"];
+    expect(state.sources.every((s) => builtInSources.includes(s))).toBe(true);
+    expect(state.layers.every((l) => !l.id.startsWith("ext-"))).toBe(true);
+  });
+
+  it("installs caller overlay sources and layers when provided", () => {
+    render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    expect(state.sources).toContain("ext-points");
+    expect(state.sources).toContain("ext-lines");
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "ext-lines-layer")).toBeTruthy();
+  });
+
+  it("keeps built-in vessel layers intact alongside overlays", () => {
+    render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    expect(state.sources).toContain("live-vessels");
+    expect(state.layers.find((l) => l.id === "live-vessels-dot")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "live-vessels-symbols")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "ports-circle")).toBeTruthy();
+  });
+
+  it("overlay layers are installed above the built-in layers", () => {
+    render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    const ids = state.layers.map((l) => l.id);
+    expect(ids.indexOf("ext-points-layer")).toBeGreaterThan(ids.indexOf("live-vessels-symbols"));
+  });
+
+  it("restores caller overlays after a basemap style reload", () => {
+    const { rerender } = render(
+      <MapCanvas {...baseProps({ layers: DEFAULT_LAYER_STATE, overlays: sampleOverlays })} />,
+    );
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+
+    // Switch basemap -> setStyle() wipes custom layers/sources.
+    rerender(
+      <MapCanvas
+        {...baseProps({
+          layers: { ...DEFAULT_LAYER_STATE, baseMap: "nlsc-photo" },
+          overlays: sampleOverlays,
+        })}
+      />,
+    );
+    expect(typeof state.styledataCb).toBe("function");
+    state.styledataCb?.();
+
+    // Overlays reinstalled after the style reload.
+    expect(state.sources).toContain("ext-points");
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "ext-lines-layer")).toBeTruthy();
+  });
+
+  it("restores caller overlays after a PMTiles/emergency fallback", () => {
+    render(<MapCanvas {...baseProps({ operatingMode: "EDGE_LIVE", overlays: sampleOverlays })} />);
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+
+    // Edge starts on PMTiles; its failure wipes and installs emergency style.
+    act(() => state.handlers.error?.({ error: new Error("PMTiles source fetch failed") }));
+    expect(typeof state.styledataCb).toBe("function");
+    state.styledataCb?.();
+
+    expect(state.sources).toContain("ext-points");
+    expect(state.layers.find((l) => l.id === "ext-points-layer")).toBeTruthy();
+  });
+
+  it("does not duplicate overlay source/layer registration on re-render", () => {
+    const { rerender } = render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    rerender(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    expect(state.sources.filter((s) => s === "ext-points")).toHaveLength(1);
+    expect(state.layers.filter((l) => l.id === "ext-points-layer")).toHaveLength(1);
+    expect(state.layers.filter((l) => l.id === "ext-lines-layer")).toHaveLength(1);
+  });
+
+  it("updates overlay source data via setData when overlays change (no new source)", () => {
+    const { rerender } = render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
+    const updated = {
+      ...sampleOverlays,
+      sources: {
+        ...sampleOverlays.sources,
+        "ext-points": {
+          type: "FeatureCollection" as const,
+          features: [
+            {
+              type: "Feature" as const,
+              geometry: { type: "Point" as const, coordinates: [121.0, 24.0] },
+              properties: { kind: "y" },
+            },
+            {
+              type: "Feature" as const,
+              geometry: { type: "Point" as const, coordinates: [121.5, 24.5] },
+              properties: { kind: "z" },
+            },
+          ],
+        },
+      },
+    };
+    rerender(<MapCanvas {...baseProps({ overlays: updated })} />);
+    // Source not re-added.
+    expect(state.sources.filter((s) => s === "ext-points")).toHaveLength(1);
+    // Latest data pushed via setData.
+    const push = [...state.setDataPayloads].reverse().find((p) => p.id === "ext-points");
+    expect(push).toBeTruthy();
+    expect(push.data.features).toHaveLength(2);
   });
 });

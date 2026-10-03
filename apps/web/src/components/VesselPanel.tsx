@@ -5,6 +5,8 @@ import { classifyVessel, formatAge } from "../lib/integrity";
 import { normalizeOrientation } from "../lib/orientation";
 import { friendlySource, vesselTypeLabel } from "../lib/display";
 import { IntegrityBadge } from "./IntegrityBadge";
+import { VesselIntelligenceCard } from "../features/intelligence/VesselIntelligenceCard";
+import type { GeographicContext } from "../features/intelligence/geographicTypes";
 
 interface VesselPanelProps {
   vessel: LiveVesselFeature | null;
@@ -13,6 +15,12 @@ interface VesselPanelProps {
   demo: boolean;
   /** True when the selected vessel is no longer in the live feed (dropped out). */
   missing?: boolean;
+  /**
+   * Optional ILLUSTRATIVE demo geographic context. When set, the embedded
+   * Vessel Intelligence Card renders in DEMO mode (banner + fixture context, no
+   * live GIS fetch). Null for all live vessels.
+   */
+  demoContext?: GeographicContext | null;
   onClose: () => void;
 }
 
@@ -27,6 +35,7 @@ export function VesselPanel({
   trackLoading,
   demo,
   missing,
+  demoContext = null,
   onClose,
 }: VesselPanelProps) {
   const { t, lang } = useI18n();
@@ -46,6 +55,13 @@ export function VesselPanel({
   const hasTrail = trackPoints >= 2;
   const course = normalizeOrientation(p.heading_deg, p.cog_deg);
 
+  // Per-vessel DEMO panel: a demoContext means this drawer is the illustrative
+  // fixture, not a live/offline vessel. We override ONLY the Position-status and
+  // Source *display* here so they no longer read "Offline Demo" / "Live AIS".
+  // Live behavior (demoContext === null) is unchanged; classifyVessel,
+  // friendlySource, evidence logic, and provenance are all untouched.
+  const isDemoPanel = demoContext !== null;
+
   const positionStatus =
     integrity === "provider_interpolated"
       ? t.positionProviderInterp
@@ -54,7 +70,12 @@ export function VesselPanel({
         : t.positionMeasured;
 
   return (
-    <aside className="vessel-drawer" aria-label={t.vesselOverview} role="dialog">
+    <aside
+      className={`vessel-drawer vessel-${integrity}`}
+      data-display-state={integrity}
+      aria-label={t.vesselOverview}
+      role="dialog"
+    >
       <button type="button" className="drawer-close" onClick={onClose} aria-label={t.closePanel}>
         ✕
       </button>
@@ -100,11 +121,23 @@ export function VesselPanel({
       <dl className="drawer-fields">
         <dt>{t.positionStatus}</dt>
         <dd>
-          <IntegrityBadge kind={integrity} />
-          <span className="position-status-text">{positionStatus}</span>
+          {isDemoPanel ? (
+            <span className="position-status-text" data-field="position-status">
+              {t.demoPositionStatus}
+            </span>
+          ) : (
+            <>
+              <IntegrityBadge kind={integrity} />
+              <span className="position-status-text" data-field="position-status">
+                {positionStatus}
+              </span>
+            </>
+          )}
         </dd>
         <dt>{t.source}</dt>
-        <dd>{friendlySource(p.source, t)}</dd>
+        <dd data-field="source">
+          {isDemoPanel ? t.demoSourceLabel : friendlySource(p.source, t)}
+        </dd>
       </dl>
 
       {/* Track */}
@@ -126,6 +159,9 @@ export function VesselPanel({
         <h3>{t.reviewPriority}</h3>
         <p className="muted collecting">{t.collectingForAnalysis}</p>
       </section>
+
+      {/* Explainable Vessel Intelligence — collapsed, additive, review support */}
+      <VesselIntelligenceCard vessel={vessel} track={track} demoContext={demoContext} />
 
       {/* Advanced analysis — collapsed, technical fields live here */}
       <section className="advanced-analysis">

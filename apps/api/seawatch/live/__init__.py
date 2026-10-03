@@ -11,6 +11,14 @@ from __future__ import annotations
 from .ingest import AisIngestConsumer, IngestHealth
 from .open_waters import OpenWatersProvider
 from .provider import TAIWAN_BBOX, BoundingBox, LiveAisProvider, ParsedFrame
+from .runtime import (
+    CloudLiveState,
+    EdgeLiveState,
+    LiveRuntime,
+    get_live_runtime,
+    get_resilience_status,
+    reset_live_runtime,
+)
 from .schema import LiveVesselObservation, TrajectoryPoint, VesselState
 from .store import LiveVesselStore
 
@@ -26,33 +34,31 @@ __all__ = [
     "TrajectoryPoint",
     "VesselState",
     "LiveVesselStore",
+    "CloudLiveState",
+    "EdgeLiveState",
+    "LiveRuntime",
+    "get_live_runtime",
+    "get_resilience_status",
+    "reset_live_runtime",
     "get_store",
     "get_consumer",
     "reset_live_state",
 ]
 
-# Process-wide singletons. One upstream feed -> one store -> many API reads.
-_store: LiveVesselStore | None = None
-_consumer: AisIngestConsumer | None = None
-
 
 def get_store() -> LiveVesselStore:
-    global _store
-    if _store is None:
-        _store = LiveVesselStore()
-    return _store
+    """Compatibility alias for the Cloud-owned store."""
+
+    return get_live_runtime().cloud.store
 
 
 def get_consumer() -> AisIngestConsumer:
-    global _consumer
-    if _consumer is None:
-        _consumer = AisIngestConsumer(OpenWatersProvider(), get_store())
-    return _consumer
+    """Compatibility alias for the Cloud-owned consumer."""
+
+    return get_live_runtime().cloud.consumer
 
 
 def reset_live_state() -> None:
     """Reset singletons (used by tests to isolate state)."""
 
-    global _store, _consumer
-    _store = None
-    _consumer = None
+    reset_live_runtime()

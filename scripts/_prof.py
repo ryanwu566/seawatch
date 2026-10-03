@@ -1,0 +1,17 @@
+import pandas as pd, sys
+for f in ["16992c33-c060-4e27-b6ec-112cbb3c4a31.csv","research_vessel_AIS_01.csv","Research_vessel_AIS_02.csv"]:
+    d=pd.read_csv(r"C:\Users\Lietotajs\Desktop\EDTH\\"+f,low_memory=False)
+    print("=====",f,len(d),"vessels",d.mmsi.nunique())
+    print("time",d.position_time_utc.min(),d.position_time_utc.max())
+    print("lat",d.latitude.min(),d.latitude.max(),"lon",d.longitude.min(),d.longitude.max())
+    print(d.vessel_type.value_counts().head(8).to_dict())
+    print(d.flag.fillna('?').value_counts().head(6).to_dict(), d.collection_type.value_counts().to_dict())
+    print(d.nav_status.value_counts().head(5).to_dict())
+    g=d.groupby("mmsi")
+    s=g.size().sort_values(ascending=False)
+    print("fixes/vessel top",s.head(8).to_dict())
+    if "vessel_subtype" in d: print("subtype",d.vessel_subtype.value_counts().head(8).to_dict())
+    nm=d.groupby("mmsi").vessel_name.first()
+    print(nm[s.head(8).index].to_dict())
+    d["t"]=pd.to_datetime(d.position_time_utc);dt=d.sort_values(["mmsi","t"]).groupby("mmsi").t.diff().dt.total_seconds()
+    print("median dt",dt.median())

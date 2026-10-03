@@ -13,8 +13,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import alerts, health, live, tracks
-from .live import get_consumer
+from .api import alerts, context, detection, health, live, logistics, resilience, tracks
+from .live import get_live_runtime
+from .live.config import LiveRuntimeConfig
+from .web.serving import configure_local_web
 
 logger = logging.getLogger("seawatch.main")
 
@@ -62,22 +64,53 @@ def _live_ingest_enabled() -> bool:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    """Start/stop the single upstream AIS ingest consumer with the app."""
+    """Start/stop independent Cloud and explicitly enabled Edge consumers."""
 
+    if os.environ.get("SEAWATCH_WARM_DETECTION", "true").strip().lower() in {"1", "true", "yes", "on"}:
+        import threading
+
+        def _warm() -> None:
+            try:
+                from .detection.service import get_service
+
+                svc = get_service()
+                svc.alerts()  # builds the scenario and runs detection once so the first screen opens instantly
+                logger.info("Detection service ready (region=%s)", svc.region)
+            except Exception as exc:  # noqa: BLE001 - monitoring UI must start even if the data is missing
+                logger.warning("Detection warm-up failed: %s", exc)
+
+        threading.Thread(target=_warm, daemon=True, name="detection-warmup").start()
+
+    runtime = get_live_runtime()
     consumer = None
+    edge_consumer = None
     if _live_ingest_enabled():
-        consumer = get_consumer()
+        consumer = get_live_runtime().cloud.consumer
         try:
             consumer.start()
             logger.info("Live AIS ingest started (provider=%s)", consumer.provider.name)
         except Exception as exc:  # noqa: BLE001 - never block startup on ingest
             logger.warning("Failed to start live AIS ingest: %s", exc)
+    if runtime.config.edge_ingest_enabled or runtime.config.edge_replay_enabled:
+        edge_consumer = runtime.edge.consumer
+        try:
+            edge_consumer.start()
+            logger.info(
+                "Edge AIS ingest starting (input=%s)",
+                edge_consumer.health.input_kind.value,
+            )
+        except Exception as exc:  # noqa: BLE001 - Edge cannot block API/Cloud
+            edge_consumer.health.record_error(exc)
+            logger.warning("Failed to start Edge AIS ingest: %s", exc)
     try:
         yield
     finally:
         if consumer is not None:
             await consumer.stop()
             logger.info("Live AIS ingest stopped")
+        if edge_consumer is not None:
+            await edge_consumer.stop()
+            logger.info("Edge AIS ingest stopped")
 
 
 def create_app() -> FastAPI:
@@ -92,13 +125,18 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST", "PUT"],
         allow_headers=["*"],
     )
     app.include_router(health.router)
     app.include_router(tracks.router)
     app.include_router(alerts.router)
     app.include_router(live.router)
+    app.include_router(resilience.router)
+    app.include_router(logistics.router)
+    app.include_router(context.router)
+    app.include_router(detection.router)
+    configure_local_web(app, LiveRuntimeConfig.from_env())
     return app
 
 

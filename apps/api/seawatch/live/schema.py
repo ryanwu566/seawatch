@@ -72,7 +72,7 @@ class LiveVesselObservation:
         reference = now or utcnow()
         return max(0.0, (reference - self.observed_at).total_seconds())
 
-    def to_public_properties(self) -> dict[str, Any]:
+    def to_public_properties(self, *, public_id: str) -> dict[str, Any]:
         """Privacy-conscious property bag for the public API.
 
         Includes the data integrity fields and useful civilian attributes.
@@ -80,7 +80,7 @@ class LiveVesselObservation:
         """
 
         return {
-            "provider_id": self.provider_id,
+            "provider_id": public_id,
             "sog_knots": self.sog_knots,
             "cog_deg": self.cog_deg,
             "heading_deg": self.heading_deg,
