@@ -63,6 +63,7 @@ function renderPanel(
     error: null,
     authenticated: true,
     authenticating: false,
+    providerAvailable: true,
     operatorAuthenticationRequired: false,
     onDrawMode: vi.fn(),
     onOpen: vi.fn(),
@@ -120,6 +121,7 @@ describe("AreaScanPanel", () => {
           error={null}
           authenticated
           authenticating={false}
+          providerAvailable
           operatorAuthenticationRequired={false}
           onDrawMode={() => {}}
           onOpen={() => {}}
@@ -157,6 +159,13 @@ describe("AreaScanPanel", () => {
 
     expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(t.areaScanTooLargeShort);
+  });
+
+  it("keeps Scan Area disabled when the Datalastic provider is unavailable", () => {
+    renderPanel({ geometry, plan, providerAvailable: false });
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+
+    expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
   });
 
   it("shows provider unavailable and clears the active selection", () => {
