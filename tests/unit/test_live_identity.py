@@ -51,6 +51,17 @@ def test_same_valid_mmsi_has_one_public_identity_across_sources() -> None:
     assert registry.public_id_for(edge) == cloud_id
 
 
+def test_internal_mmsi_identity_entry_point_matches_live_observations() -> None:
+    registry = VesselIdentityRegistry("fixed-test-key")
+
+    historical_id = registry.public_id_for_mmsi(416000001)
+    live_id = registry.public_id_for(_observation("cloud-key", 416000001))
+
+    assert historical_id == live_id
+    assert registry.public_id_for_mmsi(None) is None
+    assert registry.public_id_for_mmsi(123) is None
+
+
 def test_uncertain_identity_is_process_local_stable_and_collision_checked() -> None:
     tokens = iter(("same", "same", "different"))
     registry = VesselIdentityRegistry(

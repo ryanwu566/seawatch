@@ -54,6 +54,18 @@ class VesselIdentityRegistry:
         token = base64.urlsafe_b64encode(digest[:18]).decode("ascii").rstrip("=")
         return f"v_{token}"
 
+    def public_id_for_mmsi(self, mmsi: int | None) -> str | None:
+        """Return the configured deterministic identity for a valid MMSI.
+
+        Historical processing uses this narrow entry point so it shares the
+        live layer's validation and HMAC implementation. Invalid or absent
+        MMSIs fail closed instead of receiving an unrelated public identity.
+        """
+
+        if not self._valid_mmsi(mmsi):
+            return None
+        return self._mmsi_public_id(mmsi)  # type: ignore[arg-type]
+
     def public_id_for(self, observation: LiveVesselObservation) -> str:
         source_identity = (observation.source, observation.provider_id)
         with self._lock:
@@ -62,7 +74,8 @@ class VesselIdentityRegistry:
                 return existing_source_id
 
             if self._valid_mmsi(observation.mmsi):
-                public_id = self._mmsi_public_id(observation.mmsi)  # type: ignore[arg-type]
+                public_id = self.public_id_for_mmsi(observation.mmsi)
+                assert public_id is not None
                 collision = self._bindings.get(public_id)
                 if collision is not None and collision.mmsi != observation.mmsi:
                     raise RuntimeError("opaque vessel identity collision")
