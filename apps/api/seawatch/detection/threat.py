@@ -118,8 +118,12 @@ def detect_survey_threat(tracks: list[Track], ctx: DetectionContext, cfg: Detect
                 share, med = _band_share(tr.sog[a:b + 1], lo, hi)
                 ts_hit = z["ts_clear"] >= 1 or z["ts"] >= 1
                 sev = (78 if ts_hit else 70) + (8 if share >= 0.5 else 0)
-                candidates.append((sev, "R1", "Declared survey vessel inside Taiwan's territorial sea / contiguous zone", a, b,
-                                   {"pattern": None, "zones": z, "v_share": share, "v_median": med}))
+                label = "Declared survey vessel inside Taiwan's territorial sea / contiguous zone"
+                transit = cfg.grid_s <= 600 and np.isfinite(med) and med > hi + 1.0 and share < 0.3
+                if transit:  # measured speed well above survey speed and no pattern: steaming through, not surveying
+                    sev, label = 58.0, "Declared research vessel passing through Taiwan's territorial sea / contiguous zone at transit speed"
+                candidates.append((sev, "R1", label, a, b,
+                                   {"pattern": None, "zones": z, "v_share": share, "v_median": med, "transit": transit}))
             else:
                 eidx = np.where(z["eez_mask"])[0]
                 if len(eidx) >= cfg.threat_min_eez_fixes:
@@ -192,7 +196,7 @@ def _event(tr: Track, decl, foreign: bool, sev: float, rule: str, label: str, a:
     return Event(
         "", "survey_threat", [tr.mmsi], float(tr.t[a]), float(tr.t[b]), lat, lon, float(max(0.0, min(100.0, sev))), float(max(0.2, conf)),
         f"{tr.name}: {label}", evidence, BENIGN_SURVEY, UNCERTAIN,
-        {"classification": label, "rule": rule, "factors": factors, "hours": round(float(hours), 1)},
+        {"classification": label, "rule": rule, "factors": factors, "hours": round(float(hours), 1), "transit": bool(d.get("transit", False))},
         path=[(float(p), float(q)) for p, q in zip(tr.lat[a:b + 1:max(1, (b - a) // 60)], tr.lon[a:b + 1:max(1, (b - a) // 60)])])
 
 

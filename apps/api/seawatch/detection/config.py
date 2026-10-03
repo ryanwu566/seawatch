@@ -81,6 +81,17 @@ class DetectionConfig:
             survey_min_legs=4, survey_min_leg_nm=14.0, survey_window_h=96.0, alert_min_risk=55.0, medium_risk=70.0, high_risk=82.0,
         )
 
+    @classmethod
+    def dense(cls) -> "DetectionConfig":
+        """Preset for minute-level AIS in busy, fishing-heavy waters (e.g. Taiwan Strait): most stops, silences and meetings are routine."""
+
+        return cls(
+            gap_min_minutes=120.0, loiter_radius_nm=1.5, loiter_min_minutes=180.0,
+            rendezvous_min_minutes=90.0, proximity_distance_nm=0.4, cluster_min_vessels=6, cluster_min_minutes=90.0,
+            deviation_min_minutes=120.0, alert_min_risk=55.0, medium_risk=70.0, high_risk=82.0,
+            threat_speed_lo_kn=2.0, threat_speed_hi_kn=6.0,  # measured on real research-vessel tracks (see docs/research-vessel-data.md)
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 

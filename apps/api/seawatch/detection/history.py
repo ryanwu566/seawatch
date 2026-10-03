@@ -44,7 +44,8 @@ def ship_category(code) -> str:
         c = int(float(code))
     except (TypeError, ValueError):
         s = str(code).lower()
-        for k, v in (("tank", "tanker"), ("cargo", "cargo"), ("fish", "fishing"), ("passenger", "passenger"),
+        for k, v in (("tank", "tanker"), ("cargo", "cargo"), ("bulk", "cargo"), ("container", "cargo"), ("carrier", "cargo"),
+                     ("dredg", "dredger"), ("rescue", "sar"), ("fish", "fishing"), ("passenger", "passenger"),
                      ("ferry", "ferry"), ("tug", "tug"), ("pilot", "pilot"), ("sail", "pleasure"), ("pleasure", "pleasure")):
             if k in s:
                 return v

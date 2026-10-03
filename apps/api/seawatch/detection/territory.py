@@ -59,6 +59,7 @@ class Territory:
         zone[shapely.contains(tw, pts)] = CODE["TS"]
         shape2 = gx.shape
         self.dist_nm = d_tw.reshape(shape2).astype(np.float32)
+        self.coast_nm_grid = np.minimum(d_tw, d_ot).reshape(shape2).astype(np.float32)  # to ANY coast (harbours and bays of either shore)
         self.zone = zone.reshape(shape2)
         self.land = on_land.reshape(shape2)
 
@@ -94,6 +95,12 @@ class Territory:
 
         i, j = self._idx(lat, lon)
         return self.dist_nm[i, j]
+
+    def coast_nm(self, lat, lon) -> np.ndarray:
+        """Distance (nm) to the nearest land of Taiwan or the neighbouring shores."""
+
+        i, j = self._idx(lat, lon)
+        return self.coast_nm_grid[i, j]
 
     def summarise(self, lat: np.ndarray, lon: np.ndarray) -> dict[str, float]:
         """Fractions of fixes in each zone, nearest approach, and an on-the-line flag for a stretch of track."""

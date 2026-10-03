@@ -13,7 +13,7 @@ Foreign research or survey ships operating in Taiwan's waters are treated as a p
 ### Factors
 
 * **T - Territory.** Positions inside Taiwan's territorial sea (<= 12 nm), contiguous zone (12-24 nm) or EEZ (<= 200 nm, nearer to Taiwan than to the mainland, Japan or the Philippines). _Reference geometry from Natural Earth coastlines, not legal baselines. A fix within 3 nm of a limit counts as 'on the line' (position error)._
-* **V - Velocity.** Typical speed within 5-10 kn for at least half of the track's fixes. _The mentor said '5 to 10 miles per hour or so'; we read it as knots (nautical miles per hour). Adjustable in the Tuning lab. Hourly data estimates speed from cell steps._
+* **V - Velocity.** Typical speed within 5-10 kn for at least half of the track's fixes. _The mentor said '5 to 10 miles per hour or so'; we read it as knots. Measured on 80 real research-type vessels (Apr 2026): inside survey runs the median was 4 kn (69% below 5 kn) while 55% of their transit fixes were at 5-10 kn, so the 5-10 band cannot tell survey from transit. Message-level data therefore uses 2-6 kn; hourly data keeps 5-10 (speed is estimated from cell steps). Adjustable in the Tuning lab._
 * **A - AIS declaration.** The vessel itself signals survey or research: name containing a survey/research designation (RESEARCH, SURVEY, KEXUE, XIANG YANG HONG, HAIYANG DIZHI ...), a survey destination, or a feed class of seismic vessel (weak). _Strong evidence when present (score >= 0.6) but proves little when absent; names are cheap to change._
 * **P - Pattern.** Survey-shaped zig-zag / lawnmower track (see the survey detector above). _Independent of what the vessel claims; a ship that hides its role still has to sail the lines._
 

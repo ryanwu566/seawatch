@@ -20,6 +20,8 @@ from .config import DetectionConfig
 from .context import DetectionContext, TrafficBaseline
 from .detectors import run_all
 from .history import ship_category
+from .identity import is_real_ship
+from .survey import _FISHING_NAME
 from .learned import LearnedContext, VesselHabits
 from .models import Track
 from .territory import Territory
@@ -27,18 +29,23 @@ from .territory import Territory
 # canonical name -> accepted column names (lower-cased)
 ALIASES = {
     "mmsi": ["mmsi", "ship_id", "vessel_id", "userid", "user_id", "id"],
-    "t": ["t", "time", "timestamp", "datetime", "date_time", "base_date_time", "basedatetime", "position_timestamp", "ts"],
+    "t": ["t", "position_time_utc", "time", "timestamp", "datetime", "date_time", "base_date_time", "basedatetime", "position_timestamp", "ts"],
     "lat": ["lat", "latitude", "y"],
     "lon": ["lon", "lng", "longitude", "long", "x"],
-    "sog": ["sog", "speed", "speed_knots", "speedoverground", "speed_over_ground"],
-    "cog": ["cog", "course", "courseoverground", "course_over_ground", "heading"],
-    "name": ["name", "shipname", "ship_name", "vessel_name", "vesselname"],
-    "type": ["type", "shiptype", "ship_type", "vessel_type", "vesseltype", "ship_and_cargo_type"],
+    "sog": ["sog", "speed_knots", "speed", "speed_knots", "speedoverground", "speed_over_ground"],
+    "cog": ["cog", "course_deg", "course", "courseoverground", "course_over_ground", "heading"],
+    "name": ["name", "vessel_name", "shipname", "ship_name", "vessel_name", "vesselname"],
+    "type": ["type", "vessel_type", "shiptype", "ship_type", "vessel_type", "vesseltype", "ship_and_cargo_type"],
     "imo": ["imo", "imo_number"],
     "status": ["status", "nav_status", "navstatus", "navigationalstatus", "navigational_status"],
     "dest": ["dest", "destination"],
+    "subtype": ["vessel_subtype", "subtype"],
     "flag": ["flag", "flag_state", "country"],
 }
+
+
+NAV_CODES = {"UNDER_WAY_USING_ENGINE": 0, "AT_ANCHOR": 1, "NOT_UNDER_COMMAND": 2, "RESTRICTED_MANEUVERABILITY": 3, "CONSTRAINED_BY_DRAUGHT": 4,
+             "MOORED": 5, "AGROUND": 6, "ENGAGED_IN_FISHING": 7, "UNDER_WAY_SAILING": 8}
 
 
 def _read(path: Path) -> pd.DataFrame:
@@ -66,6 +73,8 @@ def normalise(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, str]]:
     if missing:
         raise ValueError(f"cannot find columns for {missing}; columns present: {list(df.columns)[:30]}")
     out = pd.DataFrame({k: df[v] for k, v in mapping.items()})
+    if "status" in out and not pd.api.types.is_numeric_dtype(out["status"]):
+        out["status"] = out["status"].astype(str).str.upper().map(NAV_CODES).fillna(-1)
     out["mmsi"] = out["mmsi"].astype(str).str.replace(r"\.0$", "", regex=True)
     if pd.api.types.is_numeric_dtype(out["t"]):
         x = out["t"].astype(float)
@@ -90,12 +99,17 @@ def resolution(df: pd.DataFrame) -> dict[str, Any]:
 
 def to_tracks(df: pd.DataFrame, min_fixes: int = 6) -> list[Track]:
     tracks = []
+    dropped = to_tracks.dropped = {}
     for mmsi, g in df.sort_values(["mmsi", "t"]).groupby("mmsi", sort=False):
-        if len(g) < min_fixes or not (mmsi.isdigit() and len(mmsi) == 9 and mmsi[0] in "234567"):
+        if len(g) < min_fixes:
             continue
         name = next((str(x) for x in g.get("name", pd.Series(dtype=object)).dropna() if str(x).strip()), mmsi)
+        if not is_real_ship(name, mmsi):
+            dropped["gear/placeholder"] = dropped.get("gear/placeholder", 0) + 1
+            continue
         typ = next((x for x in g.get("type", pd.Series(dtype=object)).dropna()), "")
         imo = next((str(int(float(x))) for x in g.get("imo", pd.Series(dtype=object)).dropna() if str(x).replace(".0", "").isdigit()), "")
+        sub = next((str(x) for x in g.get("subtype", pd.Series(dtype=object)).dropna() if str(x).strip()), "")
         dest = next((str(x) for x in g.get("dest", pd.Series(dtype=object)).dropna() if str(x).strip()), "")
         sog = g["sog"].to_numpy(float) if "sog" in g else np.full(len(g), np.nan)
         if np.isfinite(sog).mean() < 0.5:  # derive from position steps when the feed has no speed
@@ -107,8 +121,11 @@ def to_tracks(df: pd.DataFrame, min_fixes: int = 6) -> list[Track]:
         cog = g["cog"].to_numpy(float) if "cog" in g else np.full(len(g), np.nan)
         status = pd.to_numeric(g["status"], errors="coerce").fillna(-1).astype(int).to_numpy() if "status" in g else None
         flag = str(g["flag"].dropna().iloc[0]) if "flag" in g and g["flag"].notna().any() else ("TWN" if mmsi.startswith("416") else "")
-        tracks.append(Track(mmsi, name.strip(), ship_category(typ), flag, g["t"].to_numpy(float), g["lat"].to_numpy(float), g["lon"].to_numpy(float),
-                            sog, cog, status, imo, {"destination": dest} if dest else None))
+        cat = ship_category(typ)
+        if cat == "other" and _FISHING_NAME.search(name.upper().replace("-", "")):
+            cat = "fishing"  # unclassified boats named like Chinese / Taiwanese fishing vessels
+        tracks.append(Track(mmsi, name.strip(), cat, flag, g["t"].to_numpy(float), g["lat"].to_numpy(float), g["lon"].to_numpy(float),
+                            sog, cog, status, imo, {k: v for k, v in (("destination", dest if dest not in ("0", "nan") else ""), ("subtype", sub)) if v} or None))
     return tracks
 
 
@@ -131,7 +148,7 @@ def load(paths: list[str]) -> tuple[list[Track], dict[str, Any]]:
 def analyse(tracks: list[Track], hourly: bool, live_frac: float = 0.2) -> dict[str, Any]:
     """Learn normal behaviour from the first part of the data, then run all rules on the last ``live_frac`` of it."""
 
-    cfg = DetectionConfig.hourly() if hourly else DetectionConfig()
+    cfg = DetectionConfig.hourly() if hourly else DetectionConfig.dense()
     t0 = min(float(t.t[0]) for t in tracks)
     t1 = max(float(t.t[-1]) for t in tracks)
     cut = t1 - live_frac * (t1 - t0)

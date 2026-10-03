@@ -8,6 +8,8 @@ noisy-OR over per-event evidence - never a black box, never a threat verdict.
 
 from __future__ import annotations
 
+import numpy as np
+
 import hashlib
 from dataclasses import dataclass, field
 from typing import Any
@@ -227,8 +229,20 @@ def _make_alert(evs: list[Event], meta: dict[str, Track], cfg: DetectionConfig, 
         risk = min(99.0, risk + 6)
     # A survey breach of Taiwan's own 24 nm (rules R1 / R2) is the case the mentor model says must be raised as a threat: floor it at HIGH.
     # Operator feedback below can still lower it.
-    if any(e.kind == "survey_threat" and e.metrics.get("rule") in ("R1", "R2") for e in evs):
+    if any(e.kind == "survey_threat" and e.metrics.get("rule") in ("R1", "R2") and not e.metrics.get("transit") for e in evs):
         risk = max(risk, cfg.high_risk)
+    # Fishing fleets silence, loiter, meet and gather as a matter of routine: behaviour that is only 'ordinary work' for them is discounted.
+    # Zone entries, spoofing and survey patterns are NOT discounted.
+    routine = {"ais_gap", "loitering", "rendezvous", "cluster", "dark_rendezvous", "route_deviation"}
+    if kinds and set(kinds) <= routine and mmsis:
+        fish = sum(getattr(meta.get(m), "ship_type", "") == "fishing" for m in mmsis) / len(mmsis)
+        if fish >= 0.7:
+            risk *= 0.65
+            from .territory import Territory
+
+            terr = Territory.default()
+            if terr is not None and float(terr.coast_nm(np.array([np.mean([e.lat for e in evs])]), np.array([np.mean([e.lon for e in evs])]))[0]) <= 6.0:
+                risk *= 0.7  # a fishing fleet inside harbour / bay waters: moorage, not a meeting
     suppressed = None
     if feedback is not None:
         factor, why = feedback.risk_modifier(mmsis, kinds, evs)
