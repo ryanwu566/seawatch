@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { watchApi } from "./api";
 import maplibregl, { type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import emergencyGeographyRaw from "../../assets/taiwan-emergency.geojson?raw";
@@ -57,7 +58,7 @@ interface Props {
   onSelect: (id: string | null) => void;
 }
 
-const SRC = ["zones", "coverage", "tracks-all", "trails", "ev-lines", "ev-points", "rings", "vessels", "truth"] as const;
+const SRC = ["cables", "landing", "limits", "zones", "coverage", "tracks-all", "trails", "ev-lines", "ev-points", "rings", "vessels", "truth"] as const;
 
 function setData(map: maplibregl.Map, id: string, data: GeoJSON.FeatureCollection) {
   (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
@@ -67,7 +68,7 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [ready, setReady] = useState(false);
-  const [layers, setLayers] = useState({ coverage: false, tracks: true, zones: true });
+  const [layers, setLayers] = useState({ coverage: false, tracks: true, zones: true, cables: true, limits: true });
   const markers = useRef<maplibregl.Marker[]>([]);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -92,6 +93,21 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
     map.on("load", () => {
       for (const id of SRC) map.addSource(id, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
+      map.addLayer({
+        id: "limits-line", type: "line", source: "limits",
+        paint: {
+          "line-color": ["match", ["get", "level"], "ts", "#fb7185", "cz", "#fbbf24", "#60a5fa"],
+          "line-width": ["match", ["get", "level"], "ts", 1.6, 1.2], "line-opacity": 0.85,
+          "line-dasharray": ["match", ["get", "level"], "ts", ["literal", [1, 0]], ["literal", [4, 3]]],
+        },
+      });
+      map.addLayer({ id: "cables-line", type: "line", source: "cables", paint: { "line-color": "#22d3ee", "line-width": 1.6, "line-opacity": 0.8 } });
+      map.addLayer({
+        id: "cables-label", type: "symbol", source: "cables", minzoom: 6,
+        layout: { "symbol-placement": "line", "text-field": ["get", "name"], "text-size": 10, "text-font": ["Open Sans Regular"] },
+        paint: { "text-color": "#67e8f9", "text-halo-color": "#06121f", "text-halo-width": 1.2 },
+      });
+      map.addLayer({ id: "landing-pt", type: "circle", source: "landing", paint: { "circle-radius": 3.5, "circle-color": "#06121f", "circle-stroke-color": "#22d3ee", "circle-stroke-width": 1.5 } });
       map.addLayer({ id: "coverage-fill", type: "fill", source: "coverage", layout: { visibility: "none" }, paint: { "fill-color": "#38bdf8", "fill-opacity": 0.05 } });
       map.addLayer({ id: "coverage-line", type: "line", source: "coverage", layout: { visibility: "none" }, paint: { "line-color": "#38bdf8", "line-opacity": 0.35, "line-width": 1, "line-dasharray": [2, 3] } });
       map.addLayer({ id: "zones-fill", type: "fill", source: "zones", paint: { "fill-color": ["get", "color"], "fill-opacity": ["match", ["get", "kind"], ["port", "anchorage"], 0.1, 0.16] } });
@@ -193,6 +209,11 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
+    watchApi.layers().then((l) => {
+      setData(map, "cables", l.cables);
+      setData(map, "landing", l.landing);
+      setData(map, "limits", l.limits);
+    }).catch(() => undefined);
     setData(map, "zones", zonesFC(scenario));
     setData(map, "coverage", coverageFC(scenario));
   }, [ready, scenario]);
@@ -211,6 +232,8 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
     map.setLayoutProperty("coverage-line", "visibility", vis(layers.coverage));
     map.setLayoutProperty("tracks-all", "visibility", vis(layers.tracks));
     for (const id of ["zones-fill", "zones-line", "zones-label"]) map.setLayoutProperty(id, "visibility", vis(layers.zones));
+    for (const id of ["cables-line", "cables-label", "landing-pt"]) map.setLayoutProperty(id, "visibility", vis(layers.cables));
+    map.setLayoutProperty("limits-line", "visibility", vis(layers.limits));
   }, [ready, layers]);
 
   // ---- dynamic data (clock / alerts) --------------------------------------
@@ -278,6 +301,8 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
         {(
           [
             ["zones", "Zones"],
+            ["cables", "Cables"],
+            ["limits", "12 / 24 nm / EEZ"],
             ["tracks", "Tracks"],
             ["coverage", "AIS coverage"],
           ] as const

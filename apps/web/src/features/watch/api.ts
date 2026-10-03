@@ -98,7 +98,7 @@ export interface Zone {
 export interface RegionInfo {
   id: string;
   label: string;
-  data_kind: "simulated" | "real_plus_injected";
+  data_kind: "simulated" | "real_plus_injected" | "real";
   available: boolean;
 }
 
@@ -106,7 +106,7 @@ export interface Scenario {
   region: string;
   region_label: string;
   timezone: string;
-  data_kind: "simulated" | "real_plus_injected";
+  data_kind: "simulated" | "real_plus_injected" | "real";
   note: string;
   bounds: [[number, number], [number, number]];
   name: string;
@@ -245,6 +245,7 @@ export const watchApi = {
   evaluation: () => request<Evaluation>("/detection/evaluation"),
   assessment: () => request<Assessment>("/detection/assessment"),
   rulebook: () => request<Rulebook>("/detection/rulebook"),
+  layers: () => request<{ cables: GeoJSON.FeatureCollection; landing: GeoJSON.FeatureCollection; limits: GeoJSON.FeatureCollection; attribution: string }>("/detection/layers"),
   truth: () => request<{ truth: TruthEvent[] }>("/detection/truth").then((r) => r.truth),
   resetFeedback: () => post<{ status: string }>("/detection/feedback/reset", {}),
 };

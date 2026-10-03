@@ -141,6 +141,23 @@ def rulebook() -> dict[str, Any]:
     return build(svc.cfg, svc.hourly)
 
 
+@router.get("/layers", summary="Map layers: submarine cables, landing points and Taiwan's modelled maritime limits")
+def layers() -> dict[str, Any]:
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[4] / "data" / "geo"
+
+    def read(name: str) -> dict[str, Any]:
+        try:
+            return json.loads((root / name).read_text(encoding="utf8"))
+        except (OSError, ValueError):
+            return {"type": "FeatureCollection", "features": []}
+
+    return {"cables": read("taiwan_cables.geojson"), "landing": read("taiwan_landing_points.geojson"), "limits": read("taiwan_zone_lines.geojson"),
+            "attribution": "Cables: TeleGeography Submarine Cable Map (CC BY-NC-SA 4.0), approximate. Limits: modelled from public coastlines, not legal baselines."}
+
+
 @router.get("/truth", summary="Ground-truth labels (demo 'reveal answers')")
 def truth() -> dict[str, Any]:
     return {"truth": get_service().truth()}

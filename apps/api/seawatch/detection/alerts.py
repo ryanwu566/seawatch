@@ -229,8 +229,10 @@ def _make_alert(evs: list[Event], meta: dict[str, Track], cfg: DetectionConfig, 
         risk = min(99.0, risk + 6)
     # A survey breach of Taiwan's own 24 nm (rules R1 / R2) is the case the mentor model says must be raised as a threat: floor it at HIGH.
     # Operator feedback below can still lower it.
-    if any(e.kind == "survey_threat" and e.metrics.get("rule") in ("R1", "R2") and not e.metrics.get("transit") for e in evs):
+    if any(e.kind == "survey_threat" and (e.metrics.get("rule") in ("R1", "R2") or (e.metrics.get("rule") == "R7" and e.severity >= 88)) and not e.metrics.get("transit") for e in evs):
         risk = max(risk, cfg.high_risk)
+    elif any(e.kind == "survey_threat" and e.metrics.get("rule") == "R7" and e.metrics.get("mode") == "tow" and e.severity >= 75 for e in evs):
+        risk = max(risk, cfg.medium_risk)  # a vessel announcing a towed array / cable work in Taiwan's economic zone must be seen
     # Fishing fleets silence, loiter, meet and gather as a matter of routine: behaviour that is only 'ordinary work' for them is discounted.
     # Zone entries, spoofing and survey patterns are NOT discounted.
     routine = {"ais_gap", "loitering", "rendezvous", "cluster", "dark_rendezvous", "route_deviation"}

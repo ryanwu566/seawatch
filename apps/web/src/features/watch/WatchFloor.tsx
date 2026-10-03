@@ -96,7 +96,7 @@ export function WatchFloor() {
             </select>
           )}
           <span className="wf-sim" title={w.scenario.note}>
-            {w.scenario.data_kind === "simulated" ? "SIMULATED DATA" : "REAL AIS + INJECTED EVENTS"}
+            {w.scenario.data_kind === "simulated" ? "SIMULATED DATA" : w.scenario.data_kind === "real" ? "REAL AIS" : "REAL AIS + INJECTED EVENTS"}
           </span>
           <span className="wf-clock">{fmtClock(w.clock)}</span>
           <button className={`wf-lab-btn ${insight ? "on" : ""}`} onClick={() => setInsight((v) => !v)} aria-pressed={insight}>

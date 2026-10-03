@@ -20,7 +20,7 @@ from .models import Event, Track
 
 # Chinese / Taiwanese fishing boats are named like MINLIANYU60173, ZHEBEIYU..., "... YU 61294", "FV ..."; a feed without ship types
 # would otherwise class them as 'other'
-_FISHING_NAME = re.compile(r"[A-Z]{2,}YU\s?\d{2,}|FV|FISHING|TRAWL|YU\s?\d{3,}|NO\.?\s?\d+$")
+_FISHING_NAME = re.compile(r"[A-Z]{2,}YU\s?\d{2,}|\bFV\b|FISHING|TRAWL|\bYU\s?\d{3,}|NO\.?\s?\d+$")
 
 
 def is_exempt(tr) -> bool:

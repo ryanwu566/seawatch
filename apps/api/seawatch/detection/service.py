@@ -30,6 +30,17 @@ REGIONS: dict[str, dict[str, Any]] = {
                 "History (1-25 Sep) trains the baselines; the last 4 days are monitored. Not message-level AIS.",
         "model_path": "data/models/ml_taiwan-gfw.joblib", "features": PORTABLE, "hourly": True,
     },
+    "taiwan-research": {
+        "label": "Research vessels near Taiwan - real AIS (1-16 Apr 2026)", "timezone": "Asia/Taipei", "data_kind": "real",
+        "note": "Real message-level AIS of ~80 research / survey-type vessels (hackathon-supplied). Nothing injected; normal traffic learned from the 2-3 Apr full-day file.",
+        "model_path": "data/models/none.joblib", "features": None, "dense": True,
+        "only": ("survey_threat", "survey_pattern", "zone_entry"),  # the fleet sits in Chinese ports outside any learned coverage: generic gap/loiter rules would be noise
+    },
+    "taiwan-day": {
+        "label": "Taiwan waters - real AIS, one full day (3 Apr 2026)", "timezone": "Asia/Taipei", "data_kind": "real",
+        "note": "Real message-level AIS of the whole area (hackathon-supplied) with research vessels included. Nothing injected; learned from 2 Apr, monitored 3 Apr.",
+        "model_path": "data/models/none.joblib", "features": None, "dense": True,
+    },
     "taiwan": {
         "label": "Taiwan waters (simulated)", "timezone": "Asia/Taipei", "data_kind": "simulated",
         "note": "Fully simulated vessel tracks with labelled events - no live AIS feed connected.",
@@ -46,6 +57,10 @@ def available_regions() -> list[dict[str, Any]]:
         ok = True
         if rid == "sf-bay":
             ok = len(list(Path(".").glob("data/processed/sfbay_2024-01-0*.parquet"))) >= 2
+        elif rid in ("taiwan-research", "taiwan-day"):
+            from . import mentorworld
+
+            ok = mentorworld.available()
         elif rid == "taiwan-gfw":
             from . import gfw
 
@@ -61,7 +76,7 @@ def default_region() -> str:
     avail = {r["id"]: r["available"] for r in available_regions()}
     if want in avail and avail[want]:
         return want
-    for rid in ("taiwan-gfw", "sf-bay"):
+    for rid in ("taiwan-research", "taiwan-gfw", "sf-bay"):
         if avail.get(rid):
             return rid
     return "taiwan"
@@ -89,7 +104,8 @@ class DetectionService:
         self.region = region
         self.info = REGIONS[region]
         self.hourly = bool(self.info.get("hourly"))
-        self.cfg = DetectionConfig.hourly() if self.hourly else DetectionConfig()
+        self.dense = bool(self.info.get("dense"))
+        self.cfg = DetectionConfig.hourly() if self.hourly else DetectionConfig.dense() if self.dense else DetectionConfig()
         self.store = store or default_store()
         self.watch = self._load_watchlists()
         self._events: list[Event] | None = None
@@ -103,6 +119,13 @@ class DetectionService:
             self.scenario, self.parts = twworld.build_tw_scenario(data)
             self.baseline = self.parts["baseline"]
             self._base_ctx = twworld.make_context(self.scenario, self.parts)
+            self.learned = self.parts["learned"]
+        elif region in ("taiwan-research", "taiwan-day"):
+            from . import mentorworld
+
+            self.scenario, self.parts = mentorworld.load(region)
+            self.baseline = self.parts["baseline"]
+            self._base_ctx = mentorworld.make_context(self.scenario, self.parts)
             self.learned = self.parts["learned"]
         elif region == "sf-bay":
             from . import sfworld
@@ -152,6 +175,9 @@ class DetectionService:
             key = (self.cfg.to_dict(), tuple(sorted(self.store.allowlist)))
             if self._events is None or self._evt_cfg != key:
                 ev = run_all(self.scenario.tracks, self.scenario.t0, self.scenario.t1, self._context(), self.cfg)
+                only = self.info.get("only")
+                if only:
+                    ev = [e for e in ev if e.kind in only]
                 for e in ev:
                     e.metrics["detected_at"] = float(_DETECT_LAG[e.kind](e, self.cfg))
                 self._events, self._evt_cfg = ev, key
@@ -236,6 +262,10 @@ class DetectionService:
 
     def evaluation(self) -> dict[str, Any]:
         al = self.alerts(include_dismissed=True)
+        if not self.scenario.truth:  # real data without labels: there is nothing to score against, say so rather than report 0%
+            return {"alerts": len(al), "true_alerts": 0, "false_alarms": 0, "false_alarms_on_benign_lookalikes": 0, "precision": 0.0, "recall": 0.0,
+                    "f1": 0.0, "alerts_per_100_vessel_days": 0.0, "false_alarms_per_100_vessel_days": 0.0, "real_background": True,
+                    "per_kind": {}, "missed": [], "false_alarm_ids": [], "unlabelled": True}
         out = evaluate_alerts(al, self.scenario)
         out["real_background"] = self.info["data_kind"] == "real_plus_injected"
         return out
@@ -283,7 +313,7 @@ class DetectionService:
         }
 
     def config(self) -> dict[str, Any]:
-        defaults = DetectionConfig.hourly() if self.hourly else DetectionConfig()
+        defaults = DetectionConfig.hourly() if self.hourly else DetectionConfig.dense() if self.dense else DetectionConfig()
         return {"values": self.cfg.to_dict(), "specs": PARAM_SPECS_HOURLY if self.hourly else PARAM_SPECS, "defaults": defaults.to_dict()}
 
     def set_config(self, values: dict[str, Any]) -> None:
@@ -294,7 +324,7 @@ class DetectionService:
 
     def reset_config(self) -> None:
         with self.lock:
-            self.cfg = DetectionConfig.hourly() if self.hourly else DetectionConfig()
+            self.cfg = DetectionConfig.hourly() if self.hourly else DetectionConfig.dense() if self.dense else DetectionConfig()
 
 
 _service: DetectionService | None = None

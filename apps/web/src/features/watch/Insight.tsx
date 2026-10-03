@@ -140,6 +140,9 @@ function AssessmentView({ a }: { a: Assessment }) {
 
       <section>
         <h3>5. Measured accuracy on labelled behaviours</h3>
+        {(ev as { unlabelled?: boolean }).unlabelled && (
+          <p className="wf-fine">This region is real data with no labels, so accuracy cannot be measured here. Use the Taiwan hourly or San Francisco regions for recall figures; here the funnel and the factor table show how selective the rules are.</p>
+        )}
         <p className="wf-fine">
           Real traffic plus added labelled events: precision {Math.round(ev.precision * 100)}%, recall {Math.round(ev.recall * 100)}%, {ev.alerts} alerts, of
           which {ev.true_alerts} match an added event. The rest are unverified real vessels (not necessarily false alarms).
@@ -250,6 +253,9 @@ export function FactorCards({ metrics }: { metrics: Record<string, unknown> }) {
   const d = f.declared;
   const p = f.pattern;
   const band = v.band_kn as number[];
+  const st = f.status as F | undefined;
+  const tw = f.towing as F | undefined;
+  const cb = f.cable as F | undefined;
   const card = (code: string, name: string, x: F, text: string) => (
     <div className={`wf-fc ${x.met ? "met" : ""}`} title={name}>
       <b>
@@ -264,6 +270,9 @@ export function FactorCards({ metrics }: { metrics: Record<string, unknown> }) {
       {card("V", "Velocity", v, `${Math.round(Number(v.share_in_band) * 100)}% of fixes at ${band[0]}–${band[1]} kn`)}
       {card("A", "AIS declaration", d, d.met ? "declares survey / research" : "no declaration")}
       {card("P", "Pattern", p, p.met ? `${String(p.legs)} zig-zag legs` : "no pattern")}
+      {tw && card("D", "Destination", tw, tw.met ? `towing / cable work: “${String(tw.destination)}”` : "no towing announced")}
+      {st && card("N", "Navigation status", st, `restricted manoeuvre ${Math.round(Number(st.restricted_share) * 100)}%, status switches ${String(st.toggles)}`)}
+      {cb && card("C", "Cable proximity", cb, cb.met ? `${String(cb.cable)}, ${Math.round(Number(cb.share_within_10nm) * 100)}% within 10 nm` : "away from charted cables")}
     </div>
   );
 }

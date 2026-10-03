@@ -37,11 +37,52 @@ def _norm(name: str) -> str:
     return re.sub(r"[^A-Z0-9]", "", (name or "").upper())
 
 
+# destination text that announces a towed array or cable work ("TOWING 5NM CABLE", "TOWING KEEP 3NM CPA", "KEEP 2CPA PASSING")
+_TOWING = re.compile(r"\bTOW(?:ING|ED|AGE)?\b|CPA\b|KEEP\s*\d|STREAMER|\bARRAYS?\b|\bCABLES?\b")
+
+
+def is_towing_text(dest: str) -> bool:
+    return bool(dest) and bool(_TOWING.search(dest.upper()))
+
+
+def restricted_share(tr: Track) -> float:
+    return float(np.mean(np.asarray(tr.status) == 3)) if tr.status is not None and len(tr.status) else 0.0
+
+
+def status_toggles(tr: Track, max_dur_s: float = 1800.0, min_base_s: float = 3600.0) -> int:
+    """Brief departures from a steady navigation status while under way (e.g. UNDER_WAY_USING_ENGINE -> NOT_DEFINED -> back).
+
+    Rare among ordinary traffic (about 0.6% of non-fishing vessels in a full day), which is why it is informative.
+    """
+
+    if tr.status is None or len(tr) < 8:
+        return 0
+    s = np.asarray(tr.status)
+    idx = np.r_[0, np.where(s[1:] != s[:-1])[0] + 1, len(s)]
+    n = 0
+    for k in range(1, len(idx) - 2):
+        a, b = idx[k], idx[k + 1]
+        prev0, prev1, nxt0, nxt1 = idx[k - 1], a, b, idx[k + 2]
+        if s[prev0] != s[nxt0] or s[prev0] == s[a]:
+            continue
+        if tr.t[min(b, len(tr) - 1)] - tr.t[a] > max_dur_s:
+            continue
+        if tr.t[prev1 - 1] - tr.t[prev0] < min_base_s or tr.t[nxt1 - 1] - tr.t[nxt0] < min_base_s:
+            continue
+        sp = tr.sog[max(0, a - 3):b + 3]
+        if np.isfinite(sp).any() and np.nanmedian(sp) > 3.0:
+            n += 1
+    return n
+
+
 @dataclass
 class Declared:
     score: float = 0.0  # 0..1 how strongly the vessel declares itself a survey / research vessel
     state_class: str | None = None  # coast_guard | maritime_safety | fisheries_enforcement
     reasons: list[str] = field(default_factory=list)
+    towing: bool = False  # destination text says it is towing an array / working cables
+    restricted: float = 0.0  # share of reports with status 'restricted in ability to manoeuvre'
+    toggles: int = 0  # brief status departures while under way
 
 
 def assess(tr: Track) -> Declared:
@@ -58,6 +99,13 @@ def assess(tr: Track) -> Declared:
     if dest and _RESEARCH_DEST.search(dest.upper()):
         parts.append(0.9)
         d.reasons.append(f"its AIS destination field reads '{dest.strip()}'")
+    tow_t = (tr.extra or {}).get("tow_t")
+    if tow_t is not None and len(tow_t) >= 3 or is_towing_text(dest):
+        d.towing = True
+        parts.append(0.95)
+        d.reasons.append(f"its AIS destination field announces towing / cable work ('{(dest or '').strip()}')")
+    d.restricted = restricted_share(tr)
+    d.toggles = status_toggles(tr)
     nm = _norm(tr.name)
     if nm and _RESEARCH_NAME.search(nm):
         parts.append(0.85)

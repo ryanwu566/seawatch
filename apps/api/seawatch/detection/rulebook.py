@@ -87,7 +87,7 @@ def _threat(c: DetectionConfig, hourly: bool) -> dict[str, Any]:
     return {
         "title": "Suspected unauthorised survey (the mentor's three factors, plus pattern)",
         "premise": ("Foreign research or survey ships operating in Taiwan's waters are treated as a potential threat to subsea cables. "
-                    "Three factors identify them; the zig-zag pattern is a fourth, independent confirmation."),
+                    "Three factors identify them; the destination text, navigation status, cable proximity and the zig-zag pattern confirm."),
         "legal": ("Reference only: UNCLOS Art. 19(2)(j) makes research or survey in the territorial sea non-innocent passage; Arts. 245-246 "
                   "require coastal-state consent for research in the territorial sea and EEZ. Taiwan is not a UNCLOS party and its legal "
                   "status is for lawyers. AIS cannot show whether consent exists, so every result is a candidate for review."),
@@ -98,6 +98,12 @@ def _threat(c: DetectionConfig, hourly: bool) -> dict[str, Any]:
                  note="The mentor said '5 to 10 miles per hour or so'; we read it as knots. Measured on 80 real research-type vessels (Apr 2026): inside survey runs the median was 4 kn (69% below 5 kn) while 55% of their transit fixes were at 5-10 kn, so the 5-10 band cannot tell survey from transit. Message-level data therefore uses 2-6 kn; hourly data keeps 5-10 (speed is estimated from cell steps). Adjustable in the Tuning lab."),
             dict(code="A", name="AIS declaration", rule="The vessel itself signals survey or research: name containing a survey/research designation (RESEARCH, SURVEY, KEXUE, XIANG YANG HONG, HAIYANG DIZHI ...), a survey destination, or a feed class of seismic vessel (weak).",
                  note="Strong evidence when present (score >= 0.6) but proves little when absent; names are cheap to change."),
+            dict(code="D", name="Destination text", rule="The destination field announces towing or cable work: e.g. 'TOWING KEEP 3NM CPA', 'TOWING 5NM CABLE', 'KEEP 2CPA PASSING'. A vessel towing a sensor array asks others to keep clear.",
+                 note="Seen in the supplied data on TAN SUO ER HAO and HAIYANGDIZHI BAHAO. Strongest single AIS signal (declaration score 0.95)."),
+            dict(code="N", name="Navigation status", rule="'Restricted in ability to manoeuvre' held for a large share of the track at low speed (slow manoeuvring over a cable), or the status briefly switching away from the steady value and back while under way (e.g. UNDER_WAY_USING_ENGINE -> NOT_DEFINED_DEFAULT -> back).",
+                 note="Cable-layers and dredgers use the same status, so it is evidence, not proof. Status switching is rare: about 0.6% of non-fishing vessels in a full day."),
+            dict(code="C", name="Cable proximity", rule="Share of the stretch within 10 nm of a charted submarine cable (TeleGeography public map, approximate).",
+                 note="Adds +4 severity when at least 20% of the stretch is near a cable."),
             dict(code="P", name="Pattern", rule="Survey-shaped zig-zag / lawnmower track (see the survey detector above).",
                  note="Independent of what the vessel claims; a ship that hides its role still has to sail the lines."),
         ],
@@ -112,6 +118,8 @@ def _threat(c: DetectionConfig, hourly: bool) -> dict[str, Any]:
                  meaning="The ship says it is a research vessel and is inside Taiwan's 24 nm; easy case."),
             dict(id="R4", name="Declared survey vessel working at survey speed in the EEZ", severity="62", needs=f"A + V (>= 60% of fixes) + {c.threat_min_eez_fixes} EEZ fixes",
                  meaning="Declared and slow for a long time in the EEZ, without a clear pattern."),
+            dict(id="R7", name="Towing a survey array / slow manoeuvring survey work", severity="92 in 24 nm, 80 in EEZ, 60 elsewhere (-8 if only restricted-manoeuvre status, +10 with a pattern)", needs="D (towing text) or N (restricted manoeuvre >= 20%) with A",
+                 meaning="The vessel announces towing / cable work, or manoeuvres slowly in restricted status. Towing in the EEZ is raised to at least MEDIUM; inside 24 nm to HIGH."),
             dict(id="R6", name="Foreign state vessel in the territorial sea", severity="70 (+6 survey speed)", needs=">= 2 clear TS fixes + state-vessel name",
                  meaning="Coast guard, maritime safety or fisheries enforcement ship of another state inside the 12 nm. Not survey, but a sovereignty matter."),
             dict(id="R0", name="Taiwan-registered survey vessel", severity="30 (not raised)", needs="MMSI 416xxxxxx",

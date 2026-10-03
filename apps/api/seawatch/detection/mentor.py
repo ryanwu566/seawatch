@@ -20,6 +20,7 @@ from .config import DetectionConfig
 from .context import DetectionContext, TrafficBaseline
 from .detectors import run_all
 from .history import ship_category
+from .declared import is_towing_text
 from .identity import is_real_ship
 from .survey import _FISHING_NAME
 from .learned import LearnedContext, VesselHabits
@@ -110,7 +111,12 @@ def to_tracks(df: pd.DataFrame, min_fixes: int = 6) -> list[Track]:
         typ = next((x for x in g.get("type", pd.Series(dtype=object)).dropna()), "")
         imo = next((str(int(float(x))) for x in g.get("imo", pd.Series(dtype=object)).dropna() if str(x).replace(".0", "").isdigit()), "")
         sub = next((str(x) for x in g.get("subtype", pd.Series(dtype=object)).dropna() if str(x).strip()), "")
-        dest = next((str(x) for x in g.get("dest", pd.Series(dtype=object)).dropna() if str(x).strip()), "")
+        dests = [str(x) for x in g.get("dest", pd.Series(dtype=object)).dropna() if str(x).strip() and str(x) != "0"]
+        dest = dests[0] if dests else ""
+        tow_mask = g["dest"].fillna("").astype(str).map(is_towing_text).to_numpy() if "dest" in g else np.zeros(len(g), bool)
+        if tow_mask.any():
+            dest = next(x for x in g["dest"].fillna("").astype(str) if is_towing_text(x))
+        tow_t = g["t"].to_numpy(float)[tow_mask][::5] if tow_mask.any() else None
         sog = g["sog"].to_numpy(float) if "sog" in g else np.full(len(g), np.nan)
         if np.isfinite(sog).mean() < 0.5:  # derive from position steps when the feed has no speed
             from .geo import haversine_m
@@ -125,7 +131,7 @@ def to_tracks(df: pd.DataFrame, min_fixes: int = 6) -> list[Track]:
         if cat == "other" and _FISHING_NAME.search(name.upper().replace("-", "")):
             cat = "fishing"  # unclassified boats named like Chinese / Taiwanese fishing vessels
         tracks.append(Track(mmsi, name.strip(), cat, flag, g["t"].to_numpy(float), g["lat"].to_numpy(float), g["lon"].to_numpy(float),
-                            sog, cog, status, imo, {k: v for k, v in (("destination", dest if dest not in ("0", "nan") else ""), ("subtype", sub)) if v} or None))
+                            sog, cog, status, imo, {k: v for k, v in (("destination", dest if dest not in ("0", "nan") else ""), ("subtype", sub), ("tow_t", tow_t)) if v is not None and (isinstance(v, np.ndarray) or v != "")} or None))
     return tracks
 
 

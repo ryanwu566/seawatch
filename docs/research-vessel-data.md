@@ -43,3 +43,25 @@ day: 10; factor combinations show T 1,534, V 560, A 19, P 8 of 4,170 foreign ves
 The research files carry no event labels. "Research vessel" is a registry class, not proof of survey activity or of intent. Only
 about 5 vessels show real survey runs, which is too few to train a shape classifier honestly; they are used to check the rules
 and measure speed, not to fit a model.
+
+## Reading the AIS the way an analyst does (added after review in kepler.gl)
+
+Four more signals are now part of the model, all from the supplied data:
+
+* **Destination text.** `TOWING KEEP 3NM CPA` (TAN SUO ER HAO), `TOWING 5NM CABLE(S)` (HAIYANGDIZHI BAHAO), `KEEP 2CPA PASSING`:
+  the vessel announces a towed sensor array or cable work. Declaration score 0.95; rule R7.
+* **Navigation status.** `RESTRICTED_MANEUVERABILITY` held for much of a slow track (HAIYANGDIZHI BAHAO 32%, TAN SUO ER HAO 42%,
+  LIAO YUE 94%, HAIYANG DIZHI SI HAO 98%) marks slow manoeuvring work; straight, fast `UNDER_WAY_USING_ENGINE` tracks are transit
+  and stay below the alert line. Brief switches away from a steady status while under way (e.g. to `NOT_DEFINED_DEFAULT` and back)
+  are counted: 23 of 4,019 non-fishing vessels in the full day, so they are informative.
+* **Registry subtype** (`Research`, `Seismic Surveyor`): counted as a declaration (0.7), labelled as a registry class.
+* **Cable proximity.** Submarine cable routes (TeleGeography public map, CC BY-NC-SA 4.0, approximate) are on the map, and the
+  share of a stretch within 10 nm of a cable is part of the evidence. TAN SUO ER HAO's towing in the EEZ lay on the Asia Direct Cable.
+
+Result on the research fortnight (`taiwan-research` region, nothing injected): 4 alerts. TAN SUO ER HAO towing in Taiwan's EEZ
+(MEDIUM, 70), KE XUE slow manoeuvring in the EEZ, HAIYANGDIZHI BAHAO towing outside Taiwan's waters, and JIA GENG at transit speed
+near Kinmen. Chinese research ships working far from Taiwan (seismic and cable-route work near Japan and the Ryukyus) are
+classified but stay below the alert line, because they are not in Taiwan's waters.
+
+Regions: `taiwan-research` (default) and `taiwan-day`, built by `scripts/build_taiwan_ais.py`. Map layers: cables, landing points and
+Taiwan's modelled 12 nm / 24 nm / EEZ limits (`scripts/build_cables.py`, `scripts/build_zone_lines.py`).
