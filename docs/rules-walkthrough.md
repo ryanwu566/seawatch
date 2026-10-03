@@ -80,8 +80,8 @@ Cable proximity adds +4. Detections are never a judgement of consent: AIS cannot
 2. **Risk (0-99):** for each kind take the best event, `p = kind_weight x severity x (0.6 + 0.4 x confidence) / 100`, then
    `risk = 100 x (1 - product(1 - 0.9 p))`. Several independent kinds add up (noisy-OR); one weak kind stays low; 3+ kinds add 6.
    Kind weights are 0.6 (status mismatch) to 1.0 (rendezvous, zone entry, identity conflict, survey, dark rendezvous).
-3. **Discounts and floors:** fishing-majority groups of routine behaviours x0.65 (x0.7 more within 6 nm of a coast); watch-list vessel +8;
-   survey R1/R2/R7 floors to HIGH as above; operator feedback multiplies the risk of similar alerts down.
+3. **Floors and adjustments:** watch-list vessel +8; survey R1/R2/R7 floors to HIGH as above; survey findings (including domestic R0) are never cut
+   by the minimum-risk threshold; operator feedback multiplies the risk of similar alerts down. **No fishing discount** (see section 8).
 4. **Level:** LOW below, MEDIUM from, HIGH from: default 30 / 45 / 70; `dense` and `hourly` 55 / 70 / 82. Each level has a recommended action
    (HIGH: task an asset or request SAR/RF confirmation; MEDIUM: queue for review in the shift; LOW: keep watching).
 
@@ -117,3 +117,20 @@ a first draft, not a validated detector.
 - Agent: what the path looks like. Not intent.
 - Known weak spots: hourly recall for dark gaps / loitering / rendezvous; `taiwan-day` noise with one day of history; modelled (not legal)
   12/24/EEZ lines; learned path model unusable until confirmed tracks exist.
+
+## 8. Decisions taken in the rules review (3 Oct 2026)
+
+1. **Speed band:** stay on the evidence-based 2-6 kn for message-level data (5-10 kn kept for hourly).
+2. **Towing in the EEZ:** HIGH for foreign vessels; a Taiwan-registered vessel doing the same is reported (R0, low). Levels are only a sort order: the
+   system reports whatever COULD be a finding and the analyst decides. Survey findings are never dropped by the minimum-risk cut.
+3. **Fishing fleets:** the flat 35% discount was removed. Fishing vessels can and do appear in cable damage, maritime-militia swarming, illegal
+   transfers and restricted-water intrusions (publicly reported cases; verify sources before citing), and in the supplied data 570 foreign-flag
+   fishing-type vessels were inside the modelled 24 nm of Taiwan-administered land in two days. Instead of discounting, routine behaviours of a fishing-
+   majority group are read as ONE area picture per 0.25 degree cell and day (highest member risk, "unusually large fleet" flag against the other areas of
+   the scan, a note that the summary is not a clearance). Zone entries, spoofing and survey patterns stay separate alerts.
+4. **Dark gaps, loitering, rendezvous, clusters, route deviation in Taiwan:** switched off in the Taiwan regions (`taiwan-day`, `taiwan-gfw`,
+   `taiwan-research`); the national-threat scan reports survey threats, survey patterns, protected-zone entries and spoofing / identity conflicts. Reason:
+   a mix of insufficient data (hourly cells, one day of minute-level history, no ground truth in the real Taiwan data) and noise in dense fishing
+   traffic (recall on injected events was 3/15, 0/15, 0/3). They stay active in `sf-bay` and the simulated `taiwan` region, where they can be measured,
+   and can be improved there first. On `taiwan-day` this cut the output from about 250 alerts to 23.
+5. **Pattern detector:** a survey pattern is rejected when the reported speed disagrees with the position steps (jitter or a duplicated identity).

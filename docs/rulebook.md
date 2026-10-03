@@ -29,9 +29,9 @@ Foreign research or survey ships operating in Taiwan's waters are treated as a p
 | R5 | Pattern outside Taiwan's claimed waters | 55 | P | Survey lines near Taiwan but outside claimed waters; informational context. |
 | R1 | Declared survey vessel in territorial sea / contiguous zone | 78 in TS, 70 in CZ (+8 survey speed) | T + A | The ship says it is a research vessel and is inside Taiwan's 24 nm; easy case. |
 | R4 | Declared survey vessel working at survey speed in the EEZ | 62 | A + V (>= 60% of fixes) + 6 EEZ fixes | Declared and slow for a long time in the EEZ, without a clear pattern. |
-| R7 | Towing a survey array / slow manoeuvring survey work | 92 in 24 nm, 80 in EEZ, 60 elsewhere (-8 if only restricted-manoeuvre status, +10 with a pattern) | D (towing text) or N (restricted manoeuvre >= 20%) with A | The vessel announces towing / cable work, or manoeuvres slowly in restricted status. Towing announced anywhere in the EEZ or inside 24 nm is raised to HIGH. |
+| R7 | Towing a survey array / slow manoeuvring survey work | 92 in 24 nm, 80 in EEZ, 60 elsewhere (-8 if only restricted-manoeuvre status, +10 with a pattern) | D (towing text) or N (restricted manoeuvre >= 20%) with A | The vessel announces towing / cable work, or manoeuvres slowly in restricted status. Towing announced anywhere in the EEZ or inside 24 nm is raised to HIGH for foreign vessels; a Taiwan-registered vessel is reported as R0. |
 | R6 | Foreign state vessel in the territorial sea | 70 (+6 survey speed) | >= 2 clear TS fixes + state-vessel name | Coast guard, maritime safety or fisheries enforcement ship of another state inside the 12 nm. Not survey, but a sovereignty matter. |
-| R0 | Taiwan-registered survey vessel | 30 (not raised) | MMSI 416xxxxxx | Domestic research is expected; recorded, never alerted. |
+| R0 | Taiwan-registered survey vessel | 30 (reported, low) | MMSI 416xxxxxx | Domestic survey or towing work is expected, but it is still reported so the analyst can see it. |
 
 Single factors are common (many foreign ships cross these waters; many move at 5-10 kn). The combination is rare. The Assessment view shows how many vessels meet each combination.
 
@@ -122,5 +122,6 @@ Single factors are common (many foreign ships cross these waters; many move at 5
 * **levels:** {'alert shown from': 55.0, 'medium': 70.0, 'high': 82.0}
 * **grouping:** Events on the same vessel(s) within the link window are merged into one alert so a story reads as one item.
 * **ml:** A second, statistical opinion (Isolation Forest + gradient boosting) scores the same time window. 'Agree' means both consider it unusual; 'rules only' lowers trust.
+* **fishing:** Fishing-type vessels are NOT discounted. Routine behaviours of a fishing-majority group (silence, loitering, meetings, gatherings, off-route) are merged into one area summary per 0.25 degree cell and day, with the highest member risk and a flag when the fleet is unusually large for the scan. Zone entries, spoofing and survey findings stay separate alerts.
 * **watch:** Vessels on a cited research-vessel or sanctions list get +8 risk and a caveat. They are matched on IMO / MMSI only; a listing is about the hull, not about this week's behaviour.
 * **feedback:** Operators mark false alarms, add notes, allow-list vessels and tune thresholds; those decisions suppress or reshape later alerts.

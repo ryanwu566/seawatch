@@ -214,10 +214,77 @@ def build_alerts(events: list[Event], tracks: list[Track], cfg: DetectionConfig,
     alerts: list[Alert] = []
     for evs in groups.values():
         alerts.append(_make_alert(evs, meta, cfg, feedback, watch))
-    alerts = [a for a in alerts if a.risk >= cfg.alert_min_risk or a.suppressed_by_feedback
+    # Survey-threat findings (including domestic and low-severity ones) are always reported: the analyst decides what matters.
+    alerts = [a for a in alerts if a.risk >= cfg.alert_min_risk or a.suppressed_by_feedback or "survey_threat" in a.kinds
               or (feedback is not None and a.id in feedback.records)]
+    alerts = _aggregate_fishing_areas(alerts, meta)
     alerts.sort(key=lambda a: -a.risk)
     return alerts
+
+
+ROUTINE_KINDS = {"ais_gap", "loitering", "rendezvous", "cluster", "dark_rendezvous", "route_deviation"}
+AREA_CELL_DEG = 0.25
+
+
+def _aggregate_fishing_areas(alerts: list[Alert], meta: dict[str, Track]) -> list[Alert]:
+    """Read fishing-fleet activity as ONE picture per area and day instead of many separate alerts.
+
+    Fishing fleets silence, loiter, meet and gather routinely, but fishing vessels have also been reported cutting cables, acting as maritime
+    militia and doing illegal transfers, so their behaviour is never discounted. What changes is the unit: routine behaviours of a fishing-majority
+    group are merged by 0.25 degree cell and UTC day into a single area alert. Its risk is the highest member risk (no cut), raised when the
+    area holds an unusually large fleet compared with the other areas of the same scan. Anything beyond routine kinds (zone entry, spoofing,
+    survey) stays a separate alert.
+    """
+
+    def is_fleet(a: Alert) -> bool:
+        if not a.kinds or not set(a.kinds) <= ROUTINE_KINDS or not a.mmsis or a.suppressed_by_feedback or a.watch:
+            return False
+        return sum(getattr(meta.get(m), "ship_type", "") == "fishing" for m in a.mmsis) / len(a.mmsis) >= 0.7
+
+    cells: dict[tuple[int, int, int], list[Alert]] = {}
+    keep: list[Alert] = []
+    for a in alerts:
+        if is_fleet(a):
+            k = (int(np.floor(a.lat / AREA_CELL_DEG)), int(np.floor(a.lon / AREA_CELL_DEG)), int(a.t_start // 86400))
+            cells.setdefault(k, []).append(a)
+        else:
+            keep.append(a)
+    groups = [g for g in cells.values() if len(g) >= 2]
+    keep += [a for g in cells.values() if len(g) < 2 for a in g]
+    if not groups:
+        return keep
+    sizes = sorted(len({m for a in g for m in a.mmsis}) for g in groups)
+    median = sizes[len(sizes) // 2]
+    for g in groups:
+        mm = sorted({m for a in g for m in a.mmsis})
+        evs = sorted((e for a in g for e in a.events), key=lambda e: -e.severity)[:40]
+        kinds = sorted({k for a in g for k in a.kinds})
+        top = max(g, key=lambda a: a.risk)
+        unusual = len(mm) >= max(8, 2 * median)
+        risk = float(min(99.0, top.risk + (6.0 if unusual else 0.0)))
+        n_ev = sum(len(a.events) for a in g)
+        lat = float(np.mean([a.lat for a in g]))
+        lon = float(np.mean([a.lon for a in g]))
+        by_kind = {k: sum(1 for a in g for e in a.events if e.kind == k) for k in kinds}
+        reasons = [
+            f"{len(mm)} fishing-type vessels, {n_ev} routine events ({', '.join(f'{v} {KIND_LABEL.get(k, k).lower()}' for k, v in by_kind.items())}) "
+            f"within about {AREA_CELL_DEG * 111:.0f} km of {lat:.2f}N {lon:.2f}E.",
+            ("This is a larger fleet than the typical fishing area in this scan (median "
+             f"{median} vessels): worth a look at the whole picture." if unusual else
+             f"Fleet size is typical for the fishing areas in this scan (median {median} vessels)."),
+            "Highest-scoring member: " + top.title + ".",
+        ]
+        vessels = [{"mmsi": m, "name": meta[m].name if m in meta else m, "type": "fishing", "flag": meta[m].flag if m in meta else ""} for m in mm[:30]]
+        key = hashlib.sha1(f"area|{int(lat / AREA_CELL_DEG)}|{int(lon / AREA_CELL_DEG)}|{int(min(a.t_start for a in g) // 86400)}".encode()).hexdigest()[:8]
+        level = top.level if not unusual else ("HIGH" if risk >= 70 else top.level)
+        keep.append(Alert(
+            f"A-F{key}", f"Fishing-fleet activity - {len(mm)} vessels near {lat:.2f}N {lon:.2f}E", risk, level, float(np.mean([a.confidence for a in g])),
+            mm[:60], vessels, min(a.t_start for a in g), max(a.t_end for a in g), lat, lon, sorted(evs, key=lambda e: e.t_start), kinds, reasons,
+            top.breakdown, list(dict.fromkeys(b for a in g for b in a.benign_explanations))[:6] + ["Routine fleet work: fishing grounds, pair trawling, weather shelter."],
+            list(dict.fromkeys(u for a in g for u in a.uncertainty))[:3] + [
+                "AIS cannot tell fishing from other uses of a fishing-type hull. Fishing vessels have been reported in cable damage, maritime-militia swarming and "
+                "illegal transfers, so this summary is not a clearance."], top.recommended_action))
+    return keep
 
 
 def _make_alert(evs: list[Event], meta: dict[str, Track], cfg: DetectionConfig, feedback, watch=None) -> Alert:
@@ -233,18 +300,6 @@ def _make_alert(evs: list[Event], meta: dict[str, Track], cfg: DetectionConfig, 
         risk = max(risk, cfg.high_risk)
     elif any(e.kind == "survey_threat" and e.metrics.get("rule") == "R7" and e.metrics.get("mode") == "tow" and e.severity >= 75 for e in evs):
         risk = max(risk, cfg.high_risk)  # a vessel announcing a towed array / cable work in Taiwan's economic zone must be seen
-    # Fishing fleets silence, loiter, meet and gather as a matter of routine: behaviour that is only 'ordinary work' for them is discounted.
-    # Zone entries, spoofing and survey patterns are NOT discounted.
-    routine = {"ais_gap", "loitering", "rendezvous", "cluster", "dark_rendezvous", "route_deviation"}
-    if kinds and set(kinds) <= routine and mmsis:
-        fish = sum(getattr(meta.get(m), "ship_type", "") == "fishing" for m in mmsis) / len(mmsis)
-        if fish >= 0.7:
-            risk *= 0.65
-            from .territory import Territory
-
-            terr = Territory.default()
-            if terr is not None and float(terr.coast_nm(np.array([np.mean([e.lat for e in evs])]), np.array([np.mean([e.lon for e in evs])]))[0]) <= 6.0:
-                risk *= 0.7  # a fishing fleet inside harbour / bay waters: moorage, not a meeting
     suppressed = None
     if feedback is not None:
         factor, why = feedback.risk_modifier(mmsis, kinds, evs)

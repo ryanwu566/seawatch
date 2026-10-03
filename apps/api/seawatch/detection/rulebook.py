@@ -119,11 +119,11 @@ def _threat(c: DetectionConfig, hourly: bool) -> dict[str, Any]:
             dict(id="R4", name="Declared survey vessel working at survey speed in the EEZ", severity="62", needs=f"A + V (>= 60% of fixes) + {c.threat_min_eez_fixes} EEZ fixes",
                  meaning="Declared and slow for a long time in the EEZ, without a clear pattern."),
             dict(id="R7", name="Towing a survey array / slow manoeuvring survey work", severity="92 in 24 nm, 80 in EEZ, 60 elsewhere (-8 if only restricted-manoeuvre status, +10 with a pattern)", needs="D (towing text) or N (restricted manoeuvre >= 20%) with A",
-                 meaning="The vessel announces towing / cable work, or manoeuvres slowly in restricted status. Towing announced anywhere in the EEZ or inside 24 nm is raised to HIGH."),
+                 meaning="The vessel announces towing / cable work, or manoeuvres slowly in restricted status. Towing announced anywhere in the EEZ or inside 24 nm is raised to HIGH for foreign vessels; a Taiwan-registered vessel is reported as R0."),
             dict(id="R6", name="Foreign state vessel in the territorial sea", severity="70 (+6 survey speed)", needs=">= 2 clear TS fixes + state-vessel name",
                  meaning="Coast guard, maritime safety or fisheries enforcement ship of another state inside the 12 nm. Not survey, but a sovereignty matter."),
-            dict(id="R0", name="Taiwan-registered survey vessel", severity="30 (not raised)", needs="MMSI 416xxxxxx",
-                 meaning="Domestic research is expected; recorded, never alerted."),
+            dict(id="R0", name="Taiwan-registered survey vessel", severity="30 (reported, low)", needs="MMSI 416xxxxxx",
+                 meaning="Domestic survey or towing work is expected, but it is still reported so the analyst can see it."),
         ],
         "noise": ("Single factors are common (many foreign ships cross these waters; many move at 5-10 kn). The combination is rare. "
                   "The Assessment view shows how many vessels meet each combination."),
@@ -136,6 +136,7 @@ def _fusion(c: DetectionConfig) -> dict[str, Any]:
         "levels": {"alert shown from": c.alert_min_risk, "medium": c.medium_risk, "high": c.high_risk},
         "grouping": "Events on the same vessel(s) within the link window are merged into one alert so a story reads as one item.",
         "ml": "A second, statistical opinion (Isolation Forest + gradient boosting) scores the same time window. 'Agree' means both consider it unusual; 'rules only' lowers trust.",
+        "fishing": "Fishing-type vessels are NOT discounted. Routine behaviours of a fishing-majority group (silence, loitering, meetings, gatherings, off-route) are merged into one area summary per 0.25 degree cell and day, with the highest member risk and a flag when the fleet is unusually large for the scan. Zone entries, spoofing and survey findings stay separate alerts.",
         "watch": "Vessels on a cited research-vessel or sanctions list get +8 risk and a caveat. They are matched on IMO / MMSI only; a listing is about the hull, not about this week's behaviour.",
         "feedback": "Operators mark false alarms, add notes, allow-list vessels and tune thresholds; those decisions suppress or reshape later alerts.",
     }

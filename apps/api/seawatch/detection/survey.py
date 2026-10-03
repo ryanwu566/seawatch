@@ -151,6 +151,11 @@ def survey_windows(tr: Track, cfg: DetectionConfig, benign_mask) -> list[tuple[i
         span_h = (tr.t[b0] - tr.t[a0]) / 3600.0
         if span_h <= 0 or seg_len / span_h > 9.0:
             continue  # too fast for towing survey gear
+        if cfg.grid_s <= 600:  # message-level data carries a reported speed: if it disagrees with the position steps the 'legs' are jitter or a duplicated identity
+            rep = tr.sog[a0:b0 + 1]
+            rep = rep[np.isfinite(rep)]
+            if len(rep) >= 6 and float(np.median(rep)) < 0.35 * (seg_len / span_h) and seg_len / span_h > 2.0:
+                continue
         turn_idx = [i0 + sel[k][0] for k in range(len(sel))]
         if float(np.mean(benign_mask(tr.lat[turn_idx], tr.lon[turn_idx]))) > 0.4:
             continue  # turning around in port approaches / at stopping areas

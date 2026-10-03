@@ -167,8 +167,10 @@ them with the scripts in section 7. Use `uvicorn` from the repository root, not 
 | `taiwan` | fully simulated | yes, labelled, incl. 2 research-vessel cases + 1 benign look-alike | works with no data files |
 | `sf-bay` | real NOAA AIS, 3 Jan 2024 | yes | where the detectors were first measured |
 | `taiwan-gfw` | real hourly vessel presence (Global Fishing Watch, Sept 2026, ~11 km cells) | yes | hourly preset; no speed/status/destination |
-| `taiwan-day` | real message-level AIS, one full day (3 Apr 2026) with research vessels merged | no | dense; needs more history to be quiet |
+| `taiwan-day` | real message-level AIS, one full day (3 Apr 2026) with research vessels merged | no | national-threat focus: only survey threats / patterns, zone entries, spoofing and identity conflicts (about 23 alerts) |
 | `taiwan-research` | real message-level AIS of ~80 research-type vessels, 1-16 Apr 2026 | no | only survey rules are shown (the fleet sits outside the learned coverage) |
+
+Gaps, loitering, rendezvous, clusters and route deviation are switched off in the Taiwan regions (insufficient data and noise; see `docs/rules-walkthrough.md` section 8) and stay active in `sf-bay` and the simulated `taiwan` region.
 
 Real regions have no labels, so `/evaluation` returns `unlabelled: true` there. The UI badge reads `SIMULATED DATA`,
 `REAL AIS + INJECTED EVENTS` or `REAL AIS` from `scenario.data_kind` (`simulated | real_plus_injected | real`).
@@ -221,14 +223,14 @@ AIS. Output is the event kind `survey_threat`, whose `metrics.factors` object is
 | R3 / R4 | pattern in EEZ / declared at survey speed in EEZ | 72 / 62 |
 | R5 | pattern outside Taiwan's claimed waters (behaviour only) | 55 |
 | R6 | foreign state vessel (coast guard etc.) inside 12 nm | 70 |
-| R0 | Taiwan-registered survey vessel | 30, recorded, never raised |
+| R0 | Taiwan-registered survey / towing vessel | 30, reported (low) so the analyst can see it |
 
 Cable proximity adds +4 severity. Alert floors: R1/R2 inside 24 nm and R7 with severity >= 88 are raised to **HIGH**; towing announced
 (R7 mode `tow`, severity >= 75, i.e. anywhere in the EEZ) is also raised to **HIGH**. Operator feedback can still lower them.
 
 **Fusion (`alerts.py`):** risk = noisy-OR over the best event of each kind, weighted by kind and confidence; events on the same
-vessels within the link window become one alert; fishing-majority groups of routine-type events are discounted (x0.65, x0.7 more
-near a coast); watch-list vessels (cited OSINT research-vessel list, OFAC SDN; matched on IMO/MMSI only) get +8 with a caveat.
+vessels within the link window become one alert; fishing-type vessels are not discounted: routine behaviours of a fishing-majority group are merged into one area
+summary per 0.25 degree cell and day; survey findings are never cut by the minimum-risk threshold; watch-list vessels (cited OSINT research-vessel list, OFAC SDN; matched on IMO/MMSI only) get +8 with a caveat.
 Levels come from `alert_min_risk / medium_risk / high_risk`. Operator decisions (false alarm with reason, notes, allow-list)
 down-weight or suppress similar alerts through `FeedbackStore` (`state.py`).
 
@@ -286,8 +288,7 @@ Natural Earth coastlines (public domain), not legal baselines; the GFW, OFAC and
 
 ### 8. Known limits (read before integrating)
 
-- `taiwan-day` is still noisy (about 250 alerts, 40 HIGH on one monitored day, mostly fishing-fleet and offshore-construction activity); one
-  day of history is too little to learn each vessel's routine. More history is the fix, not more thresholds.
+- Gap / loitering / rendezvous / cluster detection is not offered in the Taiwan regions (see section 3); fix it first in `sf-bay`, where it can be measured.
 - Recall on added events in the hourly region at the default threshold: clusters 3/3 and zone entries 6/6, but dark gaps 3/15, loitering
   0/15, rendezvous 0/3, survey patterns 5/15. These need work before they are demoed as strengths.
 - The research files carry no event labels; "Research" is a registry class, not proof of survey work or intent.

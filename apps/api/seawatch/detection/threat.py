@@ -134,8 +134,9 @@ def detect_survey_threat(tracks: list[Track], ctx: DetectionContext, cfg: Detect
                         candidates.append((62.0, "R4", "Declared survey vessel working at survey speed in Taiwan's economic zone", a, b,
                                            {"pattern": None, "zones": z, "v_share": share, "v_median": med}))
 
-        # R7: towing an array / cable work announced in the destination, or sustained 'restricted in ability to manoeuvre' at low speed
-        if foreign:
+        # R7: towing an array / cable work announced in the destination, or sustained 'restricted in ability to manoeuvre' at low speed.
+        # A Taiwan-registered vessel doing the same is REPORTED (rule R0, low severity), not hidden: the analyst decides.
+        if True:
             tw = (tr.extra or {}).get("tow_t")
             span = None
             kind7 = None
@@ -155,7 +156,10 @@ def detect_survey_threat(tracks: list[Track], ctx: DetectionContext, cfg: Detect
                 lab = ("Towing a survey array / working cables" if kind7 == "tow" else "Slow manoeuvring survey work (restricted in ability to manoeuvre)")
                 where = "inside Taiwan's territorial sea / contiguous zone" if inside else "in Taiwan's economic zone" if z["eez"] > 0 else "outside Taiwan's claimed waters"
                 pat = next((p for wa, wb, p in wins if wa <= b and wb >= a), None)
-                candidates.append((base + (10 if pat else 0), "R7", f"{lab} {where}", a, b, {"pattern": pat, "zones": z, "v_share": share, "v_median": med, "mode": kind7}))
+                if foreign:
+                    candidates.append((base + (10 if pat else 0), "R7", f"{lab} {where}", a, b, {"pattern": pat, "zones": z, "v_share": share, "v_median": med, "mode": kind7}))
+                else:
+                    candidates.append((30.0, "R0", f"{lab} by a Taiwan-registered vessel {where}", a, b, {"pattern": pat, "zones": z, "v_share": share, "v_median": med, "mode": kind7}))
 
         if foreign and decl.state_class is not None:
             z = _zones(terr, tr, 0, len(tr) - 1, edge)
@@ -204,7 +208,7 @@ def _event(tr: Track, decl, foreign: bool, sev: float, rule: str, label: str, a:
         "R4": "A self-declared survey vessel moving at survey speed in the economic zone.",
         "R5": "Survey-shaped movement; outside Taiwan's claimed waters, so reported as behaviour only.",
         "R6": "A foreign state vessel inside the territorial sea.",
-        "R0": "Taiwan-registered vessel doing survey work: recorded for completeness, not raised.",
+        "R0": "Taiwan-registered vessel doing survey or towing work: reported at low severity so the analyst can see it; domestic activity is expected, consent is not an AIS question.",
         "R7": "The vessel itself announces towing / cable work, or holds 'restricted in ability to manoeuvre' while moving slowly: the signature of towing sensors or inspecting a cable.",
     }[rule]
     cab = Cables.default()

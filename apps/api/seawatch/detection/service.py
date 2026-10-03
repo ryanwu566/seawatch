@@ -30,6 +30,7 @@ REGIONS: dict[str, dict[str, Any]] = {
         "note": "Real hourly AIS presence (Global Fishing Watch, ~11 km cells, 1-29 Sep 2026) with labelled behaviours added. "
                 "History (1-25 Sep) trains the baselines; the last 4 days are monitored. Not message-level AIS.",
         "model_path": "data/models/ml_taiwan-gfw.joblib", "features": PORTABLE, "hourly": True,
+        "only": ("survey_threat", "survey_pattern", "zone_entry", "position_jump"),
     },
     "taiwan-research": {
         "label": "Research vessels near Taiwan - real AIS (1-16 Apr 2026)", "timezone": "Asia/Taipei", "data_kind": "real",
@@ -41,6 +42,8 @@ REGIONS: dict[str, dict[str, Any]] = {
         "label": "Taiwan waters - real AIS, one full day (3 Apr 2026)", "timezone": "Asia/Taipei", "data_kind": "real",
         "note": "Real message-level AIS of the whole area (hackathon-supplied) with research vessels included. Nothing injected; learned from 2 Apr, monitored 3 Apr.",
         "model_path": "data/models/none.joblib", "features": None, "dense": True,
+        # national-threat focus: gaps, loitering, rendezvous and clusters are not reliable enough here (see docs/rules-walkthrough.md)
+        "only": ("survey_threat", "survey_pattern", "zone_entry", "position_jump", "identity_conflict"),
     },
     "taiwan": {
         "label": "Taiwan waters (simulated)", "timezone": "Asia/Taipei", "data_kind": "simulated",
@@ -272,7 +275,15 @@ class DetectionService:
             return {"alerts": len(al), "true_alerts": 0, "false_alarms": 0, "false_alarms_on_benign_lookalikes": 0, "precision": 0.0, "recall": 0.0,
                     "f1": 0.0, "alerts_per_100_vessel_days": 0.0, "false_alarms_per_100_vessel_days": 0.0, "real_background": True,
                     "per_kind": {}, "missed": [], "false_alarm_ids": [], "unlabelled": True}
-        out = evaluate_alerts(al, self.scenario)
+        scn = self.scenario
+        only = self.info.get("only")
+        if only:  # score only the behaviours this region reports
+            from dataclasses import replace
+
+            from .evaluation import ACCEPT
+
+            scn = replace(scn, truth=[t for t in scn.truth if ACCEPT.get(t.kind, {t.kind}) & set(only)])
+        out = evaluate_alerts(al, scn)
         out["real_background"] = self.info["data_kind"] == "real_plus_injected"
         return out
 
