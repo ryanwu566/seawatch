@@ -29,7 +29,11 @@ from ..live.area_scan_access import (
     verify_area_scan_capability,
     verify_operator_credential,
 )
-from ..live.datalastic import ProviderError, ProviderErrorCategory
+from ..live.datalastic import (
+    ProviderError,
+    ProviderErrorCategory,
+    refresh_datalastic_status,
+)
 from ..live.resilience import OperatingMode
 from ..live.schema import utcnow
 
@@ -146,6 +150,42 @@ async def plan_live_area_scan(
             detail="Invalid Area Scan geometry",
         ) from None
     return plan.to_public_dict()
+
+
+@router.post(
+    "/area-scan/provider-status/refresh",
+    summary="Refresh Datalastic provider readiness",
+)
+async def refresh_area_scan_provider_status(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    capability_cookie: str | None = Cookie(
+        default=None,
+        alias=AREA_SCAN_CAPABILITY_COOKIE,
+    ),
+) -> dict:
+    """Run one authenticated, rate-limited, non-billable status probe."""
+
+    runtime = get_live_runtime()
+    _authorize_area_scan_request(
+        request,
+        runtime.area_scan_access,
+        authorization,
+        capability_cookie,
+    )
+    try:
+        runtime.area_scan_admission.authorize(provider_requests=1)
+    except AreaScanAdmissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Provider status refresh limit reached",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from None
+    provider_status = await refresh_datalastic_status(
+        runtime.datalastic_client,
+        runtime.datalastic_status,
+    )
+    return provider_status.to_public_dict()
 
 
 @router.post("/area-scan", summary="Explicit Datalastic polygon area scan")

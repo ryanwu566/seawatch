@@ -147,6 +147,7 @@ class DatalasticStatusCache:
 
     def __init__(self, *, configured: bool) -> None:
         self._lock = threading.Lock()
+        self._refresh_generation = 0
         self._status = DatalasticStatus(
             configured=configured,
             reachable=None if configured else False,
@@ -164,29 +165,60 @@ class DatalasticStatusCache:
 
     def record_success(self, status: DatalasticStatus) -> None:
         with self._lock:
+            self._refresh_generation += 1
             self._status = status
 
     def record_failure(self, category: ProviderErrorCategory) -> None:
         with self._lock:
-            self._status = replace(
-                self._status,
-                reachable=False,
-                key_status=(
-                    "invalid"
-                    if category is ProviderErrorCategory.AUTHENTICATION
-                    else self._status.key_status
-                ),
-                last_error_category=category,
-            )
+            self._refresh_generation += 1
+            self._record_failure_unlocked(category)
 
     def record_reachable(self) -> None:
         with self._lock:
+            self._refresh_generation += 1
             self._status = replace(
                 self._status,
                 reachable=True,
                 last_success_at=datetime.now(timezone.utc),
                 last_error_category=None,
             )
+
+    def begin_refresh(self) -> int:
+        """Return a generation token so only the newest probe may publish."""
+
+        with self._lock:
+            self._refresh_generation += 1
+            return self._refresh_generation
+
+    def record_refresh_success(
+        self,
+        generation: int,
+        status: DatalasticStatus,
+    ) -> None:
+        with self._lock:
+            if generation == self._refresh_generation:
+                self._status = status
+
+    def record_refresh_failure(
+        self,
+        generation: int,
+        category: ProviderErrorCategory,
+    ) -> None:
+        with self._lock:
+            if generation == self._refresh_generation:
+                self._record_failure_unlocked(category)
+
+    def _record_failure_unlocked(self, category: ProviderErrorCategory) -> None:
+        self._status = replace(
+            self._status,
+            reachable=False,
+            key_status=(
+                "invalid"
+                if category is ProviderErrorCategory.AUTHENTICATION
+                else self._status.key_status
+            ),
+            last_error_category=category,
+        )
 
 
 class ScanRetryBudget:
@@ -364,6 +396,33 @@ class DatalasticClient:
             if meta.get("success") is not True:
                 raise ProviderError(ProviderErrorCategory.UNSUCCESSFUL_RESPONSE)
             return response, payload
+
+
+async def refresh_datalastic_status(
+    client: DatalasticClient | None,
+    status_cache: DatalasticStatusCache,
+) -> DatalasticStatus:
+    """Probe only the provider status endpoint and atomically publish its result."""
+
+    generation = status_cache.begin_refresh()
+    if client is None:
+        status_cache.record_refresh_failure(
+            generation,
+            ProviderErrorCategory.NOT_CONFIGURED,
+        )
+        return status_cache.snapshot()
+    try:
+        provider_status = await client.stat()
+    except ProviderError as exc:
+        status_cache.record_refresh_failure(generation, exc.category)
+    except Exception:  # noqa: BLE001 - never retain raw external failures
+        status_cache.record_refresh_failure(
+            generation,
+            ProviderErrorCategory.CONNECTION,
+        )
+    else:
+        status_cache.record_refresh_success(generation, provider_status)
+    return status_cache.snapshot()
 
 
 class DatalasticAreaScanProvider:

@@ -64,10 +64,14 @@ function renderPanel(
     authenticated: true,
     authenticating: false,
     providerAvailable: true,
+    providerRefreshAvailable: false,
+    providerRefreshing: false,
+    providerRefreshMessage: null,
     operatorAuthenticationRequired: false,
     onDrawMode: vi.fn(),
     onOpen: vi.fn(),
     onAuthenticate: vi.fn(),
+    onRefreshProvider: vi.fn(),
     onScan: vi.fn(),
     onClear: vi.fn(),
   };
@@ -122,10 +126,14 @@ describe("AreaScanPanel", () => {
           authenticated
           authenticating={false}
           providerAvailable
+          providerRefreshAvailable={false}
+          providerRefreshing={false}
+          providerRefreshMessage={null}
           operatorAuthenticationRequired={false}
           onDrawMode={() => {}}
           onOpen={() => {}}
           onAuthenticate={() => {}}
+          onRefreshProvider={() => {}}
           onScan={() => {}}
           onClear={() => {}}
         />
@@ -166,6 +174,67 @@ describe("AreaScanPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
 
     expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
+  });
+
+  it("hides provider recovery while healthy", () => {
+    renderPanel({ providerAvailable: true, providerRefreshAvailable: false });
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+
+    expect(screen.queryByRole("button", { name: "Check provider status" })).toBeNull();
+  });
+
+  it("offers one authenticated provider refresh while unavailable", () => {
+    const onRefreshProvider = vi.fn();
+    renderPanel({
+      providerAvailable: false,
+      providerRefreshAvailable: true,
+      onRefreshProvider,
+    });
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+
+    const refresh = screen.getByRole("button", { name: "Check provider status" });
+    expect(refresh).toBeEnabled();
+    fireEvent.click(refresh);
+    expect(onRefreshProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks provider refresh while pending or unauthenticated", () => {
+    const { rerender } = renderPanel({
+      providerAvailable: false,
+      providerRefreshAvailable: true,
+      providerRefreshing: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+
+    expect(screen.getByRole("button", { name: "Checking provider status…" })).toBeDisabled();
+
+    rerender(
+      <I18nProvider>
+        <AreaScanPanel
+          drawMode={null}
+          geometry={geometry}
+          loading={false}
+          planning={false}
+          plan={null}
+          result={null}
+          error={null}
+          authenticated={false}
+          authenticating={false}
+          providerAvailable={false}
+          providerRefreshAvailable
+          providerRefreshing={false}
+          providerRefreshMessage={null}
+          operatorAuthenticationRequired
+          onDrawMode={() => {}}
+          onOpen={() => {}}
+          onAuthenticate={() => {}}
+          onRefreshProvider={() => {}}
+          onScan={() => {}}
+          onClear={() => {}}
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Check provider status" })).toBeDisabled();
   });
 
   it("shows provider unavailable and clears the active selection", () => {

@@ -283,6 +283,25 @@ export async function planLiveArea(
   return (await response.json()) as AreaScanPlan;
 }
 
+export async function refreshDatalasticProviderStatus(
+  signal?: AbortSignal,
+): Promise<DatalasticProviderStatus> {
+  const response = await fetch(
+    `${getBaseUrl()}/live/area-scan/provider-status/refresh`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        "X-SeaWatch-Area-Scan": "1",
+      },
+      signal,
+    },
+  );
+  if (!response.ok) throw await areaScanError(response);
+  return (await response.json()) as DatalasticProviderStatus;
+}
+
 async function areaScanError(response: Response): Promise<AreaScanApiError> {
   let detail = "Area Scan unavailable";
   try {

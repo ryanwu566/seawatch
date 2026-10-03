@@ -101,6 +101,7 @@ vi.mock("../api/live", () => ({
     can_scan: true,
     reason: null,
   })),
+  refreshDatalasticProviderStatus: vi.fn(),
   scanLiveArea: vi.fn(async () => ({
     source: "datalastic",
     scanned_at: "2026-10-03T02:00:00Z",
@@ -180,6 +181,7 @@ import {
   fetchLiveVessels,
   fetchLiveTrack,
   planLiveArea,
+  refreshDatalasticProviderStatus,
   scanLiveArea,
   type AreaScanResponse,
 } from "../api/live";
@@ -263,6 +265,9 @@ describe("LiveDashboard interaction", () => {
       can_scan: true,
       reason: null,
     });
+    vi.mocked(refreshDatalasticProviderStatus).mockResolvedValue(
+      healthyDatalasticStatus,
+    );
     vi.mocked(scanLiveArea).mockImplementation(async () => ({
       source: "datalastic",
       scanned_at: "2026-10-03T02:00:00Z",
@@ -344,6 +349,225 @@ describe("LiveDashboard interaction", () => {
       expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
     });
     expect(vi.mocked(planLiveArea)).not.toHaveBeenCalled();
+  });
+
+  it("recovers provider readiness once, preserves geometry, and resumes planning", async () => {
+    currentVessels = [];
+    currentHealth = datalasticHealth({
+      reachable: false,
+      last_error_category: "connection",
+    });
+    currentResilience = noLiveSourceResilience;
+    vi.mocked(establishAreaScanSession).mockResolvedValueOnce({
+      authenticated: true,
+      expires_in_seconds: 900,
+    });
+    let resolveRefresh!: (status: DatalasticProviderStatus) => void;
+    vi.mocked(refreshDatalasticProviderStatus).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      }),
+    );
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
+    fireEvent.click(screen.getByTestId("finish-area"));
+    expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
+    expect(vi.mocked(planLiveArea)).not.toHaveBeenCalled();
+
+    const refresh = screen.getByRole("button", { name: t.providerStatusRefresh });
+    fireEvent.click(refresh);
+    fireEvent.click(refresh);
+
+    expect(vi.mocked(refreshDatalasticProviderStatus)).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: t.providerStatusRefreshing })).toBeDisabled();
+
+    await act(async () => {
+      resolveRefresh(healthyDatalasticStatus);
+    });
+
+    expect(await screen.findByText(t.providerStatusRefreshed)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(vi.mocked(planLiveArea)).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("button", { name: t.scanArea })).toBeEnabled();
+    });
+    expect(screen.queryByRole("button", { name: t.providerStatusRefresh })).toBeNull();
+    expect(currentHealth.live_ingest_enabled).toBe(false);
+  });
+
+  it("keeps Area Scan unavailable after a degraded refresh result", async () => {
+    currentVessels = [];
+    currentHealth = datalasticHealth({ reachable: false });
+    currentResilience = noLiveSourceResilience;
+    vi.mocked(establishAreaScanSession).mockResolvedValueOnce({
+      authenticated: true,
+      expires_in_seconds: 900,
+    });
+    vi.mocked(refreshDatalasticProviderStatus).mockResolvedValueOnce({
+      ...healthyDatalasticStatus,
+      reachable: false,
+      last_error_category: "connection",
+    });
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.providerStatusRefresh }));
+
+    expect(await screen.findByText(t.providerStatusStillUnavailable)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
+    expect(vi.mocked(planLiveArea)).not.toHaveBeenCalled();
+  });
+
+  it("does not call provider refresh without an authenticated Area Scan session", async () => {
+    currentVessels = [];
+    currentHealth = datalasticHealth({ reachable: false });
+    currentResilience = noLiveSourceResilience;
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+
+    expect(await screen.findByLabelText(t.areaScanOperatorCredential)).toBeInTheDocument();
+    const refresh = screen.getByRole("button", { name: t.providerStatusRefresh });
+    expect(refresh).toBeDisabled();
+    fireEvent.click(refresh);
+    expect(vi.mocked(refreshDatalasticProviderStatus)).not.toHaveBeenCalled();
+  });
+
+  it("re-establishes loopback autoauth after provider refresh authorization expires", async () => {
+    currentVessels = [];
+    currentHealth = datalasticHealth({ reachable: false });
+    currentResilience = noLiveSourceResilience;
+    vi.mocked(establishAreaScanSession).mockResolvedValue({
+      authenticated: true,
+      expires_in_seconds: 900,
+    });
+    vi.mocked(refreshDatalasticProviderStatus).mockRejectedValueOnce(
+      new AreaScanApiError(401, "Area Scan authorization required", null),
+    );
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.providerStatusRefresh }));
+
+    await waitFor(() => {
+      expect(vi.mocked(establishAreaScanSession)).toHaveBeenCalledTimes(2);
+    });
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    expect(screen.queryByLabelText(t.areaScanOperatorCredential)).toBeNull();
+    expect(vi.mocked(refreshDatalasticProviderStatus)).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a stale health poll that finishes after provider recovery", async () => {
+    currentVessels = [];
+    currentHealth = datalasticHealth({ reachable: false });
+    currentResilience = noLiveSourceResilience;
+    vi.mocked(establishAreaScanSession).mockResolvedValueOnce({
+      authenticated: true,
+      expires_in_seconds: 900,
+    });
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
+    fireEvent.click(screen.getByTestId("finish-area"));
+
+    let releaseStalePoll!: (collection: {
+      type: "FeatureCollection";
+      attribution: string;
+      server_timestamp: string;
+      data_timestamp: string;
+      vessel_count: number;
+      features: LiveVesselFeature[];
+    }) => void;
+    vi.mocked(fetchLiveVessels).mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseStalePoll = resolve;
+      }),
+    );
+    vi.mocked(fetchLiveHealth).mockResolvedValueOnce(currentHealth);
+    fireEvent.click(screen.getByTestId("refresh-viewport"));
+    await waitFor(() => {
+      expect(vi.mocked(fetchLiveHealth)).toHaveBeenCalledTimes(2);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: t.providerStatusRefresh }));
+    expect(await screen.findByText(t.providerStatusRefreshed)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: t.scanArea })).toBeEnabled();
+    });
+
+    await act(async () => {
+      releaseStalePoll({
+        type: "FeatureCollection",
+        attribution: "Open Waters AIS",
+        server_timestamp: "2026-10-04T08:31:00Z",
+        data_timestamp: "2026-10-04T08:31:00Z",
+        vessel_count: 0,
+        features: [],
+      });
+    });
+
+    expect(screen.queryByRole("button", { name: t.providerStatusRefresh })).toBeNull();
+    expect(screen.getByRole("button", { name: t.scanArea })).toBeEnabled();
+    expect(vi.mocked(planLiveArea)).toHaveBeenCalledTimes(1);
+  });
+
+  it("publishes a completed health batch while a newer polling batch is still pending", async () => {
+    currentVessels = [];
+    currentHealth = datalasticHealth({ reachable: false });
+    currentResilience = noLiveSourceResilience;
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    const source = await screen.findByTestId("datalastic-primary-status");
+    expect(source).toHaveTextContent(t.datalasticUnavailable);
+
+    type VesselCollection = Awaited<ReturnType<typeof fetchLiveVessels>>;
+    let releaseFirstBatch!: (collection: VesselCollection) => void;
+    let releaseSecondBatch!: (collection: VesselCollection) => void;
+    vi.mocked(fetchLiveVessels)
+      .mockReturnValueOnce(new Promise((resolve) => { releaseFirstBatch = resolve; }))
+      .mockReturnValueOnce(new Promise((resolve) => { releaseSecondBatch = resolve; }));
+    vi.mocked(fetchLiveHealth)
+      .mockResolvedValueOnce(datalasticHealth())
+      .mockResolvedValueOnce(datalasticHealth());
+
+    fireEvent.click(screen.getByTestId("refresh-viewport"));
+    await waitFor(() => {
+      expect(vi.mocked(fetchLiveHealth)).toHaveBeenCalledTimes(2);
+    });
+    fireEvent.click(screen.getByTestId("refresh-viewport"));
+    await waitFor(() => {
+      expect(vi.mocked(fetchLiveHealth)).toHaveBeenCalledTimes(3);
+    });
+
+    const emptyCollection: VesselCollection = {
+      type: "FeatureCollection",
+      attribution: "Open Waters AIS",
+      server_timestamp: "2026-10-04T08:31:00Z",
+      data_timestamp: "2026-10-04T08:31:00Z",
+      vessel_count: 0,
+      features: [],
+    };
+    await act(async () => {
+      releaseFirstBatch(emptyCollection);
+    });
+
+    expect(source).toHaveTextContent(t.datalasticPrimaryReady);
+
+    await act(async () => {
+      releaseSecondBatch(emptyCollection);
+    });
   });
 
   it("keeps Scan Area unauthorized while the provider is healthy but the session is inactive", async () => {

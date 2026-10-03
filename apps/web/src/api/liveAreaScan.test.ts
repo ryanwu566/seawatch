@@ -5,6 +5,7 @@ import {
   establishAreaScanSession,
   fetchLiveTrack,
   planLiveArea,
+  refreshDatalasticProviderStatus,
   scanLiveArea,
   type AreaScanResponse,
 } from "./live";
@@ -35,6 +36,43 @@ afterEach(() => {
 });
 
 describe("scanLiveArea", () => {
+  it("refreshes provider status once through the authenticated backend route", async () => {
+    const providerStatus = {
+      provider: "datalastic" as const,
+      configured: true,
+      reachable: true,
+      key_status: "valid" as const,
+      addons: true,
+      requests_remaining: 4321,
+      rate_limit_remaining: 57,
+      last_success_at: "2026-10-04T08:30:00Z",
+      last_error_category: null,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => providerStatus,
+    } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(refreshDatalasticProviderStatus()).resolves.toEqual(providerStatus);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/live/area-scan/provider-status/refresh",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "X-SeaWatch-Area-Scan": "1",
+        },
+        signal: undefined,
+      },
+    );
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("api.datalastic.com");
+  });
+
   it("plans geometry through a non-provider backend endpoint", async () => {
     const plan = {
       area_square_km: 113.42,

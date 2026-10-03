@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api import alerts, context, detection, health, historical, live, logistics, resilience, tracks
 from .live import get_live_runtime
 from .live.config import LiveRuntimeConfig
-from .live.datalastic import ProviderError, ProviderErrorCategory
+from .live.datalastic import refresh_datalastic_status
 from .web.serving import configure_local_web
 
 logger = logging.getLogger("seawatch.main")
@@ -71,16 +71,15 @@ async def _probe_datalastic_status(runtime) -> None:
     client = runtime.datalastic_client
     if client is None:
         return
-    try:
-        provider_status = await client.stat()
-    except ProviderError as exc:
-        runtime.datalastic_status.record_failure(exc.category)
-        logger.warning("Datalastic status probe failed (%s)", exc.category.value)
-    except Exception:  # noqa: BLE001 - no raw external errors may reach logs
-        runtime.datalastic_status.record_failure(ProviderErrorCategory.CONNECTION)
-        logger.warning("Datalastic status probe failed (connection)")
-    else:
-        runtime.datalastic_status.record_success(provider_status)
+    provider_status = await refresh_datalastic_status(
+        client,
+        runtime.datalastic_status,
+    )
+    if provider_status.last_error_category is not None:
+        logger.warning(
+            "Datalastic status probe failed (%s)",
+            provider_status.last_error_category.value,
+        )
 
 
 @asynccontextmanager

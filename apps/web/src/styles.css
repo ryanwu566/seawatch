@@ -1632,6 +1632,19 @@ body {
 .area-scan-summary dd { margin: 0.1rem 0 0; font-size: 0.78rem; font-weight: 750; }
 .area-scan-cached { color: #fbbf24; font-size: 0.68rem; }
 .area-scan-error { color: #fca5a5; font-size: 0.72rem; }
+.area-scan-provider-recovery { margin-top: 0.55rem; }
+.area-scan-provider-recovery button {
+  width: 100%;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  background: #172b3f;
+  color: #bae6fd;
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.area-scan-provider-recovery button:disabled { opacity: 0.5; cursor: not-allowed; }
 .area-scan-actions { margin-top: 0.65rem; }
 
 .datalastic-primary-status {

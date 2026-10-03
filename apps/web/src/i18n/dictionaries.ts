@@ -178,6 +178,11 @@ export interface Dict {
   areaScanQuotaUnavailable: string;
   datalasticLiveAis: string;
   datalasticUnavailable: string;
+  providerStatusRefresh: string;
+  providerStatusRefreshing: string;
+  providerStatusRefreshed: string;
+  providerStatusStillUnavailable: string;
+  providerStatusRefreshFailed: string;
   datalasticPrimaryTitle: string;
   datalasticAreaScan: string;
   datalasticAreaCoverage: string;
@@ -519,6 +524,11 @@ const zhHant: Dict = {
   areaScanQuotaUnavailable: "Datalastic 配額目前無法使用。",
   datalasticLiveAis: "Datalastic Live AIS",
   datalasticUnavailable: "Datalastic Live AIS 目前無法使用",
+  providerStatusRefresh: "Check provider status",
+  providerStatusRefreshing: "Checking provider status…",
+  providerStatusRefreshed: "Provider status refreshed.",
+  providerStatusStillUnavailable: "Provider is still unavailable. Try again shortly.",
+  providerStatusRefreshFailed: "Provider status could not be refreshed. Try again shortly.",
   datalasticPrimaryTitle: "即時資料來源",
   datalasticAreaScan: "Datalastic Area Scan",
   datalasticAreaCoverage: "使用者選取區域",
@@ -806,6 +816,11 @@ const en: Dict = {
   areaScanQuotaUnavailable: "Datalastic quota is currently unavailable.",
   datalasticLiveAis: "Datalastic Live AIS",
   datalasticUnavailable: "Live vessel data is temporarily unavailable.",
+  providerStatusRefresh: "Check provider status",
+  providerStatusRefreshing: "Checking provider status…",
+  providerStatusRefreshed: "Provider status refreshed.",
+  providerStatusStillUnavailable: "Provider is still unavailable. Try again shortly.",
+  providerStatusRefreshFailed: "Provider status could not be refreshed. Try again shortly.",
   datalasticPrimaryTitle: "Live Data Source",
   datalasticAreaScan: "Datalastic Area Scan",
   datalasticAreaCoverage: "Operator-selected area",

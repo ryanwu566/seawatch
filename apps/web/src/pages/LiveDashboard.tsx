@@ -7,6 +7,7 @@ import {
   authenticateAreaScan,
   establishAreaScanSession,
   planLiveArea,
+  refreshDatalasticProviderStatus,
   scanLiveArea,
   AreaScanApiError,
   type AreaScanResponse,
@@ -78,8 +79,13 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   const [areaOperatorAuthenticationRequired, setAreaOperatorAuthenticationRequired] =
     useState(false);
   const [areaAutoAuthenticated, setAreaAutoAuthenticated] = useState(false);
+  const [areaProviderRefreshing, setAreaProviderRefreshing] = useState(false);
+  const [areaProviderRefreshMessage, setAreaProviderRefreshMessage] =
+    useState<string | null>(null);
   const areaScanReadiness = deriveAreaScanReadiness(health?.provider_status);
   const areaScanProviderAvailable = areaScanReadiness === "available";
+  const areaProviderRefreshAvailable =
+    health?.provider_status?.configured === true && !areaScanProviderAvailable;
 
   // DEMO fixture (frontend-only, illustrative). The demo vessel is NEVER added
   // to the live `vessels` array; it is held entirely separately and opens only
@@ -100,15 +106,29 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   const areaScanAbortRef = useRef<AbortController | null>(null);
   const areaPlanAbortRef = useRef<AbortController | null>(null);
   const areaScanPendingRef = useRef(false);
+  const areaProviderRefreshPendingRef = useRef(false);
+  const healthRefreshEpochRef = useRef(0);
+  const healthRequestSequenceRef = useRef(0);
+  const healthPublishedSequenceRef = useRef(0);
 
   const loadVessels = useCallback(async () => {
+    const healthRefreshEpoch = healthRefreshEpochRef.current;
+    const healthRequestSequence = healthRequestSequenceRef.current + 1;
+    healthRequestSequenceRef.current = healthRequestSequence;
     const [collectionResult, healthResult, resilienceResult] = await Promise.allSettled([
       fetchLiveVessels(viewportRef.current ?? undefined),
       fetchLiveHealth(),
       fetchResilienceStatus(),
     ]);
 
-    if (healthResult.status === "fulfilled") setHealth(healthResult.value);
+    if (
+      healthResult.status === "fulfilled" &&
+      healthRefreshEpoch === healthRefreshEpochRef.current &&
+      healthRequestSequence > healthPublishedSequenceRef.current
+    ) {
+      healthPublishedSequenceRef.current = healthRequestSequence;
+      setHealth(healthResult.value);
+    }
     if (resilienceResult.status === "fulfilled") setResilience(resilienceResult.value);
 
     if (collectionResult.status === "fulfilled") {
@@ -316,6 +336,46 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
       setAreaAuthenticating(false);
     }
   }, [t]);
+
+  const handleAreaProviderRefresh = useCallback(async () => {
+    if (!areaAuthenticated || areaProviderRefreshPendingRef.current) return;
+    areaProviderRefreshPendingRef.current = true;
+    setAreaProviderRefreshing(true);
+    setAreaProviderRefreshMessage(null);
+    try {
+      const providerStatus = await refreshDatalasticProviderStatus();
+      healthRefreshEpochRef.current += 1;
+      setHealth((current) => (
+        current ? { ...current, provider_status: providerStatus } : current
+      ));
+      const recovered = deriveAreaScanReadiness(providerStatus) === "available";
+      if (recovered) setAreaError(null);
+      setAreaProviderRefreshMessage(
+        recovered ? t.providerStatusRefreshed : t.providerStatusStillUnavailable,
+      );
+    } catch (err) {
+      if (err instanceof AreaScanApiError && (err.status === 401 || err.status === 403)) {
+        const shouldReestablishAutomaticSession = areaAutoAuthenticated;
+        setAreaAuthenticated(false);
+        setAreaAutoAuthenticated(false);
+        setAreaOperatorAuthenticationRequired(!shouldReestablishAutomaticSession);
+        setAreaProviderRefreshMessage(t.areaScanSessionExpired);
+        if (shouldReestablishAutomaticSession) {
+          await establishAutomaticAreaSession();
+        }
+      } else {
+        setAreaProviderRefreshMessage(t.providerStatusRefreshFailed);
+      }
+    } finally {
+      areaProviderRefreshPendingRef.current = false;
+      setAreaProviderRefreshing(false);
+    }
+  }, [
+    areaAuthenticated,
+    areaAutoAuthenticated,
+    establishAutomaticAreaSession,
+    t,
+  ]);
 
   const areaErrorMessage = useCallback((kind: AreaScanErrorKind) => {
     switch (kind) {
@@ -597,10 +657,14 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
             authenticated={areaAuthenticated}
             authenticating={areaAuthenticating}
             providerAvailable={areaScanProviderAvailable}
+            providerRefreshAvailable={areaProviderRefreshAvailable}
+            providerRefreshing={areaProviderRefreshing}
+            providerRefreshMessage={areaProviderRefreshMessage}
             operatorAuthenticationRequired={areaOperatorAuthenticationRequired}
             onDrawMode={handleAreaDrawMode}
             onOpen={handleAreaPanelOpen}
             onAuthenticate={handleAreaAuthenticate}
+            onRefreshProvider={handleAreaProviderRefresh}
             onScan={handleAreaScan}
             onClear={handleAreaClear}
           />

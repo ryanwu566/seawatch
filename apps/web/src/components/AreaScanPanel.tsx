@@ -16,10 +16,14 @@ interface AreaScanPanelProps {
   authenticated: boolean;
   authenticating: boolean;
   providerAvailable: boolean;
+  providerRefreshAvailable: boolean;
+  providerRefreshing: boolean;
+  providerRefreshMessage: string | null;
   operatorAuthenticationRequired: boolean;
   onDrawMode: (mode: Exclude<AreaDrawMode, null>) => void;
   onOpen: () => void;
   onAuthenticate: (operatorCredential: string) => void;
+  onRefreshProvider: () => void;
   onScan: () => void;
   onClear: () => void;
 }
@@ -35,10 +39,14 @@ export function AreaScanPanel({
   authenticated,
   authenticating,
   providerAvailable,
+  providerRefreshAvailable,
+  providerRefreshing,
+  providerRefreshMessage,
   operatorAuthenticationRequired,
   onDrawMode,
   onOpen,
   onAuthenticate,
+  onRefreshProvider,
   onScan,
   onClear,
 }: AreaScanPanelProps) {
@@ -168,6 +176,20 @@ export function AreaScanPanel({
       )}
       {result?.cached && <span className="area-scan-cached">{t.areaScanCached}</span>}
       {error && <p className="area-scan-error" role="alert">{error}</p>}
+      {providerRefreshAvailable && (
+        <div className="area-scan-provider-recovery">
+          <button
+            type="button"
+            disabled={!authenticated || providerRefreshing}
+            onClick={onRefreshProvider}
+          >
+            {providerRefreshing ? t.providerStatusRefreshing : t.providerStatusRefresh}
+          </button>
+        </div>
+      )}
+      {providerRefreshMessage && (
+        <p className="area-scan-hint" role="status">{providerRefreshMessage}</p>
+      )}
 
       <div className="area-scan-actions">
         <button
