@@ -15,7 +15,6 @@ import {
   zonesFC,
 } from "./mapData";
 
-const TAIWAN_VIEW: [[number, number], [number, number]] = [[116.4, 21.0], [124.2, 26.6]];
 const emergencyGeography = JSON.parse(emergencyGeographyRaw) as GeoJSON.FeatureCollection;
 
 const STYLE: StyleSpecification = {
@@ -82,7 +81,7 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
     const map = new maplibregl.Map({
       container: host.current,
       style: STYLE,
-      bounds: TAIWAN_VIEW,
+      bounds: scenario.bounds,
       fitBoundsOptions: { padding: 20 },
       minZoom: 4,
       attributionControl: { compact: true },
@@ -219,7 +218,7 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
     const map = mapRef.current;
     if (!map || !ready) return;
     setData(map, "vessels", vesselsFC(tracks, clock, flagged, selectedMmsis));
-    setData(map, "trails", trailsFC(tracks, clock, flagged));
+    setData(map, "trails", trailsFC(tracks, clock, flagged, selectedMmsis));
     setData(map, "rings", alertRingsFC(alerts));
   }, [ready, tracks, clock, flagged, selectedMmsis, alerts]);
 
@@ -250,8 +249,8 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || selectedId) return;
-    map.fitBounds(TAIWAN_VIEW, { padding: 20, duration: 700 });
-  }, [ready, selectedId]);
+    map.fitBounds(scenario.bounds, { padding: 20, duration: 700 });
+  }, [ready, selectedId, scenario.bounds]);
 
   // ---- ground truth overlay ---------------------------------------------------
   useEffect(() => {

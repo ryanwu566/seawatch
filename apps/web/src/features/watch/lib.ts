@@ -31,6 +31,7 @@ export const KIND_META: Record<string, KindMeta> = {
   zone_entry: { label: "Zone entry", short: "ZONE", color: "#ff6b6b", what: "Entering a protected, restricted or cable zone." },
   position_jump: { label: "Position anomaly", short: "SPOOF?", color: "#74c0fc", what: "Reported position jumps in a physically impossible way." },
   identity_conflict: { label: "Identity conflict", short: "CLONE?", color: "#63e6be", what: "One MMSI reported from two places at once." },
+  status_mismatch: { label: "Status mismatch", short: "STATUS", color: "#a5d8ff", what: "Declares itself anchored or moored but is under way." },
   route_deviation: { label: "Off-route", short: "OFF-ROUTE", color: "#ffd43b", what: "Travelling through water normal traffic does not use." },
   dark_rendezvous: { label: "Possible dark transfer", short: "DARK STS", color: "#e599f7", what: "One vessel dark while another stops where it could have gone." },
 };
@@ -47,7 +48,14 @@ export const ZONE_COLOR: Record<string, string> = {
   fishing_ground: "#69db7c",
 };
 
-const TZ = "Asia/Taipei";
+let TZ = "Asia/Taipei";
+
+/** Time zone of the monitored region (set once the scenario loads). */
+export function setDisplayTimezone(tz: string) {
+  TZ = tz;
+}
+
+export const tzLabel = () => TZ.split("/").pop()!.replace("_", " ");
 
 export function fmtClock(t: number): string {
   return new Date(t * 1000).toLocaleString("en-GB", {

@@ -94,3 +94,37 @@ def test_detection_api_round_trip():
     assert all(a["risk"] >= 70 for a in c.get("/detection/alerts").json()["alerts"])
     assert c.get("/detection/evaluation").json()["alerts"] >= 0
     svc_mod._service = None
+
+
+# --- San Francisco Bay world (real AIS) - only runs where the data has been set up ---------------
+_SF_FILES = list(__import__("pathlib").Path("data/processed").glob("sfbay_2024-01-0*.parquet"))
+
+
+@pytest.mark.skipif(len(_SF_FILES) < 2, reason="run scripts/setup_sfbay_data.py first")
+def test_sf_world_labels_are_found_and_background_is_real():
+    from apps.api.seawatch.detection import sfworld
+
+    days = sfworld.load_days(".")
+    scn, parts = sfworld.build_sf_scenario(days)
+    ctx = sfworld.make_context(scn, parts)
+    cfg = DetectionConfig()
+    alerts = build_alerts(run_all(scn.tracks, scn.t0, scn.t1, ctx, cfg), scn.tracks, cfg)
+    r = evaluate_alerts(alerts, scn)
+    assert r["recall"] >= 0.8
+    assert len(scn.tracks) > 300  # genuine recorded traffic, not a handful of scripted vessels
+    # scripted/injected events are the only labelled ones; the rest of the traffic is untouched
+    assert {t.kind for t in scn.truth} >= {"rendezvous", "dark_sts", "cluster", "zone_entry", "dark_gap"}
+
+
+def test_berthed_vessels_are_not_loitering_or_dark():
+    import numpy as np
+
+    from apps.api.seawatch.detection.detectors import detect_gaps, detect_loitering
+    from apps.api.seawatch.detection.models import Track
+
+    t = np.arange(0, 12 * 3600, 180.0)
+    berthed = Track("366000001", "ALONGSIDE", "cargo", "US", t, np.full(t.size, 37.8), np.full(t.size, -122.4),
+                    np.full(t.size, 0.1), np.zeros(t.size), np.full(t.size, 5))
+    ctx = DetectionContext([], [], None)
+    assert detect_loitering([berthed], ctx, DetectionConfig()) == []
+    assert detect_gaps([berthed], ctx, DetectionConfig()) == []

@@ -13,8 +13,19 @@ import math
 
 import numpy as np
 
-from .geo import NM_M, destination
+from .geo import NM_M, destination, haversine_m
 from .models import Track, TruthEvent
+
+
+_BOUNDS: tuple[float, float, float, float] | None = None  # monitored-area box; events are kept clear of its edge
+
+
+def _edge_ok(lat: float, lon: float, margin_nm: float = 4.0) -> bool:
+    if _BOUNDS is None:
+        return True
+    la0, lo0, la1, lo1 = _BOUNDS
+    m = margin_nm / 60.0
+    return la0 + m < lat < la1 - m and lo0 + m < lon < lo1 - m
 
 
 def _moving_idx(tr: Track, lo_s: float, hi_s: float, min_sog: float = 4.0) -> list[int]:
@@ -22,7 +33,7 @@ def _moving_idx(tr: Track, lo_s: float, hi_s: float, min_sog: float = 4.0) -> li
 
     sog = np.nan_to_num(tr.sog, nan=0.0)
     ok = (sog >= min_sog) & (tr.t >= tr.t[0] + lo_s) & (tr.t <= tr.t[-1] - hi_s)
-    return list(np.where(ok)[0])
+    return [int(i) for i in np.where(ok)[0] if _edge_ok(tr.lat[i], tr.lon[i])]
 
 
 def _candidates(tracks: list[Track], span_h: float) -> list[Track]:
@@ -36,6 +47,9 @@ def dark_gap(tr: Track, rng: np.random.Generator):
         return None
     i = int(rng.choice(idx))
     dur = rng.uniform(45, 180) * 60
+    j = int(np.searchsorted(tr.t, tr.t[i] + dur))
+    if j >= len(tr) or haversine_m(tr.lat[i], tr.lon[i], tr.lat[j], tr.lon[j]) < 3 * NM_M or not _edge_ok(tr.lat[j], tr.lon[j]):
+        return None  # the vessel must really travel while dark
     keep = ~((tr.t >= tr.t[i]) & (tr.t <= tr.t[i] + dur))
     if keep.all():
         return None
@@ -125,19 +139,26 @@ def route_deviation(tr: Track, rng: np.random.Generator):
     ramp = np.sin(np.pi * (tr.t[m] - tr.t[i]) / dur)
     out = tr.slice(0, len(tr))
     out.lat, out.lon = tr.lat.copy(), tr.lon.copy()
-    # offset perpendicular to local course (approximate with lat/lon degrees)
-    cog = np.radians(np.nan_to_num(tr.cog[m], nan=0.0)) + math.pi / 2
-    out.lat[m] += off_nm / 60.0 * ramp * np.cos(cog)
-    out.lon[m] += off_nm / 60.0 * ramp * np.sin(cog) / max(0.2, math.cos(math.radians(tr.lat[i])))
+    # one smooth lateral shift, perpendicular to the segment's overall direction
+    idx = np.where(m)[0]
+    dy, dx = tr.lat[idx[-1]] - tr.lat[idx[0]], (tr.lon[idx[-1]] - tr.lon[idx[0]]) * math.cos(math.radians(tr.lat[i]))
+    if math.hypot(dx, dy) * 60 < 1.0:
+        return None  # not really travelling anywhere
+    perp = math.atan2(dx, dy) + math.pi / 2
+    out.lat[m] += off_nm / 60.0 * ramp * math.cos(perp)
+    out.lon[m] += off_nm / 60.0 * ramp * math.sin(perp) / max(0.2, math.cos(math.radians(tr.lat[i])))
     return out, TruthEvent("", "route_deviation", (tr.mmsi,), float(tr.t[i]), float(tr.t[i] + dur), "Leaves its usual path for open water")
 
 
 INJECTORS = ["dark_gap", "loitering", "position_jump", "identity_conflict", "route_deviation"]
 
 
-def inject(tracks: list[Track], seed: int, per_kind: int = 6) -> tuple[list[Track], list[TruthEvent]]:
+def inject(tracks: list[Track], seed: int, per_kind: int = 6,
+           bounds: tuple[float, float, float, float] | None = None, kinds: list[str] | None = None) -> tuple[list[Track], list[TruthEvent]]:
     """Return (tracks-with-injections, truth). Each injection uses a distinct vessel; originals are untouched."""
 
+    global _BOUNDS
+    _BOUNDS = bounds
     rng = np.random.default_rng(seed)
     pool = _candidates(tracks, 6)
     order = [int(i) for i in rng.permutation(len(pool))]
@@ -145,7 +166,7 @@ def inject(tracks: list[Track], seed: int, per_kind: int = 6) -> tuple[list[Trac
     truth: list[TruthEvent] = []
     used: set[str] = set()
     n = 0
-    for kind in INJECTORS:
+    for kind in (kinds or INJECTORS):
         done = 0
         for pi in order:
             if done >= per_kind:
@@ -158,6 +179,8 @@ def inject(tracks: list[Track], seed: int, per_kind: int = 6) -> tuple[list[Trac
             if res is None:
                 continue
             new, tev = res
+            if new.status is not None and len(new.status) != len(new.t):
+                new.status = None  # array lengths changed; status unknown for this injected vessel
             out[tr.mmsi] = new
             used.add(tr.mmsi)
             n += 1

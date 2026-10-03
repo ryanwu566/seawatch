@@ -78,8 +78,8 @@ export function TuningLab({ config, evaluation, alertCount, busy, showTruth, onS
               <div className="wf-kpis">
                 <div><b>{alertCount}</b><span>alerts shown</span></div>
                 <div className={evaluation.recall < 0.8 ? "warn" : "good"}><b>{pct(evaluation.recall)}</b><span>behaviours caught</span></div>
-                <div className={evaluation.precision < 0.7 ? "warn" : "good"}><b>{pct(evaluation.precision)}</b><span>alerts that were real</span></div>
-                <div><b>{evaluation.false_alarms}</b><span>false alarms</span></div>
+                <div className={evaluation.precision < 0.7 ? "warn" : "good"}><b>{pct(evaluation.precision)}</b><span>{evaluation.real_background ? "alerts on added events" : "alerts that were real"}</span></div>
+                <div><b>{evaluation.false_alarms}</b><span>{evaluation.real_background ? "unverified" : "false alarms"}</span></div>
               </div>
               <table className="wf-eval-table">
                 <thead>
@@ -95,7 +95,9 @@ export function TuningLab({ config, evaluation, alertCount, busy, showTruth, onS
                 </tbody>
               </table>
               <p className="wf-fine">
-                Includes benign look-alikes (fishing fleets, anchorages, a vessel sheltering from weather, satellite-only gaps) so false alarms are measured, not assumed.
+                {evaluation.real_background
+                  ? "Background traffic is genuine recorded AIS, so alerts on vessels we did not touch are 'unverified' - they may be real oddities or routine behaviour nobody labelled. Only the added behaviours have known answers."
+                  : "Includes benign look-alikes (fishing fleets, anchorages, a vessel sheltering from weather, satellite-only gaps) so false alarms are measured, not assumed."}
                 {evaluation.false_alarms_on_benign_lookalikes > 0 && ` ${evaluation.false_alarms_on_benign_lookalikes} false alarm(s) came from those look-alikes.`}
               </p>
               <label className="wf-check">

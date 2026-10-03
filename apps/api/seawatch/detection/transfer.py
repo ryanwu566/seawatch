@@ -39,6 +39,11 @@ def load_days(paths: list[str | Path], min_fixes: int = 30) -> list[list[Track]]
     return days
 
 
+def data_bounds(tracks: list[Track]) -> tuple[float, float, float, float]:
+    la = np.concatenate([t.lat for t in tracks]); lo = np.concatenate([t.lon for t in tracks])
+    return float(la.min()), float(lo.min()), float(la.max()), float(lo.max())
+
+
 def _day_bounds(tracks: list[Track]) -> tuple[float, float]:
     t0 = min(float(t.t[0]) for t in tracks)
     start = np.floor(t0 / 86400.0) * 86400.0
@@ -49,7 +54,7 @@ def real_frame(tracks: list[Track], baseline: TrafficBaseline, learned: LearnedC
                per_kind: int = 8) -> tuple[pd.DataFrame, list]:
     truth = None
     if seed is not None:
-        tracks, truth = inject(tracks, seed, per_kind)
+        tracks, truth = inject(tracks, seed, per_kind, data_bounds(tracks))
     t0, t1 = _day_bounds(tracks)
     ctx = DetectionContext([], [], baseline)
     df = window_features(tracks, t0, t1, ctx, truth if truth is not None else None, learned)

@@ -24,6 +24,7 @@ ALIASES = {
     "sog": ["sog", "speed", "speed_over_ground", "speedoverground", "speed_kn", "speed_knots"],
     "cog": ["cog", "course", "course_over_ground", "courseoverground", "heading_cog"],
     "name": ["vesselname", "vessel_name", "name", "shipname", "ship_name"],
+    "status": ["status", "nav_status", "navigational_status", "navstatus", "navigationstatus"],
     "type": ["vesseltype", "vessel_type", "shiptype", "ship_type", "type", "ship_and_cargo_type"],
 }
 
@@ -43,12 +44,25 @@ def ship_category(code) -> str:
         c = int(float(code))
     except (TypeError, ValueError):
         s = str(code).lower()
-        for k, v in (("tank", "tanker"), ("cargo", "cargo"), ("fish", "fishing"), ("passenger", "passenger"), ("ferry", "ferry")):
+        for k, v in (("tank", "tanker"), ("cargo", "cargo"), ("fish", "fishing"), ("passenger", "passenger"),
+                     ("ferry", "ferry"), ("tug", "tug"), ("pilot", "pilot"), ("sail", "pleasure"), ("pleasure", "pleasure")):
             if k in s:
                 return v
         return "other"
     if c == 30:
         return "fishing"
+    if c in (31, 32, 52):
+        return "tug"
+    if c == 33:
+        return "dredger"
+    if c in (36, 37):
+        return "pleasure"
+    if c == 50:
+        return "pilot"
+    if c == 51:
+        return "sar"
+    if c in (53, 54, 55, 58):
+        return "service"
     if 60 <= c <= 69:
         return "passenger"
     if 70 <= c <= 79:
@@ -115,6 +129,7 @@ def load_tracks(path: str | Path, bbox: tuple[float, float, float, float] | None
             "cog": pd.to_numeric(df[m["cog"]], errors="coerce") if m["cog"] else np.nan,
             "name": df[m["name"]] if m["name"] else "",
             "type": df[m["type"]] if m["type"] else "",
+            "status": pd.to_numeric(df[m["status"]], errors="coerce") if m["status"] else np.nan,
         })
         frames.append(part)
     data = pd.concat(frames, ignore_index=True)
@@ -138,7 +153,8 @@ def load_tracks(path: str | Path, bbox: tuple[float, float, float, float] | None
         name = str(g["name"].dropna().iloc[0]) if g["name"].notna().any() else mmsi
         tracks.append(Track(mmsi, name or mmsi, ship_category(g["type"].dropna().iloc[0]) if g["type"].notna().any() else "other",
                             "", g["t"].to_numpy(float), g["lat"].to_numpy(float), g["lon"].to_numpy(float),
-                            g["sog"].to_numpy(float), g["cog"].to_numpy(float)))
+                            g["sog"].to_numpy(float), g["cog"].to_numpy(float),
+                            g["status"].fillna(-1).to_numpy(int) if g["status"].notna().any() else None))
         if max_vessels and len(tracks) >= max_vessels:
             break
     return tracks

@@ -21,6 +21,25 @@ from .geo import NM_M, haversine_m, project_xy_m
 from .models import Event, Track
 
 KN_MS = 0.514444
+STATIC_STATUS = (1, 5, 6)  # AIS navigational status: at anchor, moored, aground
+SERVICE_TYPES = ("tug", "pilot", "sar", "service", "dredger")  # waiting about is part of their job
+
+
+def is_berthed(tr: Track) -> bool:
+    """Stationary for (essentially) the whole observation: tied up or at anchor, not 'loitering'."""
+
+    if len(tr) < 6 or tr.t[-1] - tr.t[0] < 6 * 3600:
+        return False
+    x, y = project_xy_m(tr.lat, tr.lon)
+    return bool((x.max() - x.min()) <= 1.5 * NM_M and (y.max() - y.min()) <= 1.5 * NM_M)
+
+
+def static_fraction(tr: Track, i0: int, i1: int) -> float:
+    """Share of reports in [i0, i1] where the vessel declares itself anchored / moored / aground."""
+
+    if tr.status is None or i1 < i0:
+        return 0.0
+    return float(np.isin(tr.status[i0:i1 + 1], STATIC_STATUS).mean())
 
 
 def fmt_dur(seconds: float) -> str:
@@ -64,7 +83,7 @@ def _data_quality(track: Track, i0: int, i1: int, ctx: DetectionContext) -> floa
 def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig) -> list[Event]:
     out: list[Event] = []
     for tr in tracks:
-        if len(tr) < 3:
+        if len(tr) < 3 or is_berthed(tr):
             continue
         dt = np.diff(tr.t)
         typical = _typical_interval_s(tr, ctx)
@@ -80,7 +99,9 @@ def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig
             ends_la, ends_lo = np.array([la0, la1]), np.array([lo0, lo1])
             in_port = bool(ctx.in_kinds(ends_la, ends_lo, BENIGN_AREA_KINDS).any()) or (
                 float(np.nan_to_num(tr.sog[i], nan=0.0)) < 2.0 and bool(ctx.benign_mask(ends_la, ends_lo).any()))
-            if in_port:
+            if ctx.near_edge(la0, lo0) or ctx.near_edge(la1, lo1):
+                continue  # left / re-entered the monitored area rather than going dark
+            if in_port or (tr.status is not None and int(tr.status[i]) in STATIC_STATUS):
                 continue  # switching off alongside / at anchor is routine
             sat_only = cov_frac < 0.6 or not (c0 and c1)
             if sat_only and dt[i] < cfg.gap_min_minutes * 60 * 2.0:
@@ -109,6 +130,10 @@ def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig
                 ev.append(f"Position after the gap implies {implied:.0f} kn - physically implausible for most merchant ships.")
             else:
                 ev.append(f"Position after the gap is {dist_nm:.0f} nm away, consistent with continued transit (~{implied:.0f} kn implied).")
+            stationary = dist_nm < 1.5
+            if stationary and not (near_zone is not None and dz <= 5):
+                sev = min(sev, 28.0)
+                ev.append("The vessel reappeared where it vanished (under 1.5 nm away) - consistent with powering down at a berth or anchorage.")
             conf = 0.55 + (0.2 if (c0 and c1 and cov_frac >= 0.8) else 0.0) + (0.1 if i >= 5 else 0.0) - (0.2 if sat_only else 0.0)
             out.append(Event(
                 "", "ais_gap", [tr.mmsi], float(tr.t[i]), float(tr.t[j]), float(mid_lat), float(mid_lon),
@@ -120,7 +145,7 @@ def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig
                 ["AIS alone cannot separate deliberate switch-off from a technical fault.",
                  "A SAR or RF-emission pass over the gap area would confirm the vessel's physical presence."],
                 {"gap_s": float(dt[i]), "distance_nm": round(dist_nm, 1), "implied_kn": round(implied, 1),
-                 "covered_start": c0, "covered_end": c1, "coverage_fraction": round(cov_frac, 2)},
+                 "covered_start": c0, "covered_end": c1, "stationary": bool(stationary), "coverage_fraction": round(cov_frac, 2)},
                 path=[(float(la0), float(lo0)), (float(la1), float(lo1))],
             ))
     return out
@@ -143,7 +168,6 @@ def detect_loitering(tracks: list[Track], ctx: DetectionContext, cfg: DetectionC
             xs, ys = x[i:], y[i:]
             ok = ((np.maximum.accumulate(xs) - np.minimum.accumulate(xs)) <= 2 * r_m) & \
                  ((np.maximum.accumulate(ys) - np.minimum.accumulate(ys)) <= 2 * r_m)
-            ok &= (t[i:] - t[i]) <= (cfg.loiter_min_minutes * 60 * 6)
             # never bridge a long reporting gap: silence is its own event
             brk = np.where(np.diff(t[i:]) >= cfg.gap_min_minutes * 60)[0]
             last = len(xs) if ok.all() else int(np.argmin(ok))
@@ -152,6 +176,9 @@ def detect_loitering(tracks: list[Track], ctx: DetectionContext, cfg: DetectionC
             j = i + last - 1
             dur = t[j] - t[i]
             if j - i + 1 >= 4 and dur >= cfg.loiter_min_minutes * 60:
+                if dur >= 0.85 * (t[-1] - t[0]) or static_fraction(tr, i, j) >= 0.6:
+                    i = j + 1
+                    continue  # moored / anchored for the whole observation: berthed, not loitering
                 seg = slice(i, j + 1)
                 med_sog = float(np.nanmedian(tr.sog[seg])) if np.isfinite(tr.sog[seg]).any() else 0.0
                 if med_sog <= cfg.loiter_max_speed_kn:
@@ -168,7 +195,7 @@ def _loiter_event(tr: Track, i: int, j: int, dur: float, med_sog: float, ctx: De
                   cfg: DetectionConfig) -> Event | None:
     la, lo = float(np.mean(tr.lat[i:j + 1])), float(np.mean(tr.lon[i:j + 1]))
     in_benign = float(np.mean(ctx.benign_mask(tr.lat[i:j + 1], tr.lon[i:j + 1])))
-    if in_benign > 0.3 or ctx.nearest_zone(la, lo, BENIGN_AREA_KINDS)[1] <= cfg.loiter_radius_nm or bool(ctx.benign_mask(np.array([la]), np.array([lo]))[0]):
+    if in_benign > 0.6 or ctx.nearest_zone(la, lo, BENIGN_AREA_KINDS)[1] <= cfg.loiter_radius_nm or (in_benign > 0.4 and bool(ctx.benign_mask(np.array([la]), np.array([lo]))[0])):
         return None  # waiting at anchorage / alongside / in port approaches
     in_fish = ctx.in_kinds(tr.lat[i:j + 1], tr.lon[i:j + 1], ("fishing_ground",)).mean() > 0.5
     if in_fish and tr.ship_type == "fishing":
@@ -192,6 +219,12 @@ def _loiter_event(tr: Track, i: int, j: int, dur: float, med_sog: float, ctx: De
     elif tr.ship_type == "fishing":
         sev -= 15
         ev.append("Fishing-type vessels often idle; weighting reduced.")
+    elif tr.ship_type in SERVICE_TYPES:
+        sev -= 22
+        ev.append(f"A {tr.ship_type} vessel - waiting around is routine for this type; weighting reduced.")
+    elif tr.ship_type == "pleasure":
+        sev -= 10
+        ev.append("Recreational craft often drift or idle; weighting reduced.")
     conf = 0.35 + 0.45 * _data_quality(tr, i, j, ctx)
     if in_fish:
         sev -= 10
@@ -219,6 +252,7 @@ def _resample(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext):
     lat = np.full((V, K), np.nan)
     lon = np.full((V, K), np.nan)
     sog = np.full((V, K), np.nan)
+    stat = np.zeros((V, K), bool)
     for v, tr in enumerate(tracks):
         if len(tr) < 2:
             continue
@@ -231,22 +265,28 @@ def _resample(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext):
         lat[v, idx] = np.interp(grid[idx], tr.t, tr.lat)
         lon[v, idx] = np.interp(grid[idx], tr.t, tr.lon)
         sog[v, idx] = np.interp(grid[idx], tr.t, np.nan_to_num(tr.sog, nan=0.0))
-    return grid, lat, lon, sog
+        if tr.status is not None:
+            prev = np.clip(np.searchsorted(tr.t, grid[idx], side="right") - 1, 0, len(tr) - 1)
+            stat[v, idx] = np.isin(tr.status[prev], STATIC_STATUS)
+    return grid, lat, lon, sog, stat
 
 
 def detect_proximity(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, cfg: DetectionConfig) -> list[Event]:
     if len(tracks) < 2:
         return []
-    grid, LAT, LON, SOG = _resample(tracks, t0, t1, ctx)
+    grid, LAT, LON, SOG, STAT = _resample(tracks, t0, t1, ctx)
     V, K = LAT.shape
     exempt = np.zeros((V, K), bool)  # in port / anchorage, or fishing vessel in a fishing ground
     for v, tr in enumerate(tracks):
+        if is_berthed(tr):
+            exempt[v, :] = True
         ok = ~np.isnan(LAT[v])
         if ok.any():
             m = ctx.benign_mask(LAT[v, ok], LON[v, ok])
             if tr.ship_type == "fishing":
                 m |= ctx.in_kinds(LAT[v, ok], LON[v, ok], ("fishing_ground",))
             exempt[v, np.where(ok)[0][m]] = True
+    exempt |= STAT  # declared at anchor / moored
 
     prox_m = cfg.proximity_distance_nm * NM_M
     clus_m = cfg.cluster_distance_nm * NM_M
@@ -356,7 +396,7 @@ def detect_proximity(tracks: list[Track], t0: float, t1: float, ctx: DetectionCo
         if dur < cfg.cluster_min_minutes * 60 or len(core) < cfg.cluster_min_vessels:
             continue
         med = float(np.nanmedian(SOG[core, k0:k1 + 1]))
-        if med > cfg.loiter_max_speed_kn * 1.5:
+        if med > cfg.loiter_max_speed_kn:
             continue  # a moving convoy on a lane is not an assembly
         la, lo = float(np.nanmean(LAT[core, k0:k1 + 1])), float(np.nanmean(LON[core, k0:k1 + 1]))
         port_nm = ctx.nearest_port_nm(la, lo)
@@ -367,6 +407,9 @@ def detect_proximity(tracks: list[Track], t0: float, t1: float, ctx: DetectionCo
         if zone is not None and dz <= 20:
             sev += 10
             ev.append(f"{dz:.0f} nm from {zone.name}.")
+        recreational = sum(tracks[v].ship_type in SERVICE_TYPES + ("pleasure", "passenger", "ferry") for v in core)
+        if recreational >= 0.5 * len(core):
+            continue  # boats congregating at a marina / terminal / regatta is not an unusual assembly
         names = ", ".join(tracks[v].name for v in core[:3]) + ("…" if len(core) > 3 else "")
         out.append(Event("", "cluster", [tracks[v].mmsi for v in core], float(grid[k0]), float(grid[k1]), la, lo, _clip(sev), 0.7,
                          f"Cluster of {len(core)} vessels ({names}) for {fmt_dur(dur)}", ev,
@@ -387,8 +430,8 @@ def detect_zone_entries(tracks: list[Track], ctx: DetectionContext, cfg: Detecti
             continue
         t, la, lo, sg = TrafficBaseline.densify(tr, 0.5)
         for z in ctx.zones:
-            if z.kind not in SENSITIVE_KINDS:
-                continue
+            if z.kind not in SENSITIVE_KINDS or tr.mmsi in ctx.habitual.get(z.id, ()):
+                continue  # routine users of a zone (seen entering it in the history) are not unusual
             inside = ctx.in_zone(z, la, lo)
             if not inside.any():
                 continue
@@ -416,6 +459,17 @@ def detect_zone_entries(tracks: list[Track], ctx: DetectionContext, cfg: Detecti
                                  zone_id=z.id,
                                  path=[(float(a), float(b)) for a, b in zip(la[s:e + 1:max(1, (e - s) // 30)], lo[s:e + 1:max(1, (e - s) // 30)])]))
     return out
+
+
+def learn_zone_habits(history: list[Track], ctx: DetectionContext, cfg: DetectionConfig) -> dict[str, set[str]]:
+    """Which vessels enter each sensitive zone as a matter of routine, from a stretch of past traffic."""
+
+    saved, ctx.habitual = ctx.habitual, {}
+    habits: dict[str, set[str]] = {}
+    for e in detect_zone_entries(history, ctx, cfg):
+        habits.setdefault(e.zone_id or "", set()).update(e.mmsis)
+    ctx.habitual = saved
+    return habits
 
 
 # --------------------------------------------------------------------------- #
@@ -507,6 +561,37 @@ def detect_route_deviation(tracks: list[Track], ctx: DetectionContext, cfg: Dete
     return out
 
 
+def detect_status_mismatch(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig) -> list[Event]:
+    """Navigational status says anchored / moored, yet the vessel is moving - stale or falsified status."""
+
+    out: list[Event] = []
+    for tr in tracks:
+        if tr.status is None or len(tr) < 5:
+            continue
+        bad = np.isin(tr.status, STATIC_STATUS) & (np.nan_to_num(tr.sog, nan=0.0) >= 3.0)
+        if bad.sum() < 3:
+            continue
+        edges = np.diff(np.concatenate([[0], bad.astype(int), [0]]))
+        for s_, e_ in zip(np.where(edges == 1)[0], np.where(edges == -1)[0] - 1):
+            dur = tr.t[e_] - tr.t[s_]
+            if e_ - s_ + 1 < 3 or dur < 15 * 60:
+                continue
+            speed = float(np.nanmedian(tr.sog[s_:e_ + 1]))
+            dist = float(haversine_m(tr.lat[s_], tr.lon[s_], tr.lat[e_], tr.lon[e_])) / NM_M
+            if dist < 0.5:
+                continue
+            sev = 48 + 20 * min(1.0, dur / 3600) + 8 * min(1.0, speed / 12)
+            out.append(Event("", "status_mismatch", [tr.mmsi], float(tr.t[s_]), float(tr.t[e_]), float(tr.lat[s_]), float(tr.lon[s_]),
+                             _clip(sev), 0.75, f"{tr.name}: declares moored/at anchor but is moving",
+                             [f"Navigational status says '{'at anchor' if int(tr.status[s_]) == 1 else 'moored'}' while the vessel moved {dist:.1f} nm at ~{speed:.0f} kn over {fmt_dur(dur)}.",
+                              "Status is typed in by the crew; a stale value is common, a deliberately false one hides intent."],
+                             ["Crew forgot to update the status", "Dragging anchor or drifting"],
+                             ["Navigational status is self-reported and often left unchanged."],
+                             {"duration_s": float(dur), "distance_nm": round(dist, 1), "sog_kn": round(speed, 1)},
+                             path=[(float(a), float(b)) for a, b in zip(tr.lat[s_:e_ + 1:max(1, (e_ - s_) // 20)], tr.lon[s_:e_ + 1:max(1, (e_ - s_) // 20)])]))
+    return out
+
+
 DETECTORS: dict[str, Callable] = {}
 
 
@@ -517,6 +602,7 @@ def run_all(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, cf
     events += detect_proximity(tracks, t0, t1, ctx, cfg)
     events += detect_zone_entries(tracks, ctx, cfg)
     events += detect_kinematics(tracks, ctx, cfg)
+    events += detect_status_mismatch(tracks, ctx, cfg)
     events += detect_route_deviation(tracks, ctx, cfg)
     events.sort(key=lambda e: e.t_start)
     for n, e in enumerate(events, 1):

@@ -249,3 +249,5 @@
 .wf-ml.agree p b { color: #69db7c; } .wf-ml.rules_only p b { color: #fcc419; }
 .wf-ml-scores { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
 .wf-ml-scores b { color: var(--text); font-size: 15px; } .wf-ml-scores small { font-size: 10.5px; }
+
+.wf-region { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; width: auto; max-width: 230px; }

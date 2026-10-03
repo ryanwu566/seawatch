@@ -66,7 +66,7 @@ export function WatchFloor() {
           </svg>
           <div>
             <strong>SeaWatch</strong>
-            <span>Maritime behaviour analytics · Taiwan waters</span>
+            <span>Maritime behaviour analytics · {w.scenario.region_label}</span>
           </div>
         </div>
 
@@ -84,8 +84,17 @@ export function WatchFloor() {
         </div>
 
         <div className="wf-top-right">
-          <span className="wf-sim" title="No live AIS feed is connected in this demo. Vessel tracks and labelled events are simulated.">
-            SIMULATED DATA
+          {w.regions.filter((r) => r.available).length > 1 && (
+            <select className="wf-region" value={w.region} onChange={(e) => void w.switchRegion(e.target.value)} aria-label="Monitored region">
+              {w.regions.filter((r) => r.available).map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          )}
+          <span className="wf-sim" title={w.scenario.note}>
+            {w.scenario.data_kind === "simulated" ? "SIMULATED DATA" : "REAL AIS + INJECTED EVENTS"}
           </span>
           <span className="wf-clock">{fmtClock(w.clock)}</span>
           <button className={`wf-lab-btn ${lab ? "on" : ""}`} onClick={() => setLab((v) => !v)} aria-pressed={lab}>

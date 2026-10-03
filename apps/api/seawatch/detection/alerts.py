@@ -20,11 +20,11 @@ from .models import Event, Track
 KIND_LABEL = {
     "ais_gap": "AIS silence", "loitering": "Loitering", "rendezvous": "Slow rendezvous", "cluster": "Vessel cluster",
     "zone_entry": "Protected-zone entry", "position_jump": "Position anomaly", "identity_conflict": "Identity conflict",
-    "route_deviation": "Off-route", "dark_rendezvous": "Possible dark transfer",
+    "route_deviation": "Off-route", "status_mismatch": "Status mismatch", "dark_rendezvous": "Possible dark transfer",
 }
 KIND_WEIGHT = {
     "ais_gap": 0.90, "loitering": 0.80, "rendezvous": 1.00, "cluster": 0.90, "zone_entry": 1.00,
-    "position_jump": 0.90, "identity_conflict": 1.00, "route_deviation": 0.70, "dark_rendezvous": 1.00,
+    "position_jump": 0.90, "identity_conflict": 1.00, "route_deviation": 0.70, "status_mismatch": 0.60, "dark_rendezvous": 1.00,
 }
 ACTIONS = {
     "HIGH": "Escalate: task an ISR/patrol asset or request SAR / RF-emission confirmation of the area now.",
@@ -100,6 +100,8 @@ def _correlate_dark_rendezvous(events: list[Event]) -> list[Event]:
     gaps = [e for e in events if e.kind == "ais_gap"]
     others = [e for e in events if e.kind in ("loitering", "rendezvous", "cluster")]
     for g in gaps:
+        if g.metrics.get("stationary"):
+            continue
         dur_h = (g.t_end - g.t_start) / 3600
         reach_nm = max(8.0, 0.5 * dur_h * 15.0)
         best = None
@@ -110,10 +112,15 @@ def _correlate_dark_rendezvous(events: list[Event]) -> list[Event]:
             if overlap < 1200:
                 continue
             ends = g.path or [(g.lat, g.lon)]
-            dist = min(float(haversine_m(o.lat, o.lon, a, b)) / NM_M for a, b in ends)
-            if dist > reach_nm:
+            d_each = [float(haversine_m(o.lat, o.lon, a, b)) / NM_M for a, b in ends]
+            dist = min(d_each)
+            # the dark vessel must be able to go out to the other vessel, stay for the overlap, and come back
+            slack_nm = 15.0 * max(0.0, (g.t_end - g.t_start) - overlap) / 3600.0
+            if dist > reach_nm or sum(d_each) > 0.7 * slack_nm + 1.0:
                 continue
             frac = overlap / max(o.t_end - o.t_start, 1.0)
+            if frac < 0.6 or o.severity < 50:
+                continue  # the other vessel must be stopped for most of the time the first one is dark
             score = frac - dist / 200.0
             if best is None or score > best[0]:
                 best = (score, o, dist, overlap)
@@ -152,6 +159,8 @@ def build_alerts(events: list[Event], tracks: list[Track], cfg: DetectionConfig,
     link_s = cfg.alert_link_hours * 3600
     by_mmsi: dict[str, list[int]] = {}
     for i, e in enumerate(events):
+        if len(e.mmsis) > 8:
+            continue  # a big gathering must not chain unrelated vessels into one alert
         for m in e.mmsis:
             by_mmsi.setdefault(m, []).append(i)
     for idxs in by_mmsi.values():

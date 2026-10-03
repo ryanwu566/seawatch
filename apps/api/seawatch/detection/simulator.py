@@ -93,7 +93,7 @@ _ADJ = ["PACIFIC", "ORIENT", "JADE", "FORMOSA", "SILVER", "NORTHERN", "GOLDEN", 
         "STELLAR", "EASTERN", "CRIMSON", "OCEAN", "TIDAL", "SUMMIT", "CORAL", "IRON", "SWIFT", "LUNAR"]
 _NOUN = ["CARRIER", "VOYAGER", "TRADER", "SPIRIT", "PIONEER", "HORIZON", "GLORY", "EXPRESS", "FORTUNE", "LEGEND",
          "BREEZE", "HARMONY", "STAR", "CROWN", "WAVE", "ARROW", "DAWN", "REEF", "ANCHOR", "SAILOR"]
-_FLAGS = [("416", "TW"), ("412", "CN"), ("477", "HK"), ("351", "PA"), ("538", "MH"), ("636", "LR"), ("431", "JP")]
+_FLAGS = [("366", "US"), ("416", "TW"), ("412", "CN"), ("477", "HK"), ("351", "PA"), ("538", "MH"), ("636", "LR"), ("431", "JP")]
 _SPEED = {"cargo": (11.5, 15.0), "tanker": (10.5, 13.0), "ferry": (17.0, 20.0), "fishing": (6.0, 8.5),
           "passenger": (16.0, 20.0), "other": (8.0, 11.0)}
 
@@ -220,7 +220,7 @@ class _World:
                 break
         name = f"{_ADJ[self.rng.integers(len(_ADJ))]} {_NOUN[self.rng.integers(len(_NOUN))]}"
         if ship_type == "fishing":
-            name = f"FU YUAN YU {self.rng.integers(100, 999)}"
+            name = f"FU YUAN YU {self.rng.integers(100, 999)}" if flag != "US" else f"F/V {name.split()[0].title()} {name.split()[1].title()}"
         return mmsi, name, flag
 
     def tid(self, prefix: str) -> str:

@@ -5,11 +5,13 @@ import {
   type AlertSummary,
   type ConfigPayload,
   type Evaluation,
+  type RegionInfo,
   type ReviewStatus,
   type Scenario,
   type TrackDto,
   type TruthEvent,
 } from "./api";
+import { setDisplayTimezone } from "./lib";
 
 export const SPEEDS = [
   { label: "1h/s", sec: 3600 },
@@ -44,6 +46,9 @@ export interface WatchState {
   resetFeedback: () => Promise<void>;
   loadTruth: () => Promise<void>;
   busy: boolean;
+  regions: RegionInfo[];
+  region: string;
+  switchRegion: (id: string) => Promise<void>;
 }
 
 export function useWatch(): WatchState {
@@ -62,6 +67,9 @@ export function useWatch(): WatchState {
   const [speed, setSpeed] = useState(SPEEDS[0].sec);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [regions, setRegions] = useState<RegionInfo[]>([]);
+  const [region, setRegion] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const clockRef = useRef(0);
   const cfgTimer = useRef<number | undefined>(undefined);
   const fetchSeq = useRef(0);
@@ -76,8 +84,11 @@ export function useWatch(): WatchState {
     let cancelled = false;
     (async () => {
       try {
-        const [sc, tr, cfg] = await Promise.all([watchApi.scenario(), watchApi.tracks(), watchApi.config()]);
+        const [sc, tr, cfg, rg] = await Promise.all([watchApi.scenario(), watchApi.tracks(), watchApi.config(), watchApi.regions()]);
         if (cancelled) return;
+        setDisplayTimezone(sc.timezone);
+        setRegions(rg.regions);
+        setRegion(rg.active);
         setScenario(sc);
         setTracks(tr);
         setConfig(cfg);
@@ -89,7 +100,7 @@ export function useWatch(): WatchState {
     return () => {
       cancelled = true;
     };
-  }, [setClock]);
+  }, [setClock, reloadKey]);
 
   const refreshAlerts = useCallback(async (t: number, atEnd: boolean) => {
     const seq = ++fetchSeq.current;
@@ -217,6 +228,26 @@ export function useWatch(): WatchState {
     if (selectedId) await loadDetail(selectedId);
   }, [after, loadDetail, selectedId]);
 
+  const switchRegion = useCallback(async (id: string) => {
+    setBusy(true);
+    try {
+      await watchApi.selectRegion(id);
+      setScenario(null);
+      setTracks([]);
+      setAlerts([]);
+      setDismissed([]);
+      setEndAlerts([]);
+      setSelectedId(null);
+      setDetail(null);
+      setEvaluation(null);
+      setTruth([]);
+      setPlaying(false);
+      setReloadKey((k) => k + 1);
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const loadTruth = useCallback(async () => {
     setTruth(await watchApi.truth());
   }, []);
@@ -225,9 +256,9 @@ export function useWatch(): WatchState {
     () => ({
       ready: !!scenario && !!config, error, scenario, tracks, alerts, dismissed, endAlerts, selectedId, detail, config, evaluation, truth,
       clock, playing, speed, select, setClock, setPlaying, setSpeed, setStatus, addNote, changeConfig, resetConfig,
-      resetFeedback, loadTruth, busy,
+      resetFeedback, loadTruth, busy, regions, region, switchRegion,
     }),
     [scenario, config, error, tracks, alerts, dismissed, endAlerts, selectedId, detail, evaluation, truth, clock, playing, speed, select,
-      setClock, setStatus, addNote, changeConfig, resetConfig, resetFeedback, loadTruth, busy],
+      setClock, setStatus, addNote, changeConfig, resetConfig, resetFeedback, loadTruth, busy, regions, region, switchRegion],
   );
 }

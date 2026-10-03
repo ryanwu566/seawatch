@@ -95,7 +95,20 @@ export interface Zone {
   polygon: [number, number][];
 }
 
+export interface RegionInfo {
+  id: string;
+  label: string;
+  data_kind: "simulated" | "real_plus_injected";
+  available: boolean;
+}
+
 export interface Scenario {
+  region: string;
+  region_label: string;
+  timezone: string;
+  data_kind: "simulated" | "real_plus_injected";
+  note: string;
+  bounds: [[number, number], [number, number]];
   name: string;
   t0: number;
   t1: number;
@@ -144,6 +157,7 @@ export interface Evaluation {
   f1: number;
   alerts_per_100_vessel_days: number;
   false_alarms_per_100_vessel_days: number;
+  real_background?: boolean;
   per_kind: Record<string, { truth: number; detected: number }>;
   missed: string[];
   false_alarm_ids: string[];
@@ -179,6 +193,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const post = <T,>(path: string, body: unknown) => request<T>(path, { method: "POST", body: JSON.stringify(body) });
 
 export const watchApi = {
+  regions: () => request<{ active: string; regions: RegionInfo[] }>("/detection/regions"),
+  selectRegion: (id: string) => post<{ active: string }>("/detection/region", { id }),
   scenario: () => request<Scenario>("/detection/scenario"),
   tracks: () => request<{ tracks: TrackDto[] }>("/detection/tracks").then((r) => r.tracks),
   alerts: (asOf?: number) =>

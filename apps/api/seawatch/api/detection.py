@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from ..detection.service import get_service
+from ..detection.service import available_regions, get_service, set_region
 from ..detection.state import STATUSES
 
 router = APIRouter(prefix="/detection", tags=["detection"])
@@ -34,6 +34,24 @@ def _require(alert_id: str):
     if a is None:
         raise HTTPException(status_code=404, detail=f"alert not found: {alert_id}")
     return a
+
+
+class RegionBody(BaseModel):
+    id: str
+
+
+@router.get("/regions", summary="Regions the console can monitor, and which is active")
+def regions() -> dict[str, Any]:
+    return {"active": get_service().region, "regions": available_regions()}
+
+
+@router.post("/region", summary="Switch the active region")
+def select_region(body: RegionBody) -> dict[str, Any]:
+    ok = {r["id"]: r["available"] for r in available_regions()}
+    if not ok.get(body.id):
+        raise HTTPException(status_code=404, detail=f"region not available: {body.id}")
+    set_region(body.id)
+    return {"active": body.id}
 
 
 @router.get("/scenario", summary="Scenario metadata: zones, receivers, time range")
@@ -104,10 +122,10 @@ def evaluation() -> dict[str, Any]:
     return get_service().evaluation()
 
 
-@router.get("/ml", summary="ML models: benchmark vs rules on held-out simulations")
+@router.get("/ml", summary="ML models: benchmark vs rules on the held-out day")
 def ml_report() -> dict[str, Any]:
     svc = get_service()
-    return {"trained": svc.ml_models is not None, "benchmark": svc.ml_report}
+    return {"trained": svc.ml_models is not None, "region": svc.region, "benchmark": svc.ml_report}
 
 
 @router.get("/truth", summary="Ground-truth labels (demo 'reveal answers')")

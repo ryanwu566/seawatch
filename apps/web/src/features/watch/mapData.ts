@@ -105,11 +105,11 @@ export function alertRingsFC(alerts: AlertSummary[]): FC {
 }
 
 /** Recent path of flagged vessels, drawn in their alert colour. */
-export function trailsFC(tracks: TrackDto[], t: number, flagged: Map<string, { level: Level; id: string }>, hours = 14): FC {
+export function trailsFC(tracks: TrackDto[], t: number, flagged: Map<string, { level: Level; id: string }>, only: Set<string>, hours = 14): FC {
   const features: GeoJSON.Feature[] = [];
   for (const tr of tracks) {
     const f = flagged.get(tr.mmsi);
-    if (!f) continue;
+    if (!f || !only.has(tr.mmsi)) continue;
     const coords: [number, number][] = [];
     for (let i = 0; i < tr.t.length; i++) {
       if (tr.t[i] > t) break;

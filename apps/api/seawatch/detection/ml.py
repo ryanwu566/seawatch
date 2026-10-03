@@ -205,23 +205,34 @@ def _permutation_importance(models: MLModels, test: pd.DataFrame, n: int = 3) ->
 MODEL_PATH = "data/models/detection_ml.joblib"
 
 
-def save(models: MLModels, benchmark: dict[str, Any], path: str = MODEL_PATH) -> None:
+def save(models: MLModels, benchmark: dict[str, Any], path: str = MODEL_PATH, features: list[str] | None = None) -> None:
     import joblib
     from pathlib import Path
 
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"models": models, "benchmark": benchmark, "features": FEATURES}, path)
+    joblib.dump({"models": models, "benchmark": benchmark, "features": features or FEATURES}, path)
 
 
-def load(path: str = MODEL_PATH) -> tuple[MLModels, dict[str, Any]] | None:
+def load(path: str = MODEL_PATH, features: list[str] | None = None) -> tuple[MLModels, dict[str, Any]] | None:
+    import sys
+
     import joblib
     from pathlib import Path
 
     if not Path(path).exists():
         return None
+    # the training scripts import this package as `seawatch.detection`, the API as `apps.api.seawatch.detection`;
+    # make the pickled names resolvable under whichever name is in use
+    import importlib
+
+    pkg = importlib.import_module(__package__)
+    parent = importlib.import_module(__package__.rsplit(".", 1)[0])
+    sys.modules.setdefault("seawatch", parent)
+    sys.modules.setdefault("seawatch.detection", pkg)
+    sys.modules.setdefault("seawatch.detection.ml", sys.modules[__name__])
     try:
         blob = joblib.load(path)
-        if blob.get("features") != FEATURES or blob["models"].features != FEATURES:
+        if blob.get("features") != (features or FEATURES) or blob["models"].features != (features or FEATURES):
             return None  # feature set changed since training
         return blob["models"], blob["benchmark"]
     except Exception:  # noqa: BLE001 - stale/corrupt model must never break the API

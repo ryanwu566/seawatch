@@ -29,13 +29,19 @@ class TrafficBaseline:
         return np.floor(lat / self.cell_deg).astype(int), np.floor(lon / self.cell_deg).astype(int)
 
     @staticmethod
-    def densify(track: Track, step_nm: float = 1.0):
-        """Linear-interpolate a track to roughly ``step_nm`` spacing (for pass-through coverage)."""
+    def densify(track: Track, step_nm: float = 1.0, max_dt_s: float = 1800.0, max_kn: float = 50.0):
+        """Linear-interpolate a track to roughly ``step_nm`` spacing (for pass-through coverage).
+
+        Only continuously reported, physically plausible legs are interpolated: across a long silence or a
+        position jump nobody knows where the vessel went, so those legs contribute their end points only.
+        """
 
         if len(track) < 2:
             return track.t, track.lat, track.lon, track.sog
         d = haversine_m(track.lat[:-1], track.lon[:-1], track.lat[1:], track.lon[1:]) / NM_M
-        n_seg = np.clip(np.ceil(d / step_nm).astype(int), 1, 400)
+        dt = np.diff(track.t)
+        ok = (dt <= max_dt_s) & (d / np.maximum(dt, 1.0) * 3600 <= max_kn)
+        n_seg = np.where(ok, np.clip(np.ceil(d / step_nm).astype(int), 1, 400), 1)
         ts, las, los, sg = [], [], [], []
         for k in range(len(d)):
             f = np.arange(0, n_seg[k]) / n_seg[k]
@@ -71,7 +77,10 @@ class TrafficBaseline:
 
 class DetectionContext:
     def __init__(self, zones: list[Zone], receivers: list[Receiver], baseline: TrafficBaseline | None = None,
-                 allowlist: set[str] | None = None, learned=None):
+                 allowlist: set[str] | None = None, learned=None,
+                 bounds: tuple[float, float, float, float] | None = None):
+        self.habitual: dict[str, set[str]] = {}  # zone id -> vessels that routinely enter it (learned from history)
+        self.bounds = bounds  # (min_lat, min_lon, max_lat, max_lon) of the monitored area, if clipped from a bigger feed
         self.learned = learned  # LearnedContext: stands in for hand-drawn zones/receivers on regions we only know from history
         self.zones = zones
         self.receivers = receivers
@@ -101,6 +110,16 @@ class DetectionContext:
             if z.kind in kinds:
                 out |= self.in_zone(z, lat, lon)
         return out
+
+    def near_edge(self, lat: float, lon: float, margin_nm: float = 2.0) -> bool:
+        """Close to the edge of the monitored area: a vessel there may simply have left or entered the feed."""
+
+        if self.bounds is None:
+            return False
+        la0, lo0, la1, lo1 = self.bounds
+        m_lat = margin_nm / 60.0
+        m_lon = margin_nm / 60.0 / max(0.2, float(np.cos(np.radians(lat))))
+        return bool(lat < la0 + m_lat or lat > la1 - m_lat or lon < lo0 + m_lon or lon > lo1 - m_lon)
 
     def benign_mask(self, lat, lon) -> np.ndarray:
         """Ports / anchorages from the zone list OR habitual stopping areas learned from history."""
@@ -132,4 +151,7 @@ class DetectionContext:
         return best, best_d
 
     def nearest_port_nm(self, lat: float, lon: float) -> float:
-        return self.nearest_zone(lat, lon, ("port",))[1]
+        d = self.nearest_zone(lat, lon, ("port",))[1]
+        if self.learned is not None:
+            d = min(d, self.learned.nearest_stop_nm(lat, lon))
+        return d

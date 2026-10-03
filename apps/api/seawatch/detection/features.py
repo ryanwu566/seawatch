@@ -37,7 +37,7 @@ PORTABLE = [
 
 
 def _neighbour_grids(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext):
-    grid, LAT, LON, SOG = _resample(tracks, t0, t1, ctx)
+    grid, LAT, LON, SOG, _ = _resample(tracks, t0, t1, ctx)
     V, K = LAT.shape
     nn_slow = np.full((V, K), 99.0)
     group = np.zeros((V, K))

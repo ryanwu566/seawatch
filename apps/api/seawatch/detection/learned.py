@@ -79,6 +79,20 @@ class LearnedContext:
             out[n] = sum(self.stop_vessels.get((a + i, b + j), 0) for i in range(-self.dilate, self.dilate + 1) for j in range(-self.dilate, self.dilate + 1)) >= self.min_stop_vessels
         return out
 
+    def nearest_stop_nm(self, lat: float, lon: float) -> float:
+        """Distance (nm) to the closest habitual stopping area (harbour / marina / anchorage) seen in history."""
+
+        if not self.stop_vessels:
+            return 1e9
+        if getattr(self, "_stop_xy", None) is None:
+            cells = [k for k, v in self.stop_vessels.items() if v >= self.min_stop_vessels]
+            self._stop_xy = np.array([((a + 0.5) * self.cell_deg, (b + 0.5) * self.cell_deg) for a, b in cells]) if cells else np.zeros((0, 2))
+        if len(self._stop_xy) == 0:
+            return 1e9
+        from .geo import haversine_nm
+
+        return float(np.min(haversine_nm(lat, lon, self._stop_xy[:, 0], self._stop_xy[:, 1])))
+
     def covered_mask(self, lat, lon, max_dt: float = 900.0) -> np.ndarray:
         """Coverage proxy: cells where vessels historically reported at a steady rate."""
 

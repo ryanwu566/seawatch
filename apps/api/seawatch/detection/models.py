@@ -25,6 +25,7 @@ class Track:
     lon: np.ndarray
     sog: np.ndarray  # reported speed over ground, knots (nan if missing)
     cog: np.ndarray  # reported course over ground, degrees (nan if missing)
+    status: np.ndarray | None = None  # AIS navigational status code per report (None = not available)
 
     def __len__(self) -> int:
         return int(self.t.size)
@@ -32,7 +33,8 @@ class Track:
     def slice(self, i0: int, i1: int) -> "Track":
         s = slice(i0, i1)
         return Track(self.mmsi, self.name, self.ship_type, self.flag,
-                     self.t[s], self.lat[s], self.lon[s], self.sog[s], self.cog[s])
+                     self.t[s], self.lat[s], self.lon[s], self.sog[s], self.cog[s],
+                     None if self.status is None else self.status[s])
 
 
 @dataclass(frozen=True)

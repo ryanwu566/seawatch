@@ -1,5 +1,5 @@
 import type { AlertSummary, Scenario } from "./api";
-import { LEVEL_COLOR, fmtClock } from "./lib";
+import { LEVEL_COLOR, fmtClock, tzLabel } from "./lib";
 import { SPEEDS } from "./useWatch";
 
 interface Props {
@@ -84,7 +84,7 @@ export function ReplayBar({ scenario, clock, playing, speed, alerts, selectedId,
       </div>
 
       <div className="wf-now" aria-live="off">
-        <small>Taiwan time</small>
+        <small>{tzLabel()} time</small>
         <b>{fmtClock(clock)}</b>
       </div>
     </footer>

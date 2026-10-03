@@ -17,7 +17,7 @@ import numpy as np
 import pyarrow.parquet as pq
 
 BBOX = (37.40, -122.65, 38.10, -122.00)  # min_lat, min_lon, max_lat, max_lon
-COLS = ["mmsi", "base_date_time", "sog", "cog", "vessel_name", "vessel_type", "geometry"]
+COLS = ["mmsi", "base_date_time", "sog", "cog", "vessel_name", "vessel_type", "status", "geometry"]
 
 
 def decode_wkb_points(blobs) -> tuple[np.ndarray, np.ndarray]:

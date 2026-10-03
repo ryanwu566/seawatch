@@ -15,7 +15,41 @@ from .evaluation import evaluate_alerts
 from .models import Event, Scenario
 from .simulator import build_scenario, normal_traffic
 from . import ml as mlmod
+from .features import PORTABLE
 from .state import FeedbackStore, default_store
+
+REGIONS: dict[str, dict[str, Any]] = {
+    "sf-bay": {
+        "label": "San Francisco Bay", "timezone": "America/Los_Angeles", "data_kind": "real_plus_injected",
+        "note": "Real recorded AIS (NOAA, 3 Jan 2024) with labelled behaviours added. Models learned from the 1-2 Jan history.",
+        "model_path": "data/models/ml_sf-bay.joblib", "features": PORTABLE,
+    },
+    "taiwan": {
+        "label": "Taiwan waters (simulated)", "timezone": "Asia/Taipei", "data_kind": "simulated",
+        "note": "Fully simulated vessel tracks with labelled events - no live AIS feed connected.",
+        "model_path": mlmod.MODEL_PATH, "features": None,
+    },
+}
+
+
+def available_regions() -> list[dict[str, Any]]:
+    from pathlib import Path
+
+    out = []
+    for rid, r in REGIONS.items():
+        ok = rid != "sf-bay" or len(list(Path(".").glob("data/processed/sfbay_2024-01-0*.parquet"))) >= 2
+        out.append({"id": rid, "label": r["label"], "data_kind": r["data_kind"], "available": ok})
+    return out
+
+
+def default_region() -> str:
+    import os
+
+    want = os.environ.get("SEAWATCH_REGION")
+    avail = {r["id"]: r["available"] for r in available_regions()}
+    if want in avail and avail[want]:
+        return want
+    return "sf-bay" if avail.get("sf-bay") else "taiwan"
 
 # When an event becomes *actionable* (earliest moment a live system could raise it).
 _DETECT_LAG = {
@@ -27,26 +61,44 @@ _DETECT_LAG = {
     "zone_entry": lambda e, c: e.t_start,
     "position_jump": lambda e, c: e.t_end,
     "identity_conflict": lambda e, c: min(e.t_end, e.t_start + 1800),
+    "status_mismatch": lambda e, c: e.t_start + 900,
 }
 
 
 class DetectionService:
-    def __init__(self, seed: int = 7, store: FeedbackStore | None = None):
+    def __init__(self, seed: int = 7, store: FeedbackStore | None = None, region: str = "taiwan"):
         self.lock = threading.RLock()
         self.seed = seed
-        self.scenario: Scenario = build_scenario(seed)
-        hist = [t for sd in (101, 102, 103) for t in normal_traffic(sd).tracks]
-        self.baseline = TrafficBaseline().fit(hist)
+        self.region = region
+        self.info = REGIONS[region]
         self.cfg = DetectionConfig()
         self.store = store or default_store()
         self._events: list[Event] | None = None
-        loaded = mlmod.load()
-        self.ml_models, self.ml_report = loaded if loaded else (None, None)
         self._windows = None
         self._evt_cfg: dict | None = None
+        self.parts: dict[str, Any] = {}
+        if region == "sf-bay":
+            from . import sfworld
+
+            days = sfworld.load_days(".")
+            self.scenario, self.parts = sfworld.build_sf_scenario(days)
+            self.baseline = self.parts["baseline"]
+            self._base_ctx = sfworld.make_context(self.scenario, self.parts)
+            self.learned = self.parts["learned"]
+        else:
+            self.scenario = build_scenario(seed)
+            hist = [t for sd in (101, 102, 103) for t in normal_traffic(sd).tracks]
+            self.baseline = TrafficBaseline().fit(hist)
+            self._base_ctx = None
+            self.learned = mlmod.make_learned(False)
+        loaded = mlmod.load(self.info["model_path"], self.info["features"])
+        self.ml_models, self.ml_report = loaded if loaded else (None, None)
 
     # -- pipeline ---------------------------------------------------------- #
     def _context(self) -> DetectionContext:
+        if self._base_ctx is not None:
+            self._base_ctx.allowlist = set(self.store.allowlist)
+            return self._base_ctx
         return DetectionContext(self.scenario.zones, self.scenario.receivers, self.baseline, set(self.store.allowlist))
 
     def events(self) -> list[Event]:
@@ -69,7 +121,7 @@ class DetectionService:
                 from .features import window_features
 
                 df = window_features(self.scenario.tracks, self.scenario.t0, self.scenario.t1, self._context(),
-                                     learned=mlmod.make_learned(False))
+                                     learned=self.learned)
                 df["gb"] = self.ml_models.gb_score(df)
                 df["if"] = self.ml_models.if_score(df)
                 self._windows = df
@@ -103,8 +155,14 @@ class DetectionService:
             "zones": [{"id": z.id, "name": z.name, "kind": z.kind, "description": z.description,
                        "polygon": [[round(a, 4), round(b, 4)] for a, b in z.polygon]} for z in s.zones],
             "receivers": [{"id": r.id, "lat": r.lat, "lon": r.lon, "range_nm": r.range_nm} for r in s.receivers],
-            "simulated": True,
+            "simulated": self.info["data_kind"] == "simulated",
+            "region": self.region, "region_label": self.info["label"], "timezone": self.info["timezone"],
+            "data_kind": self.info["data_kind"], "note": self.info["note"], "bounds": self.bounds(),
         }
+
+    def bounds(self) -> list[list[float]]:
+        la = np.concatenate([t.lat for t in self.scenario.tracks]); lo = np.concatenate([t.lon for t in self.scenario.tracks])
+        return [[float(lo.min()) - 0.05, float(la.min()) - 0.05], [float(lo.max()) + 0.05, float(la.max()) + 0.05]]
 
     def tracks(self) -> list[dict[str, Any]]:
         out = []
@@ -123,7 +181,9 @@ class DetectionService:
 
     def evaluation(self) -> dict[str, Any]:
         al = self.alerts(include_dismissed=True)
-        return evaluate_alerts(al, self.scenario)
+        out = evaluate_alerts(al, self.scenario)
+        out["real_background"] = self.info["data_kind"] == "real_plus_injected"
+        return out
 
     def config(self) -> dict[str, Any]:
         return {"values": self.cfg.to_dict(), "specs": PARAM_SPECS, "defaults": DetectionConfig().to_dict()}
@@ -140,6 +200,7 @@ class DetectionService:
 
 
 _service: DetectionService | None = None
+_cache: dict[str, DetectionService] = {}
 _lock = threading.Lock()
 
 
@@ -147,5 +208,17 @@ def get_service() -> DetectionService:
     global _service
     with _lock:
         if _service is None:
-            _service = DetectionService()
+            rid = default_region()
+            _service = _cache.setdefault(rid, DetectionService(region=rid))
+        return _service
+
+
+def set_region(region: str) -> DetectionService:
+    global _service
+    if region not in REGIONS:
+        raise KeyError(region)
+    with _lock:
+        if region not in _cache:
+            _cache[region] = DetectionService(region=region)
+        _service = _cache[region]
         return _service
