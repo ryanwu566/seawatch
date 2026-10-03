@@ -1,0 +1,61 @@
+{
+ "vessel_days": 1135,
+ "clean": {
+  "events_by_kind": {
+   "loitering": 357,
+   "ais_gap": 69,
+   "rendezvous": 116,
+   "cluster": 74,
+   "position_jump": 1
+  },
+  "alerts": 21,
+  "alerts_per_100_vessel_days": 1.9
+ },
+ "injected": {
+  "alerts": 31,
+  "true": 13,
+  "false": 18,
+  "truth": 90,
+  "det": 78,
+  "recall": 0.867,
+  "alert_precision": 0.419,
+  "recall_by_kind": {
+   "dark_gap": "23/24",
+   "loitering": "17/24",
+   "position_jump": "23/23",
+   "identity_conflict": "15/17",
+   "route_deviation": "0/2"
+  }
+ },
+ "sweep": {
+  "gap_min_minutes": {
+   "20": 10.0,
+   "30": 7.6,
+   "40": 6.1,
+   "60": 4.7,
+   "90": 3.3,
+   "120": 2.8
+  },
+  "loiter_min_minutes": {
+   "45": 62.6,
+   "60": 44.6,
+   "90": 31.5,
+   "120": 20.8,
+   "180": 18.2,
+   "240": 10.1
+  },
+  "rendezvous_min_minutes": {
+   "20": 30.7,
+   "30": 19.8,
+   "45": 10.2,
+   "60": 7.2,
+   "90": 5.0
+  },
+  "deviation_min_minutes": {
+   "30": 0.0,
+   "60": 0.0,
+   "90": 0.0,
+   "120": 0.0
+  }
+ }
+}

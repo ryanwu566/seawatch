@@ -68,7 +68,8 @@ class DetectionService:
             if self._windows is None:
                 from .features import window_features
 
-                df = window_features(self.scenario.tracks, self.scenario.t0, self.scenario.t1, self._context())
+                df = window_features(self.scenario.tracks, self.scenario.t0, self.scenario.t1, self._context(),
+                                     learned=mlmod.make_learned(False))
                 df["gb"] = self.ml_models.gb_score(df)
                 df["if"] = self.ml_models.if_score(df)
                 self._windows = df

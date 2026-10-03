@@ -50,18 +50,20 @@ class MLModels:
     if_ref: np.ndarray  # sorted IF raw scores on training windows (for percentile calibration)
     med: pd.Series
     mad: pd.Series
+    features: list[str] = field(default_factory=lambda: list(FEATURES))
     thresholds: dict[str, float] = field(default_factory=dict)
+    normalizer: Any = None
 
     # ---- scoring ---------------------------------------------------------
     def if_score(self, X: pd.DataFrame) -> np.ndarray:
-        raw = -self.iforest.score_samples(X[FEATURES])
+        raw = -self.iforest.score_samples(X[self.features])
         return 100.0 * np.searchsorted(self.if_ref, raw) / len(self.if_ref)
 
     def gb_score(self, X: pd.DataFrame) -> np.ndarray:
-        return self.gboost.predict_proba(X[FEATURES])[:, 1] * 100.0
+        return self.gboost.predict_proba(X[self.features])[:, 1] * 100.0
 
     def explain(self, row: pd.Series, top: int = 3) -> list[dict[str, Any]]:
-        z = ((row[FEATURES] - self.med) / self.mad).astype(float)
+        z = ((row[self.features] - self.med) / self.mad).astype(float)
         out = []
         for name in z.abs().sort_values(ascending=False).index[:top]:
             if name.startswith("is_") or abs(z[name]) < 3:
@@ -72,18 +74,21 @@ class MLModels:
         return out
 
 
-def _fit(train: pd.DataFrame, seed: int = 0) -> MLModels:
-    X = train[FEATURES]
+def _fit(train: pd.DataFrame, seed: int = 0, features: list[str] | None = None, labels: bool = True,
+         unsup_frame: pd.DataFrame | None = None) -> MLModels:
+    features = list(features or FEATURES)
+    X = (unsup_frame if unsup_frame is not None else train)[features]
     iforest = IsolationForest(n_estimators=300, contamination="auto", random_state=seed, n_jobs=1).fit(X)
     raw = np.sort(-iforest.score_samples(X))
     gb = HistGradientBoostingClassifier(max_depth=4, learning_rate=0.08, max_iter=200, class_weight="balanced",
-                                        random_state=seed).fit(X, train["y"])
-    normal = train.loc[train["y"] == 0, FEATURES]
+                                        random_state=seed).fit(train[features], train["y"])
+    normal = train.loc[train["y"] == 0, features]
     med = normal.median()
     mad = (normal - med).abs().median().replace(0, np.nan).fillna(normal.std()).replace(0, 1.0) * 1.4826
-    m = MLModels(iforest, gb, raw, med, mad)
+    m = MLModels(iforest, gb, raw, med, mad, features)
     # operating points from the TRAINING windows only (no peeking at test data)
-    m.thresholds["if"] = float(np.percentile(m.if_score(train.loc[train["y"] == 0]), 99.0))
+    ref = unsup_frame if unsup_frame is not None else train.loc[train["y"] == 0]
+    m.thresholds["if"] = float(np.percentile(m.if_score(ref), 99.0))
     m.thresholds["gb"] = 50.0
     return m
 
@@ -109,13 +114,19 @@ def _rule_window_scores(df: pd.DataFrame, scn: Scenario, ctx: DetectionContext, 
     return score, alerts
 
 
-def build_dataset(seeds, hard: bool, baseline: TrafficBaseline, cfg: DetectionConfig | None = None):
+def make_learned(hard: bool, seeds=(101, 102, 103)):
+    from .learned import LearnedContext
+
+    return LearnedContext().fit([t for sd in seeds for t in normal_traffic(sd, hard=hard).tracks])
+
+
+def build_dataset(seeds, hard: bool, baseline: TrafficBaseline, cfg: DetectionConfig | None = None, learned=None):
     cfg = cfg or DetectionConfig()
     frames, scenarios = [], []
     for sd in seeds:
         scn = scenario_for_seed(sd, hard)
         ctx = DetectionContext(scn.zones, scn.receivers, baseline)
-        df = window_features(scn.tracks, scn.t0, scn.t1, ctx, scn.truth)
+        df = window_features(scn.tracks, scn.t0, scn.t1, ctx, scn.truth, learned)
         df["rules"], alerts = _rule_window_scores(df, scn, ctx, cfg)
         df["seed"] = sd
         frames.append(df)
@@ -142,11 +153,13 @@ def _vessel_level(df: pd.DataFrame, flag: np.ndarray, scenarios, tol: float = 36
     return {"flagged_vessels": tp + fp, "true": tp, "false": fp, "precision": round(prec, 3), "recall": round(rec, 3), "f1": round(f1, 3)}
 
 
-def run_benchmark(train_seeds=range(1, 11), test_seeds=range(31, 39), hard: bool = True) -> tuple[MLModels, dict[str, Any]]:
+def run_benchmark(train_seeds=range(1, 11), test_seeds=range(31, 39), hard: bool = True,
+                  features: list[str] | None = None) -> tuple[MLModels, dict[str, Any]]:
     baseline = make_baseline(hard)
-    train, _ = build_dataset(train_seeds, hard, baseline)
-    test, scen = build_dataset(test_seeds, hard, baseline)
-    models = _fit(train)
+    learned = make_learned(hard)
+    train, _ = build_dataset(train_seeds, hard, baseline, learned=learned)
+    test, scen = build_dataset(test_seeds, hard, baseline, learned=learned)
+    models = _fit(train, features=features)
     test["if"] = models.if_score(test)
     test["gb"] = models.gb_score(test)
     test["hybrid"] = np.where(test["rules"] > 0, 0.5 * test["rules"] + 0.5 * test["gb"], 0.35 * test["gb"])
@@ -166,7 +179,7 @@ def run_benchmark(train_seeds=range(1, 11), test_seeds=range(31, 39), hard: bool
     agree = (test["rules"] >= 30) & ((test["gb"] >= models.thresholds["gb"]) | (test["if"] >= models.thresholds["if"]))
     res["methods"]["Rules confirmed by ML"] = {"roc_auc": None, "pr_auc": None, **_vessel_level(test, agree.to_numpy(), scen)}
     imp = pd.Series(
-        _permutation_importance(models, test), index=FEATURES).sort_values(ascending=False)
+        _permutation_importance(models, test), index=models.features).sort_values(ascending=False)
     res["top_features"] = [{"feature": f, "label": FEATURE_LABEL.get(f, (f, ""))[0], "importance": round(float(v), 4)}
                            for f, v in imp.head(8).items()]
     return models, res
@@ -175,8 +188,8 @@ def run_benchmark(train_seeds=range(1, 11), test_seeds=range(31, 39), hard: bool
 def _permutation_importance(models: MLModels, test: pd.DataFrame, n: int = 3) -> np.ndarray:
     rng = np.random.default_rng(0)
     base = average_precision_score(test["y"], models.gb_score(test))
-    out = np.zeros(len(FEATURES))
-    for i, f in enumerate(FEATURES):
+    out = np.zeros(len(models.features))
+    for i, f in enumerate(models.features):
         drops = []
         for _ in range(n):
             t2 = test.copy()
@@ -208,7 +221,7 @@ def load(path: str = MODEL_PATH) -> tuple[MLModels, dict[str, Any]] | None:
         return None
     try:
         blob = joblib.load(path)
-        if blob.get("features") != FEATURES:
+        if blob.get("features") != FEATURES or blob["models"].features != FEATURES:
             return None  # feature set changed since training
         return blob["models"], blob["benchmark"]
     except Exception:  # noqa: BLE001 - stale/corrupt model must never break the API

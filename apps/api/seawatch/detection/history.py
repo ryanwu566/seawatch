@@ -118,11 +118,12 @@ def load_tracks(path: str | Path, bbox: tuple[float, float, float, float] | None
         })
         frames.append(part)
     data = pd.concat(frames, ignore_index=True)
-    if np.issubdtype(data["t"].dtype, np.number):
+    if pd.api.types.is_numeric_dtype(data["t"]):
         data["t"] = data["t"].astype(float)
         data.loc[data["t"] > 1e11, "t"] /= 1000.0  # milliseconds -> seconds
     else:
-        data["t"] = pd.to_datetime(data["t"], utc=True, errors="coerce").astype("int64") / 1e9
+        stamp = pd.to_datetime(data["t"], utc=True, errors="coerce")
+        data["t"] = ((stamp - pd.Timestamp("1970-01-01", tz="UTC")) / pd.Timedelta(seconds=1)).astype(float)
     data = data.dropna(subset=["t", "lat", "lon"])
     data = data[(data["lat"].between(-90, 90)) & (data["lon"].between(-180, 180)) & ~((data["lat"] == 0) & (data["lon"] == 0))]
     data.loc[data["sog"] >= 102.3, "sog"] = np.nan  # AIS 'not available'

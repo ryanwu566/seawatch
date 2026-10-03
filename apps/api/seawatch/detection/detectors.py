@@ -77,7 +77,9 @@ def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig
             c0, c1 = bool(ctx.covered(la0, lo0)), bool(ctx.covered(la1, lo1))
             f = np.linspace(0, 1, 9)
             cov_frac = float(ctx.covered(la0 + (la1 - la0) * f, lo0 + (lo1 - lo0) * f).mean())
-            in_port = bool(ctx.in_kinds([la0, la1], [lo0, lo1], BENIGN_AREA_KINDS).any())
+            ends_la, ends_lo = np.array([la0, la1]), np.array([lo0, lo1])
+            in_port = bool(ctx.in_kinds(ends_la, ends_lo, BENIGN_AREA_KINDS).any()) or (
+                float(np.nan_to_num(tr.sog[i], nan=0.0)) < 2.0 and bool(ctx.benign_mask(ends_la, ends_lo).any()))
             if in_port:
                 continue  # switching off alongside / at anchor is routine
             sat_only = cov_frac < 0.6 or not (c0 and c1)
@@ -165,8 +167,8 @@ def detect_loitering(tracks: list[Track], ctx: DetectionContext, cfg: DetectionC
 def _loiter_event(tr: Track, i: int, j: int, dur: float, med_sog: float, ctx: DetectionContext,
                   cfg: DetectionConfig) -> Event | None:
     la, lo = float(np.mean(tr.lat[i:j + 1])), float(np.mean(tr.lon[i:j + 1]))
-    in_benign = float(np.mean(ctx.in_kinds(tr.lat[i:j + 1], tr.lon[i:j + 1], BENIGN_AREA_KINDS)))
-    if in_benign > 0.3 or ctx.nearest_zone(la, lo, BENIGN_AREA_KINDS)[1] <= cfg.loiter_radius_nm:
+    in_benign = float(np.mean(ctx.benign_mask(tr.lat[i:j + 1], tr.lon[i:j + 1])))
+    if in_benign > 0.3 or ctx.nearest_zone(la, lo, BENIGN_AREA_KINDS)[1] <= cfg.loiter_radius_nm or bool(ctx.benign_mask(np.array([la]), np.array([lo]))[0]):
         return None  # waiting at anchorage / alongside / in port approaches
     in_fish = ctx.in_kinds(tr.lat[i:j + 1], tr.lon[i:j + 1], ("fishing_ground",)).mean() > 0.5
     if in_fish and tr.ship_type == "fishing":
@@ -241,7 +243,7 @@ def detect_proximity(tracks: list[Track], t0: float, t1: float, ctx: DetectionCo
     for v, tr in enumerate(tracks):
         ok = ~np.isnan(LAT[v])
         if ok.any():
-            m = ctx.in_kinds(LAT[v, ok], LON[v, ok], BENIGN_AREA_KINDS)
+            m = ctx.benign_mask(LAT[v, ok], LON[v, ok])
             if tr.ship_type == "fishing":
                 m |= ctx.in_kinds(LAT[v, ok], LON[v, ok], ("fishing_ground",))
             exempt[v, np.where(ok)[0][m]] = True
@@ -481,7 +483,7 @@ def detect_route_deviation(tracks: list[Track], ctx: DetectionContext, cfg: Dete
         t, la, lo, sg = TrafficBaseline.densify(tr, 1.0)
         fam = ctx.baseline.familiarity(la, lo)
         under = np.nan_to_num(sg, nan=0.0) >= cfg.deviation_min_speed_kn
-        exempt = ctx.in_kinds(la, lo, BENIGN_AREA_KINDS + ("fishing_ground",))
+        exempt = ctx.benign_mask(la, lo) | ctx.in_kinds(la, lo, ("fishing_ground",))
         odd = (fam < cfg.deviation_familiarity) & under & ~exempt
         if not odd.any():
             continue

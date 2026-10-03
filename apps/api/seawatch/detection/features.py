@@ -13,6 +13,7 @@ import pandas as pd
 from scipy.spatial import cKDTree
 
 from .context import BENIGN_AREA_KINDS, SENSITIVE_KINDS, DetectionContext
+from .learned import LearnedContext
 from .detectors import GRID_S, _resample
 from .geo import NM_M, haversine_m, project_xy_m
 from .models import Track, TruthEvent
@@ -24,7 +25,14 @@ FEATURES = [
     "n_fix", "max_gap_min", "cov_frac", "sog_med", "sog_p90", "low_speed_frac", "radius_nm", "path_ratio",
     "turn_per_h", "max_implied_kn", "n_jump", "fam_mean", "unfam_frac", "sens_dist_nm", "in_sens_frac",
     "port_dist_nm", "in_benign_frac", "in_fish_frac", "slow_nbr_nm", "group_size",
-    "is_tanker", "is_cargo", "is_fishing", "is_ferry",
+    "is_tanker", "is_cargo", "is_fishing", "is_ferry", "stop_area_frac", "report_ratio", "gap_ratio",
+]
+
+# Region-independent subset: no hand-drawn zones, no receiver geometry. Context comes only from
+# what each region learns about itself from history (traffic baseline, habitual stops, reporting rate).
+PORTABLE = [
+    "report_ratio", "gap_ratio", "sog_med", "sog_p90", "low_speed_frac", "radius_nm", "path_ratio", "turn_per_h",
+    "max_implied_kn", "n_jump", "fam_mean", "unfam_frac", "stop_area_frac", "slow_nbr_nm", "group_size",
 ]
 
 
@@ -53,7 +61,7 @@ def _neighbour_grids(tracks: list[Track], t0: float, t1: float, ctx: DetectionCo
 
 
 def window_features(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext,
-                    truth: list[TruthEvent] | None = None) -> pd.DataFrame:
+                    truth: list[TruthEvent] | None = None, learned: LearnedContext | None = None) -> pd.DataFrame:
     grid, nn_slow, group = _neighbour_grids(tracks, t0, t1, ctx)
     rows: list[dict] = []
     for v, tr in enumerate(tracks):
@@ -114,6 +122,14 @@ def window_features(tracks: list[Track], t0: float, t1: float, ctx: DetectionCon
             row["port_dist_nm"] = float(min(ctx.nearest_port_nm(float(ref_la.mean()), float(ref_lo.mean())), 200.0))
             row["in_benign_frac"] = float(ctx.in_kinds(ref_la, ref_lo, BENIGN_AREA_KINDS).mean())
             row["in_fish_frac"] = float(ctx.in_kinds(ref_la, ref_lo, ("fishing_ground",)).mean())
+            if learned is not None and ref_la.size:
+                row["stop_area_frac"] = float(learned.stop_area_frac(ref_la, ref_lo))
+                exp_n = WINDOW_S / max(learned.expected_interval_s(float(ref_la.mean()), float(ref_lo.mean())), 1.0)
+                row["report_ratio"] = float(min(3.0, n / max(exp_n, 1.0)))
+                row["gap_ratio"] = float(min(60.0, max_gap * 60 / max(learned.expected_interval_s(float(ref_la.mean()), float(ref_lo.mean())), 1.0)))
+            else:
+                row["stop_area_frac"], row["report_ratio"] = row["in_benign_frac"], float(min(3.0, n / 30.0))
+                row["gap_ratio"] = float(min(60.0, max_gap * 60 / 180.0))
             ks = np.where((grid >= ws) & (grid <= we))[0]
             row["slow_nbr_nm"] = float(nn_slow[v, ks].min()) if ks.size else 99.0
             row["group_size"] = float(group[v, ks].max()) if ks.size else 1.0

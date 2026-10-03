@@ -71,7 +71,8 @@ class TrafficBaseline:
 
 class DetectionContext:
     def __init__(self, zones: list[Zone], receivers: list[Receiver], baseline: TrafficBaseline | None = None,
-                 allowlist: set[str] | None = None):
+                 allowlist: set[str] | None = None, learned=None):
+        self.learned = learned  # LearnedContext: stands in for hand-drawn zones/receivers on regions we only know from history
         self.zones = zones
         self.receivers = receivers
         self.baseline = baseline
@@ -101,7 +102,17 @@ class DetectionContext:
                 out |= self.in_zone(z, lat, lon)
         return out
 
+    def benign_mask(self, lat, lon) -> np.ndarray:
+        """Ports / anchorages from the zone list OR habitual stopping areas learned from history."""
+
+        m = self.in_kinds(lat, lon, BENIGN_AREA_KINDS)
+        if self.learned is not None:
+            m = m | self.learned.stop_mask(lat, lon).reshape(np.shape(m))
+        return m
+
     def covered(self, lat, lon) -> np.ndarray:
+        if not self.receivers and self.learned is not None:
+            return self.learned.covered_mask(lat, lon).reshape(np.shape(lat))
         d = np.full(np.shape(lat), 1e9)
         for r in self.receivers:
             d = np.minimum(d, haversine_m(lat, lon, r.lat, r.lon) / NM_M / r.range_nm)
