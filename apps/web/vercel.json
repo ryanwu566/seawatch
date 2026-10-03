@@ -1,0 +1,40 @@
+{
+  "rewrites": [
+    {
+      "source": "/live/:path*",
+      "destination": "https://seawatch-bgsi.onrender.com/live/:path*"
+    },
+    {
+      "source": "/detection/:path*",
+      "destination": "https://seawatch-bgsi.onrender.com/detection/:path*"
+    },
+    {
+      "source": "/resilience/:path*",
+      "destination": "https://seawatch-bgsi.onrender.com/resilience/:path*"
+    },
+    {
+      "source": "/logistics/:path*",
+      "destination": "https://seawatch-bgsi.onrender.com/logistics/:path*"
+    },
+    {
+      "source": "/context/:path*",
+      "destination": "https://seawatch-bgsi.onrender.com/context/:path*"
+    },
+    {
+      "source": "/historical/:path*",
+      "destination": "https://seawatch-bgsi.onrender.com/historical/:path*"
+    },
+    {
+      "source": "/alerts/:path*",
+      "destination": "https://seawatch-bgsi.onrender.com/alerts/:path*"
+    },
+    {
+      "source": "/tracks/:path*",
+      "destination": "https://seawatch-bgsi.onrender.com/tracks/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://seawatch-bgsi.onrender.com/health"
+    }
+  ]
+}
