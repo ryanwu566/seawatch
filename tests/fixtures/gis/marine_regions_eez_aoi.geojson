@@ -1,0 +1,82 @@
+{
+  "type": "FeatureCollection",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::4326"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "eez.20",
+      "properties": {
+        "mrgid": 200,
+        "mrgid_eez": 200,
+        "geoname": "Overlapping claim Alpha: Taiwan / China",
+        "pol_type": "200NM",
+        "mrgid_ter1": 2177,
+        "territory1": "Taiwan",
+        "mrgid_sov1": 2177,
+        "sovereign1": "Taiwan",
+        "mrgid_ter2": 2177,
+        "territory2": "Taiwan",
+        "mrgid_sov2": 8603,
+        "sovereign2": "China"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[114.0, 19.0], [122.0, 19.0], [122.0, 25.0], [114.0, 25.0], [114.0, 19.0]],
+          [[116.0, 21.0], [117.0, 21.0], [117.0, 22.0], [116.0, 22.0], [116.0, 21.0]]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "eez.10",
+      "properties": {
+        "mrgid": 100,
+        "mrgid_eez": 100,
+        "geoname": "Overlapping claim Alpha: Japan / Taiwan / China",
+        "pol_type": "200NM",
+        "mrgid_ter1": 48936,
+        "territory1": "Alpha Islands",
+        "mrgid_sov1": 2121,
+        "sovereign1": "Japan",
+        "mrgid_ter2": 48936,
+        "territory2": "Alpha Islands",
+        "mrgid_sov2": 2177,
+        "sovereign2": "Taiwan",
+        "mrgid_ter3": 48936,
+        "territory3": "Alpha Islands",
+        "mrgid_sov3": 8603,
+        "sovereign3": "China"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[118.0, 22.0], [127.0, 22.0], [127.0, 28.0], [118.0, 28.0], [118.0, 22.0]]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "eez.30",
+      "properties": {
+        "mrgid": 300,
+        "mrgid_eez": 300,
+        "geoname": "Outside AOI",
+        "pol_type": "200NM",
+        "territory1": "Outside",
+        "sovereign1": "Outside"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [[140.0, 5.0], [141.0, 5.0], [141.0, 6.0], [140.0, 6.0], [140.0, 5.0]]
+        ]
+      }
+    }
+  ]
+}
