@@ -20,11 +20,11 @@ from .models import Event, Track
 KIND_LABEL = {
     "ais_gap": "AIS silence", "loitering": "Loitering", "rendezvous": "Slow rendezvous", "cluster": "Vessel cluster",
     "zone_entry": "Protected-zone entry", "position_jump": "Position anomaly", "identity_conflict": "Identity conflict",
-    "route_deviation": "Off-route", "status_mismatch": "Status mismatch", "survey_pattern": "Survey-like track", "dark_rendezvous": "Possible dark transfer",
+    "route_deviation": "Off-route", "status_mismatch": "Status mismatch", "survey_pattern": "Survey-like track", "survey_threat": "Suspected unauthorised survey", "dark_rendezvous": "Possible dark transfer",
 }
 KIND_WEIGHT = {
     "ais_gap": 0.90, "loitering": 0.80, "rendezvous": 1.00, "cluster": 0.90, "zone_entry": 1.00,
-    "position_jump": 0.90, "identity_conflict": 1.00, "route_deviation": 0.70, "status_mismatch": 0.60, "survey_pattern": 1.00, "dark_rendezvous": 1.00,
+    "position_jump": 0.90, "identity_conflict": 1.00, "route_deviation": 0.70, "status_mismatch": 0.60, "survey_pattern": 1.00, "survey_threat": 1.00, "dark_rendezvous": 1.00,
 }
 ACTIONS = {
     "HIGH": "Escalate: task an ISR/patrol asset or request SAR / RF-emission confirmation of the area now.",
@@ -225,6 +225,10 @@ def _make_alert(evs: list[Event], meta: dict[str, Track], cfg: DetectionConfig, 
     kinds = sorted({e.kind for e in evs}, key=lambda k: -max(e.severity for e in evs if e.kind == k))
     if len(kinds) >= 3:
         risk = min(99.0, risk + 6)
+    # A survey breach of Taiwan's own 24 nm (rules R1 / R2) is the case the mentor model says must be raised as a threat: floor it at HIGH.
+    # Operator feedback below can still lower it.
+    if any(e.kind == "survey_threat" and e.metrics.get("rule") in ("R1", "R2") for e in evs):
+        risk = max(risk, cfg.high_risk)
     suppressed = None
     if feedback is not None:
         factor, why = feedback.risk_modifier(mmsis, kinds, evs)
@@ -267,6 +271,9 @@ def _make_alert(evs: list[Event], meta: dict[str, Track], cfg: DetectionConfig, 
     weights = [max(e.confidence, 0.05) * max(e.severity, 1.0) for e in evs]
     conf = sum(e.confidence * w for e, w in zip(evs, weights)) / sum(weights)
     title = "Possible dark ship-to-ship transfer" if "dark_rendezvous" in kinds else " + ".join(KIND_LABEL.get(k, k) for k in kinds[:3])
+    threat = next((e for e in sorted(evs, key=lambda e: -e.severity) if e.kind == "survey_threat"), None)
+    if threat is not None:
+        title = threat.metrics.get("classification", title)
     lead = max(evs, key=lambda e: e.severity)
     names = [meta[m].name if m in meta else m for m in mmsis]
     key = hashlib.sha1(("|".join(mmsis) + str(int(min(e.t_start for e in evs) // 7200))).encode()).hexdigest()[:8]

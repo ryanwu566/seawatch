@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -79,6 +80,8 @@ class DetectionContext:
     def __init__(self, zones: list[Zone], receivers: list[Receiver], baseline: TrafficBaseline | None = None,
                  allowlist: set[str] | None = None, learned=None,
                  bounds: tuple[float, float, float, float] | None = None):
+        self.territory = None  # Territory: Taiwan's territorial sea / contiguous zone / EEZ, when monitoring Taiwan waters
+        self.stats: Counter = Counter()  # what each detector discarded as noise, and why (shown in the Assessment view)
         self.habits = None  # VesselHabits: where each vessel routinely dwells (its own pattern of life)
         self.habitual: dict[str, set[str]] = {}  # zone id -> vessels that routinely enter it (learned from history)
         self.bounds = bounds  # (min_lat, min_lon, max_lat, max_lon) of the monitored area, if clipped from a bigger feed
@@ -111,6 +114,9 @@ class DetectionContext:
             if z.kind in kinds:
                 out |= self.in_zone(z, lat, lon)
         return out
+
+    def skip(self, kind: str, reason: str) -> None:
+        self.stats[(kind, reason)] += 1
 
     def near_edge(self, lat: float, lon: float, margin_nm: float = 2.0) -> bool:
         """Close to the edge of the monitored area: a vessel there may simply have left or entered the feed."""

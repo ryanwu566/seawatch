@@ -1,3 +1,4 @@
+import { FactorCards } from "./Insight";
 import { useState } from "react";
 import type { AlertDetail, ReviewStatus } from "./api";
 import { ConfidenceMeter, RiskGauge } from "./Gauge";
@@ -146,6 +147,7 @@ export function AlertPanel({ detail, loading, busy, onStatus, onNote, onClose }:
                       </span>
                     </div>
                     <div className="wf-tl-sum">{e.summary}</div>
+                    {e.kind === "survey_threat" && <FactorCards metrics={e.metrics} />}
                     <div className="wf-tl-meta">
                       {fmtPos(e.lat, e.lon)} · severity {e.severity.toFixed(0)} · confidence {Math.round(e.confidence * 100)}%
                     </div>

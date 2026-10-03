@@ -7,6 +7,8 @@ describes *how the ship moved*; it cannot know what instrument was deployed or w
 
 from __future__ import annotations
 
+import re
+
 import math
 
 import numpy as np
@@ -15,6 +17,17 @@ from .config import DetectionConfig
 from .context import SENSITIVE_KINDS, DetectionContext
 from .geo import NM_M, project_xy_m
 from .models import Event, Track
+
+# Chinese / Taiwanese fishing boats are named like MINLIANYU60173, ZHEBEIYU..., "... YU 61294", "FV ..."; a feed without ship types
+# would otherwise class them as 'other'
+_FISHING_NAME = re.compile(r"[A-Z]{2,}YU\s?\d{2,}|FV|FISHING|TRAWL|YU\s?\d{3,}|NO\.?\s?\d+$")
+
+
+def is_exempt(tr) -> bool:
+    """Types that legitimately sail repeated lines (fishing, ferries, ...), including fishing boats recognised by name."""
+
+    return tr.ship_type in SURVEY_EXEMPT or bool(_FISHING_NAME.search((tr.name or "").upper().replace("-", "")))
+
 
 SURVEY_EXEMPT = ("fishing", "pleasure", "passenger", "ferry", "tug", "pilot", "sar", "service", "dredger")
 
@@ -157,7 +170,7 @@ def survey_windows(tr: Track, cfg: DetectionConfig, benign_mask) -> list[tuple[i
 def detect_survey_pattern(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig) -> list[Event]:
     out: list[Event] = []
     for tr in tracks:
-        if tr.ship_type in SURVEY_EXEMPT:
+        if is_exempt(tr):
             continue
         for a, b, m in survey_windows(tr, cfg, ctx.benign_mask):
             la, lo = float(np.mean(tr.lat[a:b + 1])), float(np.mean(tr.lon[a:b + 1]))

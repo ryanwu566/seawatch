@@ -34,14 +34,30 @@ AOI = (21.5, 118.0, 26.5, 123.5)  # min_lat, min_lon, max_lat, max_lon
 K = 4.0  # event-time scale relative to minute-level worlds
 
 
+def _alias_modules() -> None:
+    """The cache may have been written when the package was imported as apps.api.seawatch (uvicorn from the repo root)."""
+
+    import sys
+    import types
+
+    top = __name__.split(".")[0]
+    for stub in ("apps", "apps.api"):
+        sys.modules.setdefault(stub, types.ModuleType(stub))
+    for name in [n for n in sys.modules if n == top or n.startswith(top + ".")]:
+        sys.modules.setdefault("apps.api." + name, sys.modules[name])
+
+
 def load(live_days: int = 4, min_fixes: int = 6, use_cache: bool = True) -> dict[str, Any]:
     import pickle
     from pathlib import Path
 
     files = gfw.daily_files()
-    if len(files) < live_days + 3:
-        raise FileNotFoundError("Taiwan GFW presence data not found - set SEAWATCH_DATA_ROOT (e.g. D:\SeaWatch).")
     cache = Path("data/processed/tw_gfw_cache.pkl")
+    if len(files) < live_days + 3:
+        if use_cache and cache.exists():  # the SSD is unplugged: run from the processed copy of the same data
+            _alias_modules()
+            return pickle.loads(cache.read_bytes())["data"]
+        raise FileNotFoundError("Taiwan GFW presence data not found - set SEAWATCH_DATA_ROOT (e.g. D:/SeaWatch).")
     key = (live_days, min_fixes, tuple((f.name, f.stat().st_size) for f in files))
     if use_cache and cache.exists():
         try:
@@ -245,4 +261,7 @@ def make_context(scn: Scenario, parts: dict) -> DetectionContext:
     ctx = DetectionContext(scn.zones, [], parts["baseline"], learned=parts["learned"], bounds=parts["bounds"])
     ctx.habitual = learn_zone_habits(parts["history"], ctx, cfg)
     ctx.habits = parts["habits"]
+    from .territory import Territory
+
+    ctx.territory = Territory.default()
     return ctx

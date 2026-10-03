@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "./watch.css";
 import { AlertPanel } from "./AlertPanel";
 import { AlertQueue } from "./AlertQueue";
+import { Insight } from "./Insight";
 import { ReplayBar } from "./ReplayBar";
 import { TuningLab } from "./TuningLab";
 import { WatchMap } from "./WatchMap";
@@ -19,6 +20,7 @@ import { useWatch } from "./useWatch";
 export function WatchFloor() {
   const w = useWatch();
   const [lab, setLab] = useState(false);
+  const [insight, setInsight] = useState(false);
   const [showTruth, setShowTruth] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
@@ -97,12 +99,16 @@ export function WatchFloor() {
             {w.scenario.data_kind === "simulated" ? "SIMULATED DATA" : "REAL AIS + INJECTED EVENTS"}
           </span>
           <span className="wf-clock">{fmtClock(w.clock)}</span>
+          <button className={`wf-lab-btn ${insight ? "on" : ""}`} onClick={() => setInsight((v) => !v)} aria-pressed={insight}>
+            ◎ Rules &amp; accuracy
+          </button>
           <button className={`wf-lab-btn ${lab ? "on" : ""}`} onClick={() => setLab((v) => !v)} aria-pressed={lab}>
             ⚙ Tuning lab
           </button>
         </div>
       </header>
 
+      {insight && <Insight onClose={() => setInsight(false)} />}
       <main className="wf-main">
         <AlertQueue alerts={w.alerts} dismissed={w.dismissed} selectedId={w.selectedId} clock={w.clock} onSelect={w.select} />
 

@@ -79,3 +79,16 @@ at towing speed, away from ports; fishing, ferries, tugs etc. are exempt. Search
 Hourly presence cannot show identity cloning, short loitering, or anything below ~10 km; absent vessels may be dark or merely out of
 reception; the alert volume on real traffic (about 75 a day at the default threshold of 55, about 63 a day at 60) is a policy choice
 that the Tuning lab exposes, not a result.
+
+## New data from the mentor
+
+```
+python scripts/ingest_mentor_ais.py PATH_TO_CSV_OR_FOLDER [--live-frac 0.2] [--save data/processed/mentor_tracks.parquet]
+```
+
+Column names are guessed (MMSI, timestamp, lat/lon, speed, course, name, type, IMO, status, destination). The reporting interval
+decides the preset: median >= 30 min is treated as hourly presence, otherwise message-level AIS. The script learns normal traffic
+from the first 80% of the time range and runs every rule, including the territory / velocity / declaration / pattern threat model,
+on the last 20%, then prints events, what was discarded as normal, the factor combination table and the top alerts. Message-level
+data also unlocks declared destination, navigational status and measured speed, which strengthen the A and V factors.
+See `docs/rulebook.md` for what every rule means.

@@ -78,6 +78,7 @@ _DETECT_LAG = {
     "identity_conflict": lambda e, c: min(e.t_end, e.t_start + 1800),
     "status_mismatch": lambda e, c: e.t_start + 900,
     "survey_pattern": lambda e, c: e.t_start + 0.6 * (e.t_end - e.t_start),
+    "survey_threat": lambda e, c: e.t_start + 0.5 * (e.t_end - e.t_start),
 }
 
 
@@ -238,6 +239,48 @@ class DetectionService:
         out = evaluate_alerts(al, self.scenario)
         out["real_background"] = self.info["data_kind"] == "real_plus_injected"
         return out
+
+    def assessment(self) -> dict[str, Any]:
+        """How well activity is identified and how signal is separated from noise: funnel, per-detector discards, factor table, recall."""
+
+        from collections import Counter
+
+        from .threat import factor_table
+
+        evs = self.events()
+        ctx = self._context()
+        al = self.alerts(include_dismissed=True)
+        tracks = self.scenario.tracks
+        kinds = Counter(e.kind for e in evs)
+        ml_on = any(a.ml and a.ml.get("available") for a in al)
+        confirmed = [a for a in al if a.ml and a.ml.get("agreement") == "agree"]
+        funnel = [
+            {"stage": "vessels observed", "count": len(tracks)},
+            {"stage": "vessels with at least one rule event", "count": len({m for e in evs for m in e.mmsis})},
+            {"stage": "rule events", "count": len(evs)},
+            {"stage": f"alerts (risk >= {self.cfg.alert_min_risk:g})", "count": len(al)},
+        ]
+        if ml_on:
+            funnel.append({"stage": "alerts the statistical model also finds unusual", "count": len(confirmed)})
+        funnel.append({"stage": f"high priority (risk >= {self.cfg.high_risk:g})", "count": sum(1 for a in al if a.level == "HIGH")})
+        discards = sorted(({"detector": k[0], "reason": k[1], "count": int(v)}
+                           for k, v in getattr(ctx, "stats", {}).items()), key=lambda r: -r["count"])
+        threat = [e for e in evs if e.kind == "survey_threat"]
+        classes = Counter(e.metrics.get("classification", "?") for e in threat)
+        top = sorted(threat, key=lambda e: -e.severity)[:12]
+        threat_rows = [{"mmsi": e.mmsis[0], "name": next((t.name for t in tracks if t.mmsi == e.mmsis[0]), ""), "rule": e.metrics.get("rule"),
+                        "classification": e.metrics.get("classification"), "severity": round(float(e.severity), 1),
+                        "factors": e.metrics.get("factors"), "evidence": e.evidence[:6]} for e in top]
+        ev = self.evaluation()
+        return {
+            "region": self.region, "data_kind": self.info["data_kind"], "hourly": self.hourly, "funnel": funnel,
+            "events_by_kind": dict(kinds), "discards": discards[:40],
+            "factors": factor_table(tracks, ctx, self.cfg, evs) if ctx.territory is not None else None,
+            "threat_classes": dict(classes), "threat_top": threat_rows,
+            "evaluation": ev, "ml": self.ml_report,
+            "ml_agreement": {"agree": len(confirmed), "rules_only": sum(1 for a in al if a.ml and a.ml.get("agreement") == "rules_only"),
+                             "pending": not ml_on and self.ml_models is not None},
+        }
 
     def config(self) -> dict[str, Any]:
         defaults = DetectionConfig.hourly() if self.hourly else DetectionConfig()

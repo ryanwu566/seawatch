@@ -52,6 +52,11 @@ class DetectionConfig:
     survey_min_legs: int = 4
     survey_min_leg_nm: float = 3.0
     survey_window_h: float = 24.0
+    # --- Suspected unauthorised survey (mentor model: territory / velocity / AIS declaration + pattern) ---
+    threat_speed_lo_kn: float = 5.0
+    threat_speed_hi_kn: float = 10.0
+    threat_edge_nm: float = 0.5
+    threat_min_eez_fixes: int = 30
     # --- Alerting ----------------------------------------------------------
     alert_link_hours: float = 12.0
     alert_min_risk: float = 30.0
@@ -72,6 +77,7 @@ class DetectionConfig:
             grid_s=3600.0, bracket_s=5400.0, window_s=43200.0, step_s=21600.0,
             learn_cell_deg=0.1, learn_max_dt_s=5400.0, learn_min_slow_s=7200.0, learn_min_stop_vessels=5,
             densify_max_dt_s=7200.0, stationary_nm=12.0, edge_margin_nm=12.0, alert_link_hours=24.0,
+            threat_edge_nm=3.0, threat_min_eez_fixes=6,
             survey_min_legs=4, survey_min_leg_nm=14.0, survey_window_h=96.0, alert_min_risk=55.0, medium_risk=70.0, high_risk=82.0,
         )
 
@@ -106,6 +112,12 @@ PARAM_SPECS: list[dict[str, Any]] = [
          help="How long a vessel must travel through water that normal traffic does not use."),
     dict(name="deviation_familiarity", group="Route deviation", label="Familiar-water cut-off", unit="vessels", min=0.5, max=5, step=0.1,
          help="Water cells with less historic traffic than this count as unfamiliar."),
+    dict(name="threat_speed_lo_kn", group="Survey threat", label="Survey speed - lower", unit="kn", min=1, max=8, step=0.5,
+         help="Survey work is slow: the lower edge of the speed band that counts as survey speed (mentor: about 5 kn)."),
+    dict(name="threat_speed_hi_kn", group="Survey threat", label="Survey speed - upper", unit="kn", min=6, max=14, step=0.5,
+         help="Upper edge of the survey-speed band (mentor: about 10 kn)."),
+    dict(name="survey_min_legs", group="Survey threat", label="Legs needed for a pattern", unit="legs", min=3, max=10, step=1,
+         help="Repeated parallel / zig-zag legs required before a track counts as survey-shaped."),
     dict(name="alert_min_risk", group="Alerting", label="Minimum risk to alert", unit="score", min=10, max=80, step=1,
          help="Alerts below this risk score are hidden. Raise it to cut noise."),
     dict(name="high_risk", group="Alerting", label="High-risk level", unit="score", min=50, max=95, step=1,
@@ -126,6 +138,12 @@ PARAM_SPECS_HOURLY: list[dict[str, Any]] = [
          help="A position change implying a speed above this is treated as physically implausible."),
     dict(name="deviation_min_minutes", group="Route deviation", label="Time off normal routes", unit="min", min=240, max=2880, step=60,
          help="How long a vessel must travel through water that normal traffic does not use."),
+    dict(name="threat_speed_lo_kn", group="Survey threat", label="Survey speed - lower", unit="kn", min=1, max=8, step=0.5,
+         help="Survey work is slow: the lower edge of the speed band that counts as survey speed (mentor: about 5 kn)."),
+    dict(name="threat_speed_hi_kn", group="Survey threat", label="Survey speed - upper", unit="kn", min=6, max=14, step=0.5,
+         help="Upper edge of the survey-speed band (mentor: about 10 kn)."),
+    dict(name="survey_min_legs", group="Survey threat", label="Legs needed for a pattern", unit="legs", min=3, max=10, step=1,
+         help="Repeated parallel / zig-zag legs required before a track counts as survey-shaped."),
     dict(name="alert_min_risk", group="Alerting", label="Minimum risk to alert", unit="score", min=10, max=80, step=1,
          help="Alerts below this risk score are hidden. Raise it to cut noise."),
     dict(name="high_risk", group="Alerting", label="High-risk level", unit="score", min=50, max=95, step=1,

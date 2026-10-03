@@ -173,6 +173,38 @@ export interface TruthEvent {
   benign: boolean;
 }
 
+export interface Assessment {
+  region: string;
+  data_kind: string;
+  funnel: { stage: string; count: number }[];
+  events_by_kind: Record<string, number>;
+  discards: { detector: string; reason: string; count: number }[];
+  factors: {
+    single: Record<string, number>;
+    combinations: { territory: boolean; velocity: boolean; declared: boolean; pattern: boolean; vessels: number; factors_met: number }[];
+    classified: Record<string, number>;
+  } | null;
+  threat_classes: Record<string, number>;
+  threat_top: { mmsi: string; name: string; rule: string; classification: string; severity: number; evidence: string[] }[];
+  evaluation: Evaluation;
+  ml_agreement: { agree: number; rules_only: number; pending: boolean };
+}
+
+export interface Rulebook {
+  principle: string;
+  resolution: string;
+  detectors: { id: string; name: string; sees: string; why: string; thresholds: Record<string, number>; discards: string[]; benign: string[]; data: string }[];
+  threat_model: {
+    title: string;
+    premise: string;
+    legal: string;
+    noise: string;
+    factors: { code: string; name: string; rule: string; note: string }[];
+    rules: { id: string; name: string; severity: string; needs: string; meaning: string }[];
+  };
+  fusion: Record<string, string | Record<string, number>>;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${getBaseUrl()}${path}`, {
     ...init,
@@ -211,6 +243,8 @@ export const watchApi = {
   setConfig: (values: Record<string, number>) => request<ConfigPayload>("/detection/config", { method: "PUT", body: JSON.stringify(values) }),
   resetConfig: () => post<ConfigPayload>("/detection/config/reset", {}),
   evaluation: () => request<Evaluation>("/detection/evaluation"),
+  assessment: () => request<Assessment>("/detection/assessment"),
+  rulebook: () => request<Rulebook>("/detection/rulebook"),
   truth: () => request<{ truth: TruthEvent[] }>("/detection/truth").then((r) => r.truth),
   resetFeedback: () => post<{ status: string }>("/detection/feedback/reset", {}),
 };

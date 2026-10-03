@@ -128,6 +128,19 @@ def ml_report() -> dict[str, Any]:
     return {"trained": svc.ml_models is not None, "region": svc.region, "benchmark": svc.ml_report}
 
 
+@router.get("/assessment", summary="Detection quality, noise funnel and factor breakdown")
+def assessment() -> dict[str, Any]:
+    return get_service().assessment()
+
+
+@router.get("/rulebook", summary="Every rule: what, why suspicious, thresholds (live), benign explanations, limits")
+def rulebook() -> dict[str, Any]:
+    from ..detection.rulebook import build
+
+    svc = get_service()
+    return build(svc.cfg, svc.hourly)
+
+
 @router.get("/truth", summary="Ground-truth labels (demo 'reveal answers')")
 def truth() -> dict[str, Any]:
     return {"truth": get_service().truth()}

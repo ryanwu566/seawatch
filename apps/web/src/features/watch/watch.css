@@ -251,3 +251,28 @@
 .wf-ml-scores b { color: var(--text); font-size: 15px; } .wf-ml-scores small { font-size: 10.5px; }
 
 .wf-region { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; width: auto; max-width: 230px; }
+
+/* ---------- insight (assessment + rulebook) ---------- */
+.wf-insight { position: fixed; inset: 56px 0 0 0; z-index: 30; background: var(--panel); display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.wf-insight-bar { display: flex; justify-content: space-between; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.wf-tabs button { background: none; border: 0; color: var(--muted); padding: 8px 14px; font-weight: 600; }
+.wf-tabs button.on { color: var(--accent); border-bottom: 2px solid var(--accent); }
+.wf-insight-bar > button { background: none; border: 0; color: var(--muted); font-size: 16px; }
+.wf-insight-body { overflow: auto; padding: 16px 24px 40px; max-width: 980px; width: 100%; margin: 0 auto; }
+.wf-insight-body section { margin-bottom: 26px; }
+.wf-insight-body h3 { margin: 0 0 6px; font-size: 14px; }
+.wf-insight-body details { border-top: 1px solid var(--line); padding: 8px 0; }
+.wf-insight-body summary { cursor: pointer; }
+.wf-bar { display: grid; grid-template-columns: minmax(180px, 46%) 1fr 70px; gap: 10px; align-items: center; font-size: 12.5px; margin: 4px 0; }
+.wf-bar div { background: var(--panel-2); height: 10px; border-radius: 5px; overflow: hidden; }
+.wf-bar i { display: block; height: 100%; background: var(--accent); }
+.wf-bar b { text-align: right; }
+.wf-table { border-collapse: collapse; font-size: 12.5px; margin: 8px 0; width: 100%; }
+.wf-table th, .wf-table td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+.wf-table tr.hot td { color: #fb7185; font-weight: 700; }
+.wf-factors { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin: 10px 0; }
+.wf-factor { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font-size: 12.5px; }
+.wf-fcs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 0; }
+.wf-fc { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 12px; display: flex; flex-direction: column; opacity: .65; }
+.wf-fc.met { opacity: 1; border-color: #fb7185; }
+.wf-fc.met b { color: #fb7185; }

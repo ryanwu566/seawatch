@@ -100,8 +100,10 @@ def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig
             in_port = bool(ctx.in_kinds(ends_la, ends_lo, BENIGN_AREA_KINDS).any()) or (
                 float(np.nan_to_num(tr.sog[i], nan=0.0)) < 2.0 and bool(ctx.benign_mask(ends_la, ends_lo).any()))
             if ctx.near_edge(la0, lo0, cfg.edge_margin_nm) or ctx.near_edge(la1, lo1, cfg.edge_margin_nm):
+                ctx.skip("ais_gap", "left or re-entered the monitored area")
                 continue  # left / re-entered the monitored area rather than going dark
             if in_port or (tr.status is not None and int(tr.status[i]) in STATIC_STATUS):
+                ctx.skip("ais_gap", "in port / at anchor")
                 continue  # switching off alongside / at anchor is routine
             coarse_feed = cfg.grid_s > 600  # hourly cells: the straight line between two reports says little about coverage en route
             own_hist = ctx.habits.gap_p95.get(tr.mmsi) if ctx.habits is not None else None
@@ -113,12 +115,15 @@ def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig
                 cov_frac = 1.0 if (c0 and c1) else 0.5 * (c0 + c1)
             sat_only = cov_frac < 0.6 or not (c0 and c1)
             if sat_only and dt[i] < cfg.gap_min_minutes * 60 * 2.0:
+                ctx.skip("ais_gap", "short silence where reception is sparse")
                 continue  # sparse satellite-only reporting is expected here
             own_p95 = ctx.habits.gap_p95.get(tr.mmsi) if ctx.habits is not None else None
             if own_p95 is not None and dt[i] <= 1.25 * own_p95:
+                ctx.skip("ais_gap", "routine for this vessel")
                 continue  # this vessel is routinely silent for this long
             peer = ctx.habits.peer_percentile(tr.ship_type, dt[i]) if ctx.habits is not None else None
             if peer is not None and peer < 0.93 and own_p95 is None:
+                ctx.skip("ais_gap", "ordinary for vessels of this type")
                 continue  # ordinary for vessels of this type, and this vessel has no record of its own to say otherwise
             dur_min = dt[i] / 60
             sog_before = float(np.nan_to_num(tr.sog[i], nan=0.0))
@@ -200,6 +205,7 @@ def detect_loitering(tracks: list[Track], ctx: DetectionContext, cfg: DetectionC
             if j - i + 1 >= 4 and dur >= cfg.loiter_min_minutes * 60:
                 if dur >= 0.85 * (t[-1] - t[0]) or static_fraction(tr, i, j) >= 0.6:
                     i = j + 1
+                    ctx.skip("loitering", "moored / anchored for the whole observation")
                     continue  # moored / anchored for the whole observation: berthed, not loitering
                 seg = slice(i, j + 1)
                 med_sog = float(np.nanmedian(tr.sog[seg])) if np.isfinite(tr.sog[seg]).any() else 0.0
@@ -218,9 +224,11 @@ def _loiter_event(tr: Track, i: int, j: int, dur: float, med_sog: float, ctx: De
     la, lo = float(np.mean(tr.lat[i:j + 1])), float(np.mean(tr.lon[i:j + 1]))
     in_benign = float(np.mean(ctx.benign_mask(tr.lat[i:j + 1], tr.lon[i:j + 1])))
     if in_benign > 0.6 or ctx.nearest_zone(la, lo, BENIGN_AREA_KINDS)[1] <= cfg.loiter_radius_nm or (in_benign > 0.4 and bool(ctx.benign_mask(np.array([la]), np.array([lo]))[0])):
+        ctx.skip("loitering", "waiting at a port / anchorage")
         return None  # waiting at anchorage / alongside / in port approaches
     in_fish = ctx.in_kinds(tr.lat[i:j + 1], tr.lon[i:j + 1], ("fishing_ground",)).mean() > 0.5
     if in_fish and tr.ship_type == "fishing":
+        ctx.skip("loitering", "fishing vessel on a fishing ground")
         return None  # fishing vessels working a fishing ground
     in_sensitive = ctx.in_kinds(tr.lat[i:j + 1], tr.lon[i:j + 1], SENSITIVE_KINDS).mean() > 0.5
     if in_sensitive:
@@ -462,6 +470,7 @@ def detect_zone_entries(tracks: list[Track], ctx: DetectionContext, cfg: Detecti
         t, la, lo, sg = TrafficBaseline.densify(tr, 0.5, max_dt_s=cfg.densify_max_dt_s)
         for z in ctx.zones:
             if z.kind not in SENSITIVE_KINDS or tr.mmsi in ctx.habitual.get(z.id, ()):
+                ctx.skip("zone_entry", "routine visitor to this zone")
                 continue  # routine users of a zone (seen entering it in the history) are not unusual
             inside = ctx.in_zone(z, la, lo)
             if not inside.any():
@@ -648,15 +657,21 @@ def _group_context(events: list[Event]) -> None:
 
 def run_all(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, cfg: DetectionConfig) -> list[Event]:
     events: list[Event] = []
+    ctx.stats.clear()
     events += detect_gaps(tracks, ctx, cfg)
     events += detect_loitering(tracks, ctx, cfg)
     events += detect_proximity(tracks, t0, t1, ctx, cfg)
     events += detect_zone_entries(tracks, ctx, cfg)
     events += detect_kinematics(tracks, ctx, cfg)
     events += detect_status_mismatch(tracks, ctx, cfg)
-    from .survey import detect_survey_pattern
+    if getattr(ctx, "territory", None) is not None:
+        from .threat import detect_survey_threat
 
-    events += detect_survey_pattern(tracks, ctx, cfg)
+        events += detect_survey_threat(tracks, ctx, cfg)
+    else:
+        from .survey import detect_survey_pattern
+
+        events += detect_survey_pattern(tracks, ctx, cfg)
     events += detect_route_deviation(tracks, ctx, cfg)
     _group_context(events)
     events.sort(key=lambda e: e.t_start)

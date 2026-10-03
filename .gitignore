@@ -68,3 +68,6 @@ data/raw/dma/
 # generated models / caches
 data/models/*.joblib
 data/processed/*.pkl
+
+# Natural Earth downloads (rebuilt by scripts/build_taiwan_geo.py; the compact outputs are tracked)
+data/geo/ne_10m_*.geojson

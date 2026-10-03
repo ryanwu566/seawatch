@@ -35,7 +35,9 @@ def daily_files(root: Path | None = None) -> list[Path]:
 
 
 def available() -> bool:
-    return len(daily_files()) >= 3
+    """The raw daily files are on disk, or the processed cache built from them is (so the app runs with the SSD unplugged)."""
+
+    return len(daily_files()) >= 3 or Path("data/processed/tw_gfw_cache.pkl").exists()
 
 
 def is_vessel_mmsi(m: str) -> bool:

@@ -27,6 +27,7 @@ class Track:
     cog: np.ndarray  # reported course over ground, degrees (nan if missing)
     status: np.ndarray | None = None  # AIS navigational status code per report (None = not available)
     imo: str = ""  # IMO hull number when the feed carries it (stable across renames / MMSI changes)
+    extra: dict | None = None  # optional static AIS fields, e.g. {"destination": "..."}
 
     def __len__(self) -> int:
         return int(self.t.size)
@@ -35,7 +36,7 @@ class Track:
         s = slice(i0, i1)
         return Track(self.mmsi, self.name, self.ship_type, self.flag,
                      self.t[s], self.lat[s], self.lon[s], self.sog[s], self.cog[s],
-                     None if self.status is None else self.status[s], self.imo)
+                     None if self.status is None else self.status[s], self.imo, self.extra)
 
 
 @dataclass(frozen=True)
