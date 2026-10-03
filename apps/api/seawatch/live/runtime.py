@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import logging
+from typing import TYPE_CHECKING
 
 from .active_view import ActiveVesselView
 from .area_scan import AreaScanService
@@ -22,6 +24,9 @@ from .ingest import AisIngestConsumer
 from .open_waters import OpenWatersProvider
 from .resilience import ResilienceModeManager, ResilienceStatus, SourceHealthSnapshot
 from .store import LiveVesselStore
+
+if TYPE_CHECKING:
+    from ..detection.live_runtime import LiveDetectionRuntime
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,7 @@ class LiveRuntime:
     datalastic_config: DatalasticConfig
     datalastic_client: DatalasticClient | None
     datalastic_status: DatalasticStatusCache
+    live_detection: LiveDetectionRuntime
     area_scan_service: AreaScanService
     area_scan_access: AreaScanAccessConfig
     area_scan_admission: AreaScanAdmissionController
@@ -62,6 +68,8 @@ _runtime: LiveRuntime | None = None
 
 
 def _build_runtime() -> LiveRuntime:
+    from ..detection.live_runtime import LiveDetectionRuntime
+
     config = LiveRuntimeConfig.from_env()
     for warning in config.warnings:
         logging.getLogger("seawatch.live.runtime").warning("%s", warning)
@@ -86,6 +94,15 @@ def _build_runtime() -> LiveRuntime:
     datalastic_status = DatalasticStatusCache(
         configured=datalastic_config.configured
     )
+    live_detection = LiveDetectionRuntime(identity_registry)
+
+    async def update_live_detection(observations, scanned_at) -> None:
+        await asyncio.to_thread(
+            live_detection.update,
+            observations,
+            scanned_at=scanned_at,
+        )
+
     area_scan_access = AreaScanAccessConfig.from_env()
     area_scan_admission = AreaScanAdmissionController(
         max_scans=area_scan_access.max_scans_per_window,
@@ -102,11 +119,13 @@ def _build_runtime() -> LiveRuntime:
         datalastic_config=datalastic_config,
         datalastic_client=datalastic_client,
         datalastic_status=datalastic_status,
+        live_detection=live_detection,
         area_scan_service=AreaScanService(
             provider=datalastic_provider,
             identity_registry=identity_registry,
             status_cache=datalastic_status,
             admission=area_scan_admission,
+            observation_sink=update_live_detection,
         ),
         area_scan_access=area_scan_access,
         area_scan_admission=area_scan_admission,

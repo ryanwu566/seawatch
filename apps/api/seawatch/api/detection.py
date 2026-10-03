@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..detection.service import available_regions, get_service, set_region
 from ..detection.state import STATUSES
+from ..live.runtime import get_live_runtime
 
 router = APIRouter(prefix="/detection", tags=["detection"])
 
@@ -29,7 +30,15 @@ class AllowBody(BaseModel):
     reason: str = "Operator allow-listed"
 
 
-def _require(alert_id: str):
+DetectionSource = Literal["scenario", "live"]
+
+
+def _require(alert_id: str, source: DetectionSource = "scenario"):
+    if source == "live":
+        alert = get_live_runtime().live_detection.public_alert(alert_id)
+        if alert is None:
+            raise HTTPException(status_code=404, detail=f"alert not found: {alert_id}")
+        return alert
     a = get_service().alert(alert_id)
     if a is None:
         raise HTTPException(status_code=404, detail=f"alert not found: {alert_id}")
@@ -55,12 +64,20 @@ def select_region(body: RegionBody) -> dict[str, Any]:
 
 
 @router.get("/scenario", summary="Scenario metadata: zones, receivers, time range")
-def scenario() -> dict[str, Any]:
+def scenario(source: DetectionSource = "scenario") -> dict[str, Any]:
+    if source == "live":
+        return get_live_runtime().live_detection.public_meta()
     return get_service().meta()
 
 
 @router.get("/tracks", summary="Historical and current vessel tracks")
-def tracks() -> dict[str, Any]:
+def tracks(source: DetectionSource = "scenario") -> dict[str, Any]:
+    if source == "live":
+        runtime = get_live_runtime().live_detection
+        return {
+            **runtime.snapshot().to_public_dict(),
+            "tracks": runtime.public_tracks(),
+        }
     return {"tracks": get_service().tracks()}
 
 
@@ -68,14 +85,33 @@ def tracks() -> dict[str, Any]:
 def alerts(
     as_of: float | None = Query(default=None, description="Replay clock (epoch s): only events detectable by then"),
     include_dismissed: bool = False,
+    source: DetectionSource = "scenario",
 ) -> dict[str, Any]:
+    if source == "live":
+        if as_of is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Live Detection does not support replay time",
+            )
+        runtime = get_live_runtime().live_detection
+        items = runtime.public_alerts(include_dismissed=include_dismissed)
+        return {
+            **runtime.snapshot().to_public_dict(),
+            "count": len(items),
+            "alerts": items,
+        }
     items = get_service().alerts(as_of=as_of, include_dismissed=include_dismissed)
     return {"count": len(items), "alerts": [a.summary() for a in items]}
 
 
 @router.get("/alerts/{alert_id}", summary="One alert: reasons, score breakdown, timeline, uncertainty")
-def alert_detail(alert_id: str) -> dict[str, Any]:
-    a = _require(alert_id)
+def alert_detail(
+    alert_id: str,
+    source: DetectionSource = "scenario",
+) -> dict[str, Any]:
+    a = _require(alert_id, source)
+    if source == "live":
+        return a
     d = a.detail()
     try:  # advisory path reviews of the same vessels in the same period (message-level regions only)
         revs, _, _ = get_service().path_reviews()
@@ -86,23 +122,54 @@ def alert_detail(alert_id: str) -> dict[str, Any]:
 
 
 @router.post("/alerts/{alert_id}/status", summary="Set review status (e.g. false_alarm)")
-def set_status(alert_id: str, body: StatusBody) -> dict[str, Any]:
+def set_status(
+    alert_id: str,
+    body: StatusBody,
+    source: DetectionSource = "scenario",
+) -> dict[str, Any]:
+    if source == "live":
+        runtime = get_live_runtime().live_detection
+        try:
+            result = runtime.set_alert_status(
+                alert_id,
+                body.status,
+                operator=body.operator,
+                note=body.note,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"alert not found: {alert_id}")
+        return result
     svc = get_service()
-    a = _require(alert_id)
+    a = _require(alert_id, source)
     try:
         svc.store.set_status(a, body.status, body.operator)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if body.note:
         svc.store.add_note(a, body.note, body.operator)
-    return _require(alert_id).detail()
+    return _require(alert_id, source).detail()
 
 
 @router.post("/alerts/{alert_id}/notes", summary="Add an operator note")
-def add_note(alert_id: str, body: NoteBody) -> dict[str, Any]:
-    a = _require(alert_id)
+def add_note(
+    alert_id: str,
+    body: NoteBody,
+    source: DetectionSource = "scenario",
+) -> dict[str, Any]:
+    if source == "live":
+        result = get_live_runtime().live_detection.add_alert_note(
+            alert_id,
+            body.text,
+            operator=body.operator,
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"alert not found: {alert_id}")
+        return result
+    a = _require(alert_id, source)
     get_service().store.add_note(a, body.text, body.operator)
-    return _require(alert_id).detail()
+    return _require(alert_id, source).detail()
 
 
 @router.get("/config", summary="Detection thresholds and their descriptions")

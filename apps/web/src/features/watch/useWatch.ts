@@ -4,6 +4,7 @@ import {
   type AlertDetail,
   type AlertSummary,
   type ConfigPayload,
+  type DetectionSource,
   type Evaluation,
   type RegionInfo,
   type ReviewStatus,
@@ -22,6 +23,7 @@ export const SPEEDS = [
 export interface WatchState {
   ready: boolean;
   error: string | null;
+  source: DetectionSource;
   scenario: Scenario | null;
   tracks: TrackDto[];
   alerts: AlertSummary[];
@@ -49,9 +51,11 @@ export interface WatchState {
   regions: RegionInfo[];
   region: string;
   switchRegion: (id: string) => Promise<void>;
+  switchSource: (source: DetectionSource) => void;
 }
 
 export function useWatch(): WatchState {
+  const [source, setSource] = useState<DetectionSource>("scenario");
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [tracks, setTracks] = useState<TrackDto[]>([]);
   const [alerts, setAlerts] = useState<AlertSummary[]>([]);
@@ -73,6 +77,9 @@ export function useWatch(): WatchState {
   const clockRef = useRef(0);
   const cfgTimer = useRef<number | undefined>(undefined);
   const fetchSeq = useRef(0);
+  const detailSeq = useRef(0);
+  const sourceVersionRef = useRef(0);
+  const sourceVersion = sourceVersionRef.current;
 
   const setClock = useCallback((t: number) => {
     clockRef.current = t;
@@ -84,8 +91,14 @@ export function useWatch(): WatchState {
     let cancelled = false;
     (async () => {
       try {
-        const [sc, tr, cfg, rg] = await Promise.all([watchApi.scenario(), watchApi.tracks(), watchApi.config(), watchApi.regions()]);
+        const [sc, tr, cfg, rg] = await Promise.all([
+          watchApi.scenario(source),
+          watchApi.tracks(source),
+          watchApi.config(),
+          watchApi.regions(),
+        ]);
         if (cancelled) return;
+        setError(null);
         setDisplayTimezone(sc.timezone);
         setRegions(rg.regions);
         setRegion(rg.active);
@@ -100,28 +113,38 @@ export function useWatch(): WatchState {
     return () => {
       cancelled = true;
     };
-  }, [setClock, reloadKey]);
+  }, [setClock, reloadKey, source]);
 
   const refreshAlerts = useCallback(async (t: number, atEnd: boolean) => {
     const seq = ++fetchSeq.current;
     try {
-      const [a, d] = await Promise.all([watchApi.alerts(atEnd ? undefined : t), watchApi.dismissed()]);
-      if (seq !== fetchSeq.current) return;
+      const [a, d] = await Promise.all([
+        watchApi.alerts(source === "live" || atEnd ? undefined : t, source),
+        watchApi.dismissed(source),
+      ]);
+      if (seq !== fetchSeq.current || sourceVersion !== sourceVersionRef.current) return;
       setAlerts(a);
       setDismissed(d);
       if (atEnd) setEndAlerts(a);
     } catch (e) {
-      if (seq === fetchSeq.current) setError(e instanceof Error ? e.message : "Alert refresh failed");
+      if (seq === fetchSeq.current && sourceVersion === sourceVersionRef.current) {
+        setError(e instanceof Error ? e.message : "Alert refresh failed");
+      }
     }
-  }, []);
+  }, [source, sourceVersion]);
 
   const refreshEvaluation = useCallback(async () => {
+    if (source === "live") {
+      setEvaluation(null);
+      return;
+    }
     try {
-      setEvaluation(await watchApi.evaluation());
+      const next = await watchApi.evaluation();
+      if (sourceVersion === sourceVersionRef.current) setEvaluation(next);
     } catch {
       /* evaluation is optional context */
     }
-  }, []);
+  }, [source, sourceVersion]);
 
   // alerts follow the replay clock (throttled while playing)
   useEffect(() => {
@@ -138,7 +161,7 @@ export function useWatch(): WatchState {
 
   // playback loop
   useEffect(() => {
-    if (!playing || !scenario) return;
+    if (source !== "scenario" || !playing || !scenario) return;
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -154,20 +177,25 @@ export function useWatch(): WatchState {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, speed, scenario, setClock]);
+  }, [playing, source, speed, scenario, setClock]);
 
   const loadDetail = useCallback(async (id: string) => {
+    const seq = ++detailSeq.current;
     try {
-      setDetail(await watchApi.alert(id));
+      const next = await watchApi.alert(id, source);
+      if (seq === detailSeq.current && sourceVersion === sourceVersionRef.current) setDetail(next);
     } catch {
-      setDetail(null);
+      if (seq === detailSeq.current && sourceVersion === sourceVersionRef.current) setDetail(null);
     }
-  }, []);
+  }, [source, sourceVersion]);
 
   const select = useCallback(
     (id: string | null) => {
       setSelectedId(id);
-      if (!id) setDetail(null);
+      if (!id) {
+        detailSeq.current += 1;
+        setDetail(null);
+      }
       else void loadDetail(id);
     },
     [loadDetail],
@@ -181,31 +209,37 @@ export function useWatch(): WatchState {
     async (id: string, status: ReviewStatus, note?: string) => {
       setBusy(true);
       try {
-        setDetail(await watchApi.setStatus(id, status, note));
+        const next = await watchApi.setStatus(id, status, note, source);
+        if (sourceVersion !== sourceVersionRef.current) return;
+        setDetail(next);
         await after();
       } finally {
         setBusy(false);
       }
     },
-    [after],
+    [after, source, sourceVersion],
   );
 
   const addNote = useCallback(
     async (id: string, text: string) => {
-      setDetail(await watchApi.addNote(id, text));
+      const next = await watchApi.addNote(id, text, source);
+      if (sourceVersion !== sourceVersionRef.current) return;
+      setDetail(next);
       await after();
     },
-    [after],
+    [after, source, sourceVersion],
   );
 
   const changeConfig = useCallback(
     (values: Record<string, number>) => {
+      if (source !== "scenario") return;
       setConfig((c) => (c ? { ...c, values: { ...c.values, ...values } } : c));
       window.clearTimeout(cfgTimer.current);
       cfgTimer.current = window.setTimeout(async () => {
         setBusy(true);
         try {
           const cfg = await watchApi.setConfig(values);
+          if (sourceVersion !== sourceVersionRef.current) return;
           setConfig(cfg);
           await after();
           if (selectedId) await loadDetail(selectedId);
@@ -214,29 +248,37 @@ export function useWatch(): WatchState {
         }
       }, 350);
     },
-    [after, loadDetail, selectedId],
+    [after, loadDetail, selectedId, source, sourceVersion],
   );
 
   const resetConfig = useCallback(async () => {
-    setConfig(await watchApi.resetConfig());
+    if (source !== "scenario") return;
+    const next = await watchApi.resetConfig();
+    if (sourceVersion !== sourceVersionRef.current) return;
+    setConfig(next);
     await after();
-  }, [after]);
+  }, [after, source, sourceVersion]);
 
   const resetFeedback = useCallback(async () => {
+    if (source !== "scenario") return;
     await watchApi.resetFeedback();
+    if (sourceVersion !== sourceVersionRef.current) return;
     await after();
     if (selectedId) await loadDetail(selectedId);
-  }, [after, loadDetail, selectedId]);
+  }, [after, loadDetail, selectedId, source, sourceVersion]);
 
   const switchRegion = useCallback(async (id: string) => {
+    if (source !== "scenario") return;
     setBusy(true);
     try {
       await watchApi.selectRegion(id);
+      if (sourceVersion !== sourceVersionRef.current) return;
       setScenario(null);
       setTracks([]);
       setAlerts([]);
       setDismissed([]);
       setEndAlerts([]);
+      detailSeq.current += 1;
       setSelectedId(null);
       setDetail(null);
       setEvaluation(null);
@@ -246,19 +288,41 @@ export function useWatch(): WatchState {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [source, sourceVersion]);
 
   const loadTruth = useCallback(async () => {
-    setTruth(await watchApi.truth());
-  }, []);
+    if (source !== "scenario") return;
+    const next = await watchApi.truth();
+    if (sourceVersion === sourceVersionRef.current) setTruth(next);
+  }, [source, sourceVersion]);
+
+  const switchSource = useCallback((next: DetectionSource) => {
+    if (next === source) return;
+    sourceVersionRef.current += 1;
+    fetchSeq.current += 1;
+    detailSeq.current += 1;
+    window.clearTimeout(cfgTimer.current);
+    setSource(next);
+    setScenario(null);
+    setTracks([]);
+    setAlerts([]);
+    setDismissed([]);
+    setEndAlerts([]);
+    setSelectedId(null);
+    setDetail(null);
+    setEvaluation(null);
+    setTruth([]);
+    setPlaying(false);
+    setError(null);
+  }, [source]);
 
   return useMemo(
     () => ({
-      ready: !!scenario && !!config, error, scenario, tracks, alerts, dismissed, endAlerts, selectedId, detail, config, evaluation, truth,
+      ready: !!scenario && !!config, error, source, scenario, tracks, alerts, dismissed, endAlerts, selectedId, detail, config, evaluation, truth,
       clock, playing, speed, select, setClock, setPlaying, setSpeed, setStatus, addNote, changeConfig, resetConfig,
-      resetFeedback, loadTruth, busy, regions, region, switchRegion,
+      resetFeedback, loadTruth, busy, regions, region, switchRegion, switchSource,
     }),
-    [scenario, config, error, tracks, alerts, dismissed, endAlerts, selectedId, detail, evaluation, truth, clock, playing, speed, select,
-      setClock, setStatus, addNote, changeConfig, resetConfig, resetFeedback, loadTruth, busy, regions, region, switchRegion],
+    [scenario, config, error, source, tracks, alerts, dismissed, endAlerts, selectedId, detail, evaluation, truth, clock, playing, speed, select,
+      setClock, setStatus, addNote, changeConfig, resetConfig, resetFeedback, loadTruth, busy, regions, region, switchRegion, switchSource],
   );
 }

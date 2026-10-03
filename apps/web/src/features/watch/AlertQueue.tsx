@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import type { AlertSummary, Level } from "./api";
+import type { AlertSummary, DetectionSource, Level } from "./api";
 import { RiskGauge } from "./Gauge";
 import { LEVEL_COLOR, STATUS_LABEL, ago, kindMeta } from "./lib";
 
 interface Props {
+  source: DetectionSource;
   alerts: AlertSummary[];
   dismissed: AlertSummary[];
   selectedId: string | null;
@@ -13,7 +14,7 @@ interface Props {
 
 const LEVELS: Level[] = ["HIGH", "MEDIUM", "LOW"];
 
-export function AlertQueue({ alerts, dismissed, selectedId, clock, onSelect }: Props) {
+export function AlertQueue({ source, alerts, dismissed, selectedId, clock, onSelect }: Props) {
   const [filter, setFilter] = useState<Level | "ALL">("ALL");
   const [tab, setTab] = useState<"active" | "dismissed">("active");
 
@@ -57,7 +58,9 @@ export function AlertQueue({ alerts, dismissed, selectedId, clock, onSelect }: P
           <p className="wf-empty">
             {tab === "active"
               ? alerts.length === 0
-                ? "Nothing needs review at this moment. Press ▶ to replay the simulated 36 hours."
+                ? source === "live"
+                  ? "No live behavioural review candidates yet. Repeat an explicit Area Scan after more provider-timestamped fixes accumulate."
+                  : "Nothing needs review at this moment. Press ▶ to replay the simulated 36 hours."
                 : "No alerts at this level."
               : "Alerts you mark as false alarms appear here, and the system learns to down-weight similar ones."}
           </p>
