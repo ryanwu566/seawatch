@@ -38,6 +38,15 @@ vessels, points per vessel, input batch size, retention time, and stale-vessel
 age. Oversized iterables are read only through the configured limit plus one
 and rejected before mutation. The clock is injectable for deterministic tests.
 
+An observation is rejected when its `observed_at` is strictly older than
+either the retention cutoff or the stale cutoff; equality with either cutoff
+remains valid. The same centralized maintenance runs under the buffer lock on
+mutations and public reads, so an idle expired vessel disappears from
+snapshots, counts, adaptation, and analysis without waiting for another ingest.
+Eviction removes the identity and all observation-derived metadata and
+provenance. Replaying an expired fix cannot recreate it, while a genuinely
+fresh fix can establish a new track for that identity.
+
 A valid nine-digit integer MMSI groups the same vessel across sources. Missing,
 invalid, or fractional MMSI values are never truncated or fabricated. Such
 observations remain isolated under the backend-only `(source, provider_id)`
@@ -119,10 +128,14 @@ analyzer.update(observations) = ingest -> adapt all buffered tracks -> analyze
 A one-shot scan normally has too little history for trajectory detectors. A
 surveillance session calls the same method repeatedly; the bounded buffer
 accumulates evidence until existing eligibility rules allow richer detectors.
-When `as_of` is supplied, the analyzer filters buffered observations before
-adaptation so future static metadata and point-aligned provenance cannot leak
-into the earlier assessment. No polling or provider calls occur in this module.
-Each provider refresh must be a finite batch no larger than the buffer's
+When `as_of` is supplied, it is the expiry reference for both one-shot ingest
+and the resulting snapshot; the injectable clock is used otherwise. The
+analyzer also filters future observations before adaptation so future static
+metadata and point-aligned provenance cannot leak into an earlier assessment.
+Explicit historical snapshots apply those cutoffs to a non-destructive
+projection, so query order and wall-clock time cannot destroy another requested
+historical/as-of view. No polling or provider calls occur in this module. Each
+provider refresh must be a finite batch no larger than the buffer's
 `max_batch_observations` guard (100,000 by default).
 
 ## ML and path agent
@@ -166,15 +179,21 @@ service-level guarantees:
 
 | Vessels | Retained points | Buffer update | Track conversion | `engine.analyze` | Peak traced memory |
 |---:|---:|---:|---:|---:|---:|
-| 100 | 800 | 0.192 s | 0.318 s | 0.769 s | 1.51 MiB |
-| 500 | 4,000 | 0.838 s | 1.732 s | 3.914 s | 6.04 MiB |
-| 1,000 | 8,000 | 1.618 s | 4.583 s | 8.116 s | 12.35 MiB |
+| 100 | 800 | 0.092 s | 0.225 s | 0.518 s | 1.20 MiB |
+| 500 | 4,000 | 0.496 s | 1.296 s | 2.529 s | 4.62 MiB |
+| 1,000 | 8,000 | 1.030 s | 2.883 s | 8.692 s | 9.52 MiB |
 
 All fixes were retained and adapted; the deliberately uneventful tracks
 produced zero events and alerts. Batch ingestion takes one consistent clock
-sample and runs retention/stale maintenance once per batch. The dominant cost
-at 1,000 vessels was the existing whole-fleet detection invocation, as expected
-for a whole-track rather than incremental engine.
+sample and runs retention/stale maintenance once per batch. Capacity selection
+sorts the fleet once by `(newest observed_at, identity key)` and retains the
+greatest entries, including the existing greatest-identity winner for equal
+timestamps. This is deterministic `O(n log n)` selection rather than repeated
+minimum-based eviction. In a separate 200-vessel batch capped at 10, capacity
+selection retained 10 vessels in 0.008031 s and evaluated the identity ordering
+exactly 200 times. The dominant cost at 1,000 vessels was the existing
+whole-fleet detection invocation, as expected for a whole-track rather than
+incremental engine.
 
 ## Known limitations
 

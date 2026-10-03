@@ -124,6 +124,37 @@ def test_buffer_suppresses_exact_duplicate_observation() -> None:
     assert buffer.point_count() == 1
 
 
+def test_four_distinct_provider_polls_preserve_the_exact_trajectory() -> None:
+    buffer = _buffer_type()(clock=_Clock(BASE + timedelta(minutes=10)))
+    observations = [
+        _obs(0, latitude=23.50, longitude=121.00),
+        _obs(60, latitude=23.51, longitude=121.01),
+        _obs(120, latitude=23.52, longitude=121.02),
+        _obs(180, latitude=23.53, longitude=121.03),
+    ]
+
+    assert buffer.update_many(observations) == 4
+
+    track = _adapter_type()().to_track(buffer.snapshot()[0])
+    assert track is not None
+    assert track.t.tolist() == [item.observed_at.timestamp() for item in observations]
+    assert track.lat.tolist() == [23.50, 23.51, 23.52, 23.53]
+    assert track.lon.tolist() == [121.00, 121.01, 121.02, 121.03]
+
+
+def test_same_coordinates_at_different_timestamps_remain_distinct() -> None:
+    buffer = _buffer_type()(clock=_Clock(BASE + timedelta(minutes=10)))
+
+    assert buffer.update_many([_obs(0), _obs(60), _obs(120)]) == 3
+
+    retained = buffer.snapshot()[0].observations
+    assert [item.observed_at for item in retained] == [
+        BASE,
+        BASE + timedelta(seconds=60),
+        BASE + timedelta(seconds=120),
+    ]
+
+
 def test_buffer_sorts_out_of_order_observations_chronologically() -> None:
     buffer = _buffer_type()(clock=_Clock(BASE + timedelta(minutes=10)))
     buffer.update_many([_obs(300), _obs(0), _obs(120)])
@@ -148,6 +179,28 @@ def test_valid_mmsi_groups_the_same_vessel_across_sources() -> None:
     assert len(tracks) == 1
     assert tracks[0].identity.mmsi == "416000001"
     assert {o.source for o in tracks[0].observations} == {"open_waters", "edge_ais"}
+
+
+def test_shared_mmsi_across_sources_preserves_chronological_trajectory() -> None:
+    buffer = _buffer_type()(clock=_Clock(BASE + timedelta(minutes=10)))
+    observations = [
+        _obs(120, source="source-a", provider_id="a-1", latitude=23.52),
+        _obs(0, source="source-b", provider_id="b-1", latitude=23.50),
+        _obs(60, source="source-a", provider_id="a-1", latitude=23.51),
+    ]
+
+    assert buffer.update_many(observations) == 3
+
+    track = _adapter_type()().to_track(buffer.snapshot()[0])
+    assert track is not None
+    assert track.t.tolist() == [
+        BASE.timestamp(),
+        (BASE + timedelta(seconds=60)).timestamp(),
+        (BASE + timedelta(seconds=120)).timestamp(),
+    ]
+    assert track.lat.tolist() == [23.50, 23.51, 23.52]
+    assert track.extra is not None
+    assert track.extra["point_sources"] == ("source-b", "source-a", "source-a")
 
 
 def test_fractional_mmsi_is_not_truncated_or_used_cross_source() -> None:
@@ -180,6 +233,100 @@ def test_retention_removes_points_older_than_the_time_window() -> None:
 
     retained = buffer.snapshot()[0].observations
     assert [o.observed_at for o in retained] == [BASE + timedelta(minutes=20)]
+
+
+def test_initial_ingest_rejects_stale_observation_but_accepts_fresh_one() -> None:
+    clock = _Clock(BASE + timedelta(minutes=11))
+    buffer = _buffer_type()(
+        retention=timedelta(hours=1),
+        stale_after=timedelta(minutes=10),
+        clock=clock,
+    )
+
+    assert buffer.update(_obs(0)) is False
+    assert buffer.update(_obs(120)) is True
+    assert buffer.point_count() == 1
+
+
+def test_retention_cutoff_is_inclusive_and_only_older_observations_are_rejected() -> None:
+    buffer = _buffer_type()(
+        retention=timedelta(minutes=10),
+        stale_after=timedelta(hours=1),
+        clock=_Clock(BASE + timedelta(minutes=10)),
+    )
+
+    assert buffer.update(_obs(0, mmsi=416000001)) is True
+    assert buffer.update(_obs(-1, mmsi=416000002, provider_id="older")) is False
+
+
+def test_stale_cutoff_is_inclusive_and_only_older_observations_are_rejected() -> None:
+    buffer = _buffer_type()(
+        retention=timedelta(hours=1),
+        stale_after=timedelta(minutes=10),
+        clock=_Clock(BASE + timedelta(minutes=10)),
+    )
+
+    assert buffer.update(_obs(0, mmsi=416000001)) is True
+    assert buffer.update(_obs(-1, mmsi=416000002, provider_id="older")) is False
+
+
+def test_snapshot_prunes_vessel_after_stale_window_without_a_mutation() -> None:
+    clock = _Clock(BASE)
+    buffer = _buffer_type()(
+        retention=timedelta(hours=1),
+        stale_after=timedelta(minutes=10),
+        clock=clock,
+    )
+    assert buffer.update(_obs()) is True
+
+    clock.now = BASE + timedelta(minutes=11)
+
+    assert buffer.snapshot() == ()
+
+
+def test_count_reads_prune_expired_state_under_the_injected_clock() -> None:
+    clock = _Clock(BASE)
+    buffer = _buffer_type()(
+        retention=timedelta(hours=1),
+        stale_after=timedelta(minutes=10),
+        clock=clock,
+    )
+    buffer.update(_obs())
+    clock.now = BASE + timedelta(minutes=11)
+
+    assert buffer.vessel_count() == 0
+    assert buffer.point_count() == 0
+
+
+def test_expired_replay_is_rejected_and_fresh_observation_recreates_track() -> None:
+    clock = _Clock(BASE)
+    buffer = _buffer_type()(
+        retention=timedelta(hours=1),
+        stale_after=timedelta(minutes=10),
+        clock=clock,
+    )
+    expired = _obs(name="OLD NAME", destination="OLD PORT")
+    assert buffer.update(expired) is True
+
+    clock.now = BASE + timedelta(minutes=11)
+    assert buffer.snapshot() == ()
+    assert buffer.update(expired) is False
+
+    fresh = _obs(
+        11 * 60,
+        source="edge_ais",
+        provider_id="fresh-provider-id",
+        name="NEW NAME",
+        destination=None,
+    )
+    assert buffer.update(fresh) is True
+
+    track = _adapter_type()().to_track(buffer.snapshot()[0])
+    assert track is not None
+    assert track.name == "NEW NAME"
+    assert track.extra is not None
+    assert track.extra["sources"] == ("edge_ais",)
+    assert "destination" not in track.extra
 
 
 def test_stale_vessel_eviction_uses_the_injected_clock() -> None:
@@ -234,6 +381,94 @@ def test_vessel_cap_tie_break_is_independent_of_batch_order() -> None:
         retained.append([track.identity.mmsi for track in buffer.snapshot()])
 
     assert retained == [["416000002"], ["416000002"]]
+
+
+def test_oversized_capacity_batch_retains_deterministic_newest_set() -> None:
+    observations = [
+        _obs(second, mmsi=416000000 + second, provider_id=str(second))
+        for second in range(1, 21)
+    ]
+    retained = []
+    for batch in (observations, list(reversed(observations))):
+        buffer = _buffer_type()(max_vessels=5, clock=_Clock(BASE + timedelta(minutes=10)))
+        assert buffer.update_many(batch) == 5
+        retained.append([track.identity.mmsi for track in buffer.snapshot()])
+
+    assert retained == [
+        ["416000016", "416000017", "416000018", "416000019", "416000020"],
+        ["416000016", "416000017", "416000018", "416000019", "416000020"],
+    ]
+
+
+def test_capacity_selection_combines_existing_vessels_with_oversized_batch() -> None:
+    buffer = _buffer_type()(max_vessels=5, clock=_Clock(BASE + timedelta(minutes=10)))
+    assert buffer.update(_obs(300, mmsi=416000050, provider_id="existing")) is True
+
+    accepted = buffer.update_many(
+        _obs(second, mmsi=416000000 + second, provider_id=str(second))
+        for second in range(1, 21)
+    )
+
+    assert accepted == 4
+    assert [track.identity.mmsi for track in buffer.snapshot()] == [
+        "416000017",
+        "416000018",
+        "416000019",
+        "416000020",
+        "416000050",
+    ]
+
+
+def test_stale_vessels_are_pruned_before_capacity_selection() -> None:
+    clock = _Clock(BASE)
+    buffer = _buffer_type()(
+        max_vessels=2,
+        retention=timedelta(hours=1),
+        stale_after=timedelta(minutes=10),
+        clock=clock,
+    )
+    buffer.update_many(
+        [
+            _obs(0, mmsi=416000001, provider_id="stale-one"),
+            _obs(0, mmsi=416000002, provider_id="stale-two"),
+        ]
+    )
+    clock.now = BASE + timedelta(minutes=11)
+
+    accepted = buffer.update_many(
+        [
+            _obs(11 * 60, mmsi=416000003, provider_id="fresh-three"),
+            _obs(11 * 60, mmsi=416000004, provider_id="fresh-four"),
+        ]
+    )
+
+    assert accepted == 2
+    assert [track.identity.mmsi for track in buffer.snapshot()] == ["416000003", "416000004"]
+
+
+def test_capacity_selection_evaluates_each_vessel_order_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from apps.api.seawatch.detection.live_adapter import LiveTrackIdentity
+
+    evaluations = 0
+    original_sort_key = LiveTrackIdentity.sort_key
+
+    def counted_sort_key(identity: Any) -> tuple[str, str, str]:
+        nonlocal evaluations
+        evaluations += 1
+        return original_sort_key(identity)
+
+    monkeypatch.setattr(LiveTrackIdentity, "sort_key", counted_sort_key)
+    buffer = _buffer_type()(max_vessels=10, clock=_Clock(BASE + timedelta(minutes=10)))
+    observations = [
+        _obs(second, mmsi=416000000 + second, provider_id=str(second))
+        for second in range(1, 201)
+    ]
+
+    assert buffer.update_many(observations) == 10
+    assert buffer.vessel_count() == 10
+    assert evaluations == 200
 
 
 def test_vessel_cap_is_restored_when_a_batch_contains_a_malformed_fix() -> None:
@@ -564,6 +799,111 @@ def test_analyzer_reuses_context_and_calls_engine_once_per_analysis(monkeypatch:
     assert len(calls) == 2
     assert all(supplied is context for _, supplied in calls)
     assert all(len(tracks) == 2 for tracks, _ in calls)
+
+
+def test_analyzer_read_paths_do_not_expose_expired_track() -> None:
+    from apps.api.seawatch.detection.context import DetectionContext
+
+    clock = _Clock(BASE)
+    analyzer = _analyzer_type()(
+        DetectionContext([], []),
+        density="sparse_live",
+        buffer=_buffer_type()(
+            retention=timedelta(hours=1),
+            stale_after=timedelta(minutes=10),
+            clock=clock,
+        ),
+    )
+    assert analyzer.ingest([_obs()]) == 1
+    clock.now = BASE + timedelta(minutes=11)
+
+    assert analyzer.tracks() == []
+    result = analyzer.analyze()
+    assert result.n_tracks == 0
+    assert result.events == []
+    assert result.alerts == []
+
+
+def test_analyzer_explicit_as_of_controls_expiry_instead_of_wall_clock() -> None:
+    from apps.api.seawatch.detection.context import DetectionContext
+
+    clock = _Clock(BASE)
+    analyzer = _analyzer_type()(
+        DetectionContext([], []),
+        density="sparse_live",
+        buffer=_buffer_type()(
+            retention=timedelta(hours=1),
+            stale_after=timedelta(minutes=10),
+            clock=clock,
+        ),
+    )
+    analyzer.ingest([_obs()])
+    clock.now = BASE + timedelta(hours=2)
+
+    historical = analyzer.analyze(as_of=(BASE + timedelta(minutes=5)).timestamp())
+
+    assert historical.n_tracks == 1
+
+
+def test_analyzer_update_uses_explicit_as_of_for_ingest_and_analysis() -> None:
+    from apps.api.seawatch.detection.context import DetectionContext
+
+    analyzer = _analyzer_type()(
+        DetectionContext([], []),
+        density="sparse_live",
+        buffer=_buffer_type()(
+            retention=timedelta(hours=1),
+            stale_after=timedelta(minutes=10),
+            clock=_Clock(BASE + timedelta(hours=2)),
+        ),
+    )
+
+    result = analyzer.update(
+        [_obs()],
+        as_of=(BASE + timedelta(minutes=5)).timestamp(),
+    )
+
+    assert result.n_tracks == 1
+
+
+def test_analyzer_explicit_as_of_excludes_track_stale_at_that_time() -> None:
+    from apps.api.seawatch.detection.context import DetectionContext
+
+    analyzer = _analyzer_type()(
+        DetectionContext([], []),
+        density="sparse_live",
+        buffer=_buffer_type()(
+            retention=timedelta(hours=1),
+            stale_after=timedelta(minutes=10),
+            clock=_Clock(BASE),
+        ),
+    )
+    analyzer.ingest([_obs()])
+
+    result = analyzer.analyze(as_of=(BASE + timedelta(minutes=11)).timestamp())
+
+    assert result.n_tracks == 0
+
+
+def test_historical_as_of_reads_are_independent_of_query_order() -> None:
+    from apps.api.seawatch.detection.context import DetectionContext
+
+    analyzer = _analyzer_type()(
+        DetectionContext([], []),
+        density="sparse_live",
+        buffer=_buffer_type()(
+            retention=timedelta(hours=1),
+            stale_after=timedelta(hours=1),
+            clock=_Clock(BASE),
+        ),
+    )
+    analyzer.ingest([_obs()])
+
+    expired = analyzer.analyze(as_of=(BASE + timedelta(hours=2)).timestamp())
+    still_valid = analyzer.analyze(as_of=(BASE + timedelta(minutes=5)).timestamp())
+
+    assert expired.n_tracks == 0
+    assert still_valid.n_tracks == 1
 
 
 def test_as_of_excludes_future_points_and_static_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
