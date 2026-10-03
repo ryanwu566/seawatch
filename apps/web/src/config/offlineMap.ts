@@ -1,12 +1,11 @@
 import { addProtocol, type StyleSpecification } from "maplibre-gl";
 import { Protocol } from "pmtiles";
 import emergencyGeographyRaw from "../assets/taiwan-emergency.geojson?raw";
-import type { OperatingMode } from "../api/live";
 
 export const PMTILES_ARCHIVE_URL = "/offline/taiwan.pmtiles";
 
-export type BasemapStage = "nlsc" | "pmtiles" | "emergency";
-export type OnlineFailureState = "healthy" | "nlsc_failed" | "pmtiles_failed";
+export type BasemapStage = "online" | "pmtiles" | "emergency";
+export type OnlineFailureState = "healthy" | "online_failed" | "pmtiles_failed";
 
 let protocolRegistered = false;
 const emergencyGeography = JSON.parse(emergencyGeographyRaw) as GeoJSON.FeatureCollection;
@@ -92,14 +91,10 @@ export function emergencyStyle(): StyleSpecification {
 }
 
 export function selectOfflineBasemap(
-  mode: OperatingMode,
+  online: boolean,
   onlineFailureState: OnlineFailureState,
 ): BasemapStage {
-  if (mode === "CLOUD_LIVE") return "nlsc";
   if (onlineFailureState === "pmtiles_failed") return "emergency";
-  if (onlineFailureState === "nlsc_failed") return "pmtiles";
-  if (mode === "EDGE_LIVE" || mode === "EDGE_REPLAY" || mode === "NO_LIVE_SOURCE") {
-    return "pmtiles";
-  }
-  return "nlsc";
+  if (!online || onlineFailureState === "online_failed") return "pmtiles";
+  return "online";
 }

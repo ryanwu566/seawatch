@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AreaScanApiError,
   authenticateAreaScan,
+  establishAreaScanSession,
   fetchLiveTrack,
+  planLiveArea,
   scanLiveArea,
   type AreaScanResponse,
 } from "./live";
@@ -33,6 +35,55 @@ afterEach(() => {
 });
 
 describe("scanLiveArea", () => {
+  it("plans geometry through a non-provider backend endpoint", async () => {
+    const plan = {
+      area_square_km: 113.42,
+      provider_queries: 1,
+      max_provider_queries: 16,
+      can_scan: true,
+      reason: null,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => plan,
+    } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(planLiveArea(geometry)).resolves.toEqual(plan);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/live/area-scan/plan",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ geometry }),
+      }),
+    );
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("api.datalastic.com");
+  });
+
+  it("requests a cookie-backed session without sending an operator credential", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => ({ authenticated: true, expires_in_seconds: 900 }),
+    } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await establishAreaScanSession();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/live/area-scan/session",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({}),
+      }),
+    );
+  });
+
   it("authenticates once through the backend without receiving a capability", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

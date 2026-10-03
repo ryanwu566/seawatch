@@ -9,18 +9,32 @@ import type {
   TrackListResponse,
 } from "../types";
 
-// Vite replaces DEV at build time, so the localhost convenience value is
-// removed entirely from production/Edge artifacts.
-const DEFAULT_BASE_URL = import.meta.env.DEV ? "http://localhost:8000" : "";
-
 /** Select Cloud override, dev convenience, or production same-origin API. */
 export function resolveApiBaseUrl(
   explicitBaseUrl: string | undefined,
   isDevelopment: boolean,
+  pageHostname?: string,
 ): string {
   const explicit = explicitBaseUrl?.trim();
-  if (explicit) return explicit.replace(/\/+$/, "");
-  return isDevelopment ? DEFAULT_BASE_URL : "";
+  if (explicit) {
+    const normalized = explicit.replace(/\/+$/, "");
+    const loopbackHosts = new Set(["localhost", "127.0.0.1"]);
+    if (pageHostname && loopbackHosts.has(pageHostname)) {
+      try {
+        const parsed = new URL(normalized);
+        if (loopbackHosts.has(parsed.hostname)) {
+          parsed.hostname = pageHostname;
+          return parsed.toString().replace(/\/+$/, "");
+        }
+      } catch {
+        // Preserve the existing behavior for non-URL build-time overrides.
+      }
+    }
+    return normalized;
+  }
+  if (!isDevelopment) return "";
+  const loopbackHostname = pageHostname === "127.0.0.1" ? "127.0.0.1" : "localhost";
+  return `http://${loopbackHostname}:8000`;
 }
 
 /** Resolve the API base URL from the actual Vite build environment. */
@@ -28,6 +42,7 @@ export function getBaseUrl(): string {
   return resolveApiBaseUrl(
     import.meta.env?.VITE_API_BASE_URL,
     import.meta.env?.DEV ?? false,
+    globalThis.location?.hostname,
   );
 }
 

@@ -37,9 +37,9 @@ The value is sent to Datalastic only in the server-side `x-api-key` header. It
 must not be placed in Vite variables, browser code, URLs, logs, screenshots, or
 fixtures. `.env.example` contains a blank placeholder only.
 
-Area Scan is a paid, explicitly triggered operation. Configure two independent
-backend values of at least 32 bytes: a high-entropy capability-signing key and
-an out-of-band controlled-demo operator credential:
+Area Scan is a paid, explicitly triggered operation. Always configure a
+high-entropy capability-signing key of at least 32 bytes. Public deployments
+also require an independent out-of-band operator credential:
 
 ```powershell
 $env:SEAWATCH_AREA_SCAN_SIGNING_KEY = "<private high-entropy signing key>"
@@ -56,8 +56,24 @@ is missing or too short, or an admission-limit setting is invalid, the workflow
 fails closed. This is controlled-demo authentication, not production user
 identity, per-user authorization, or revocation.
 
-Cookies are secure by default and therefore require HTTPS. The repository's
-loopback-only `http://127.0.0.1:8000` demo requires an explicit local exception:
+For the controlled local demo only, password entry can be replaced with an
+explicit loopback-only opt-in:
+
+```powershell
+$env:SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK = "true"
+```
+
+The backend accepts this mode only when the request URL host is exactly
+`localhost` or `127.0.0.1` and the direct socket peer is loopback. It still issues
+the same 15-minute signed HttpOnly capability cookie. A spoofed loopback `Host`
+from a non-loopback peer, a public host reached through a loopback peer, an
+unset/false flag, or an invalid flag value cannot bypass operator
+authentication. No operator credential is required in this local-only mode.
+
+Cookies are secure by default and therefore require HTTPS. Loopback auto-auth
+automatically permits its HttpOnly cookie over the verified local HTTP request.
+For manual operator authentication on `http://127.0.0.1:8000`, use the separate
+explicit local exception:
 
 ```powershell
 $env:SEAWATCH_AREA_SCAN_ALLOW_INSECURE_COOKIE = "true"
@@ -65,8 +81,7 @@ $env:SEAWATCH_AREA_SCAN_ALLOW_INSECURE_COOKIE = "true"
 
 Never use that exception on a non-loopback or shared HTTP deployment. Omit it
 behind HTTPS. The backend ignores the exception on non-loopback request hosts.
-`start_demo.ps1` reports the cookie mode and whether both Area Scan access
-secrets are configured without printing their values.
+`start_demo.ps1` reports the cookie and session mode without printing any key.
 
 The backend enforces a hard 64-KiB request-body ceiling, 4 accepted scans per
 minute, and 32 reserved provider requests per minute. The body setting may only
@@ -137,9 +152,11 @@ existing illustrative scenario.
 The Area Scan workflow is request-driven and never runs from pan, zoom, pointer
 movement, drawing, or the ordinary eight-second vessel refresh:
 
-1. Click **Area Scan**, enter the out-of-band operator credential, and press
-   **Authenticate**. The browser receives only an HttpOnly short-lived cookie;
-   it never receives the signing key or Datalastic key.
+1. Click **Area Scan**. With loopback auto-auth enabled, the backend immediately
+   establishes the session without displaying a password field. Otherwise,
+   enter the out-of-band operator credential and press **Authenticate**. The
+   browser receives only an HttpOnly short-lived cookie; it never receives the
+   signing key, operator key, or Datalastic key.
 2. Choose **Polygon** or **Rectangle** and draw the region in Taiwan waters.
 3. Confirm the visible outline, then press **Scan Area**. Drawing, panning,
    zooming, and the ordinary live refresh never initiate a paid request.

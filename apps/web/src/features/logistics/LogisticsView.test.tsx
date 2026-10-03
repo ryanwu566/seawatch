@@ -116,7 +116,7 @@ describe("LogisticsView", () => {
   it("loads scenarios into the dropdown", async () => {
     renderView();
     await waitFor(() => {
-      expect(screen.getByRole("option", { name: "高雄港中斷情境" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Kaohsiung Port Disruption" })).toBeInTheDocument();
     });
     expect(fetchScenarios).toHaveBeenCalled();
   });
@@ -128,7 +128,7 @@ describe("LogisticsView", () => {
       expect.anything(),
     ));
     await waitFor(() => {
-      expect(screen.getByText(/kaohsiung/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/kaohsiung/i).length).toBeGreaterThan(0);
     });
   });
 
@@ -138,7 +138,7 @@ describe("LogisticsView", () => {
       received = brief;
       return brief ? <div data-testid="result">done</div> : <div data-testid="noresult" />;
     });
-    const runLabel = DICTIONARIES["zh-Hant"].logistics.runSimulation;
+    const runLabel = DICTIONARIES.en.logistics.runSimulation;
     await waitFor(() => expect(fetchScenarioContext).toHaveBeenCalled());
 
     const button = await screen.findByRole("button", { name: runLabel });
@@ -164,11 +164,9 @@ describe("LogisticsView", () => {
     });
   });
 
-  it("renders English and Chinese nav/title copy from the dictionary", async () => {
+  it("renders English by default while retaining the supported Chinese dictionary", async () => {
     const { rerender } = renderView();
-    // Default is zh-Hant.
-    expect(screen.getByRole("heading", { name: DICTIONARIES["zh-Hant"].logistics.title })).toBeInTheDocument();
-    // The English copy exists in the dictionary (switch verified in App nav test).
+    expect(screen.getByRole("heading", { name: DICTIONARIES.en.logistics.title })).toBeInTheDocument();
     expect(DICTIONARIES.en.logistics.navLogistics).toBe("RESILIENCE LOGISTICS");
     expect(DICTIONARIES["zh-Hant"].logistics.navLogistics).toBe("韌性物流");
     rerender(
@@ -182,9 +180,9 @@ describe("LogisticsView", () => {
     operatingMode = "EDGE_REPLAY";
     renderView();
     const panel = await screen.findByTestId("operating-status-panel");
-    expect(panel.textContent).toContain(DICTIONARIES["zh-Hant"].modeReplay);
+    expect(panel.textContent).toContain(DICTIONARIES.en.modeReplay);
     expect(panel.textContent).toContain("edge_replay");
-    expect(panel.textContent).toContain(DICTIONARIES["zh-Hant"].provenanceReplay);
+    expect(panel.textContent).toContain(DICTIONARIES.en.provenanceReplay);
     expect(panel).toHaveAttribute("data-mode", "EDGE_REPLAY");
   });
 
@@ -195,15 +193,15 @@ describe("LogisticsView", () => {
     });
 
     const select = await screen.findByRole("combobox", {
-      name: DICTIONARIES["zh-Hant"].logistics.selectScenario,
+      name: DICTIONARIES.en.logistics.selectScenario,
     });
     await waitFor(() => expect(select).toHaveValue("kaohsiung-disruption"));
     expect(runSimulation).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Illustrative workflow / 演示流程")).toBeInTheDocument();
+    expect(screen.getByLabelText("Illustrative workflow")).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", {
-        name: DICTIONARIES["zh-Hant"].logistics.runSimulation,
+        name: DICTIONARIES.en.logistics.runSimulation,
       }),
     );
     await waitFor(() => expect(runSimulation).toHaveBeenCalledTimes(1));

@@ -9,7 +9,7 @@ const state: {
   handlers: Record<string, (e?: any) => void>;
   layerHandlers: Record<string, (e?: any) => void>;
   images: string[];
-  layers: Array<{ id: string; type: string }>;
+  layers: any[];
   sources: string[];
   layoutProps: Array<{ layer: string; prop: string; value: unknown }>;
   featureStates: Array<{ id: unknown; state: Record<string, unknown> }>;
@@ -23,6 +23,10 @@ const state: {
   styles: any[];
   dragPanDisabled: boolean;
   doubleClickDisabled: boolean;
+  deferLoad: boolean;
+  canvas: HTMLCanvasElement | null;
+  capturedPointerId: number | null;
+  releasedPointerIds: number[];
 } = {
   options: null,
   setDataPayloads: [],
@@ -43,6 +47,10 @@ const state: {
   styles: [],
   dragPanDisabled: false,
   doubleClickDisabled: false,
+  deferLoad: false,
+  canvas: null,
+  capturedPointerId: null,
+  releasedPointerIds: [],
 };
 
 function last<T>(values: T[]): T | undefined {
@@ -62,12 +70,24 @@ vi.mock("maplibre-gl", () => {
     constructor(options: Record<string, unknown>) {
       state.events.push("map");
       state.options = options;
+      const canvas = document.createElement("canvas");
+      canvas.setPointerCapture = (pointerId: number) => {
+        state.capturedPointerId = pointerId;
+      };
+      canvas.releasePointerCapture = (pointerId: number) => {
+        state.releasedPointerIds.push(pointerId);
+        if (state.capturedPointerId === pointerId) state.capturedPointerId = null;
+      };
+      canvas.hasPointerCapture = (pointerId: number) => state.capturedPointerId === pointerId;
+      const container = options.container;
+      if (container instanceof HTMLElement) container.appendChild(canvas);
+      state.canvas = canvas;
     }
     addControl() {}
     on(event: string, layerOrCb: any, cb?: any) {
       if (typeof layerOrCb === "function") {
         state.handlers[event] = layerOrCb;
-        if (event === "load") layerOrCb();
+        if (event === "load" && !state.deferLoad) layerOrCb();
       } else {
         // Support array of layer ids (click/hover bound to multiple layers).
         const ids = Array.isArray(layerOrCb) ? layerOrCb : [layerOrCb];
@@ -101,8 +121,8 @@ vi.mock("maplibre-gl", () => {
     getLayer(id: string) {
       return state.layers.find((l) => l.id === id);
     }
-    addLayer(layer: { id: string; type: string }) {
-      state.layers.push({ id: layer.id, type: layer.type });
+    addLayer(layer: any) {
+      state.layers.push(layer);
     }
     setLayoutProperty(layer: string, prop: string, value: unknown) {
       state.layoutProps.push({ layer, prop, value });
@@ -147,7 +167,15 @@ vi.mock("maplibre-gl", () => {
       };
     }
     getCanvas() {
-      return { style: {} };
+      return state.canvas!;
+    }
+    project(lngLat: [number, number] | { lng: number; lat: number }) {
+      const [lng, lat] = Array.isArray(lngLat) ? lngLat : [lngLat.lng, lngLat.lat];
+      return { x: lng * 100, y: lat * 100 };
+    }
+    unproject(point: [number, number] | { x: number; y: number }) {
+      const [x, y] = Array.isArray(point) ? point : [point.x, point.y];
+      return { lng: x / 100, lat: y / 100 };
     }
     remove() {}
   }
@@ -235,6 +263,24 @@ function baseProps(overrides: Partial<React.ComponentProps<typeof MapCanvas>> = 
   };
 }
 
+function fireCanvasPointer(
+  type: "pointerdown" | "pointermove" | "pointerup",
+  init: { pointerId: number; clientX: number; clientY: number; button?: number },
+) {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    button: init.button ?? 0,
+    clientX: init.clientX,
+    clientY: init.clientY,
+  });
+  Object.defineProperties(event, {
+    pointerId: { value: init.pointerId },
+    pointerType: { value: "mouse" },
+  });
+  fireEvent(state.canvas!, event);
+}
+
 describe("MapCanvas", () => {
   beforeEach(() => {
     state.options = null;
@@ -256,6 +302,10 @@ describe("MapCanvas", () => {
     state.styles = [];
     state.dragPanDisabled = false;
     state.doubleClickDisabled = false;
+    state.deferLoad = false;
+    state.canvas = null;
+    state.capturedPointerId = null;
+    state.releasedPointerIds = [];
   });
 
   it("initializes centered on Taiwan", () => {
@@ -267,6 +317,13 @@ describe("MapCanvas", () => {
     expect(center[0]).toBeLessThan(123);
     expect(center[1]).toBeGreaterThan(21);
     expect(center[1]).toBeLessThan(26);
+  });
+
+  it("uses English labels for built-in geographic overlays", () => {
+    render(<MapCanvas {...baseProps()} />);
+
+    const portLabels = state.layers.find((layer) => layer.id === "ports-label");
+    expect(portLabels?.layout?.["text-field"]).toEqual(["get", "nameEn"]);
   });
 
   it("finishes polygon drawing as closed longitude-latitude GeoJSON", () => {
@@ -293,7 +350,184 @@ describe("MapCanvas", () => {
     });
   });
 
-  it("finishes rectangle drawing on mouseup without an implicit scan", () => {
+  it("renders an open polygon draft with visible vertices and a distinct start vertex", () => {
+    render(<MapCanvas {...baseProps({ areaDrawMode: "polygon" })} />);
+    expect(state.canvas?.style.cursor).toBe("crosshair");
+
+    act(() => state.handlers.click?.({
+      lngLat: { lng: 120, lat: 22 },
+      point: { x: 12000, y: 2200 },
+    }));
+    act(() => state.handlers.click?.({
+      lngLat: { lng: 121, lat: 22 },
+      point: { x: 12100, y: 2200 },
+    }));
+    act(() => state.handlers.click?.({
+      lngLat: { lng: 121, lat: 23 },
+      point: { x: 12100, y: 2300 },
+    }));
+
+    const draftPath = last(
+      state.setDataPayloads.filter((entry) => entry.id === "area-scan-draft-path"),
+    )?.data;
+    const draftVertices = last(
+      state.setDataPayloads.filter((entry) => entry.id === "area-scan-draft-vertices"),
+    )?.data;
+    const finalized = last(
+      state.setDataPayloads.filter((entry) => entry.id === "area-scan-geometry"),
+    )?.data;
+    expect(draftPath.features[0].geometry).toEqual({
+      type: "LineString",
+      coordinates: [[120, 22], [121, 22], [121, 23]],
+    });
+    expect(draftVertices.features).toHaveLength(3);
+    expect(draftVertices.features[0].properties.role).toBe("start");
+    expect(draftVertices.features[1].properties.role).toBe("vertex");
+    expect(finalized).toEqual({ type: "FeatureCollection", features: [] });
+    expect(state.layers.find((layer) => layer.id === "area-scan-draft-path")?.type).toBe("line");
+    expect(state.layers.find((layer) => layer.id === "area-scan-draft-vertices")?.type).toBe("circle");
+  });
+
+  it("clears polygon draft handles after finalization", () => {
+    render(<MapCanvas {...baseProps({ areaDrawMode: "polygon" })} />);
+    act(() => state.handlers.click?.({ lngLat: { lng: 120, lat: 22 }, point: { x: 12000, y: 2200 } }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 22 }, point: { x: 12100, y: 2200 } }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 23 }, point: { x: 12100, y: 2300 } }));
+    act(() => state.handlers.dblclick?.({ preventDefault: () => {} }));
+
+    expect(last(state.setDataPayloads.filter((entry) => entry.id === "area-scan-draft-path"))?.data)
+      .toEqual({ type: "FeatureCollection", features: [] });
+    expect(last(state.setDataPayloads.filter((entry) => entry.id === "area-scan-draft-vertices"))?.data)
+      .toEqual({ type: "FeatureCollection", features: [] });
+  });
+
+  it("rejects a self-intersecting polygon through the invalid-geometry callback", () => {
+    const onAreaGeometryChange = vi.fn();
+    const onAreaGeometryInvalid = vi.fn();
+    render(<MapCanvas {...baseProps({
+      areaDrawMode: "polygon",
+      onAreaGeometryChange,
+      onAreaGeometryInvalid,
+    })} />);
+    for (const [lng, lat] of [[120, 22], [121, 23], [120, 23], [121, 22]]) {
+      act(() => state.handlers.click?.({ lngLat: { lng, lat }, point: { x: lng * 100, y: lat * 100 } }));
+    }
+    act(() => state.handlers.dblclick?.({ preventDefault: () => {} }));
+
+    expect(onAreaGeometryChange).not.toHaveBeenCalled();
+    expect(onAreaGeometryInvalid).toHaveBeenCalledTimes(1);
+  });
+
+  it("finishes polygon drawing by clicking near the starting vertex", () => {
+    const onAreaGeometryChange = vi.fn();
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaDrawMode: "polygon",
+          onAreaGeometryChange,
+        })}
+      />,
+    );
+
+    act(() => state.handlers.click?.({ lngLat: { lng: 120, lat: 22 }, point: { x: 12000, y: 2200 } }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 22 }, point: { x: 12100, y: 2200 } }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 23 }, point: { x: 12100, y: 2300 } }));
+    expect(onAreaGeometryChange).not.toHaveBeenCalled();
+
+    act(() => state.handlers.click?.({
+      lngLat: { lng: 120.02, lat: 22.02 },
+      point: { x: 12006, y: 2208 },
+    }));
+
+    expect(onAreaGeometryChange).toHaveBeenCalledTimes(1);
+    expect(onAreaGeometryChange).toHaveBeenCalledWith({
+      type: "Polygon",
+      coordinates: [[[120, 22], [121, 22], [121, 23], [120, 22]]],
+    });
+    expect(state.doubleClickDisabled).toBe(false);
+  });
+
+  it("ignores a starting-vertex click until the polygon has enough vertices", () => {
+    const onAreaGeometryChange = vi.fn();
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaDrawMode: "polygon",
+          onAreaGeometryChange,
+        })}
+      />,
+    );
+
+    act(() => state.handlers.click?.({ lngLat: { lng: 120, lat: 22 }, point: { x: 12000, y: 2200 } }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 22 }, point: { x: 12100, y: 2200 } }));
+    act(() => state.handlers.click?.({
+      lngLat: { lng: 120.02, lat: 22.02 },
+      point: { x: 12006, y: 2208 },
+    }));
+    expect(onAreaGeometryChange).not.toHaveBeenCalled();
+
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 23 }, point: { x: 12100, y: 2300 } }));
+    act(() => state.handlers.click?.({
+      lngLat: { lng: 120.02, lat: 22.02 },
+      point: { x: 12006, y: 2208 },
+    }));
+
+    expect(onAreaGeometryChange).toHaveBeenCalledWith({
+      type: "Polygon",
+      coordinates: [[[120, 22], [121, 22], [121, 23], [120, 22]]],
+    });
+  });
+
+  it("keeps a click near a non-starting vertex as an ordinary polygon point", () => {
+    const onAreaGeometryChange = vi.fn();
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaDrawMode: "polygon",
+          onAreaGeometryChange,
+        })}
+      />,
+    );
+
+    act(() => state.handlers.click?.({ lngLat: { lng: 120, lat: 22 }, point: { x: 12000, y: 2200 } }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 22 }, point: { x: 12100, y: 2200 } }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 23 }, point: { x: 12100, y: 2300 } }));
+    act(() => state.handlers.click?.({
+      lngLat: { lng: 120.5, lat: 23.2 },
+      point: { x: 12101, y: 2201 },
+    }));
+
+    expect(onAreaGeometryChange).not.toHaveBeenCalled();
+    act(() => state.handlers.dblclick?.({ preventDefault: () => {} }));
+    expect(onAreaGeometryChange).toHaveBeenCalledWith({
+      type: "Polygon",
+      coordinates: [[[120, 22], [121, 22], [121, 23], [120.5, 23.2], [120, 22]]],
+    });
+  });
+
+  it("Escape clears a polygon preview without committing geometry", () => {
+    const onAreaGeometryChange = vi.fn();
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaDrawMode: "polygon",
+          onAreaGeometryChange,
+        })}
+      />,
+    );
+
+    act(() => state.handlers.click?.({ lngLat: { lng: 120, lat: 22 }, point: { x: 12000, y: 2200 } }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 22 }, point: { x: 12100, y: 2200 } }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 23 }, point: { x: 12100, y: 2300 } }));
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onAreaGeometryChange).not.toHaveBeenCalled();
+    expect(state.doubleClickDisabled).toBe(false);
+    expect(last(state.setDataPayloads.filter((entry) => entry.id === "area-scan-geometry"))?.data)
+      .toEqual({ type: "FeatureCollection", features: [] });
+  });
+
+  it("captures a canvas pointer drag, previews a normalized rectangle, and commits once", () => {
     const onAreaGeometryChange = vi.fn();
     render(
       <MapCanvas
@@ -304,17 +538,72 @@ describe("MapCanvas", () => {
       />,
     );
 
-    act(() => state.handlers.mousedown?.({ lngLat: { lng: 120, lat: 22 } }));
     expect(state.dragPanDisabled).toBe(true);
-    act(() => state.handlers.mousemove?.({ lngLat: { lng: 121, lat: 23 } }));
+    expect(state.canvas?.style.cursor).toBe("crosshair");
+    fireCanvasPointer("pointerdown", {
+      pointerId: 7,
+      button: 0,
+      clientX: 12100,
+      clientY: 2300,
+    });
+    expect(state.capturedPointerId).toBe(7);
+    fireCanvasPointer("pointermove", {
+      pointerId: 7,
+      clientX: 12000,
+      clientY: 2200,
+    });
     expect(onAreaGeometryChange).not.toHaveBeenCalled();
-    act(() => state.handlers.mouseup?.({ lngLat: { lng: 121, lat: 23 } }));
-
-    expect(onAreaGeometryChange).toHaveBeenCalledWith({
+    const expectedRectangle = {
       type: "Polygon",
       coordinates: [[[120, 22], [121, 22], [121, 23], [120, 23], [120, 22]]],
+    };
+    expect(last(state.setDataPayloads.filter((entry) => entry.id === "area-scan-geometry"))?.data)
+      .toEqual({
+        type: "Feature",
+        properties: {},
+        geometry: expectedRectangle,
+      });
+    fireCanvasPointer("pointerup", {
+      pointerId: 7,
+      button: 0,
+      clientX: 12000,
+      clientY: 2200,
     });
+
+    expect(onAreaGeometryChange).toHaveBeenCalledTimes(1);
+    expect(onAreaGeometryChange).toHaveBeenCalledWith(expectedRectangle);
+    expect(state.releasedPointerIds).toEqual([7]);
     expect(state.dragPanDisabled).toBe(false);
+    expect(state.canvas?.style.cursor).toBe("");
+  });
+
+  it("does not commit or restore map panning after a zero-area rectangle drag", () => {
+    const onAreaGeometryChange = vi.fn();
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaDrawMode: "rectangle",
+          onAreaGeometryChange,
+        })}
+      />,
+    );
+
+    fireCanvasPointer("pointerdown", {
+      pointerId: 9,
+      button: 0,
+      clientX: 12000,
+      clientY: 2200,
+    });
+    fireCanvasPointer("pointerup", {
+      pointerId: 9,
+      button: 0,
+      clientX: 12000,
+      clientY: 2200,
+    });
+
+    expect(onAreaGeometryChange).not.toHaveBeenCalled();
+    expect(state.dragPanDisabled).toBe(true);
+    expect(state.canvas?.style.cursor).toBe("crosshair");
   });
 
   it("renders and selects emphasized Area Scan vessels on a separate source", () => {
@@ -338,11 +627,11 @@ describe("MapCanvas", () => {
       expect.arrayContaining([
         "area-scan-fill",
         "area-scan-line",
-        "area-scan-vessels-dot",
+        "area-scan-vessels-symbols",
       ]),
     );
     act(() =>
-      state.layerHandlers["click:area-scan-vessels-dot"]?.({ features: [{ id: "v1" }] }),
+      state.layerHandlers["click:area-scan-vessels-symbols"]?.({ features: [{ id: "v1" }] }),
     );
     expect(onSelectVessel).toHaveBeenCalledWith(vessels[0], "datalastic");
   });
@@ -361,13 +650,13 @@ describe("MapCanvas", () => {
     );
 
     act(() =>
-      state.layerHandlers["click:live-vessels-dot"]?.({
-        features: [{ id: "v1", layer: { id: "live-vessels-dot" } }],
+      state.layerHandlers["click:live-vessels-symbols"]?.({
+        features: [{ id: "v1", layer: { id: "live-vessels-symbols" } }],
       }),
     );
     act(() =>
-      state.layerHandlers["click:area-scan-vessels-dot"]?.({
-        features: [{ id: "v1", layer: { id: "area-scan-vessels-dot" } }],
+      state.layerHandlers["click:area-scan-vessels-symbols"]?.({
+        features: [{ id: "v1", layer: { id: "area-scan-vessels-symbols" } }],
       }),
     );
 
@@ -467,18 +756,34 @@ describe("MapCanvas", () => {
     ).toBe("v1");
   });
 
-  it("Escape cancels drawing internals and restores pointer interactions", () => {
-    render(<MapCanvas {...baseProps({ areaDrawMode: "rectangle" })} />);
-    act(() => state.handlers.mousedown?.({ lngLat: { lng: 120, lat: 22 } }));
+  it("Escape cancels a captured rectangle draft and restores pointer interactions", () => {
+    const onAreaGeometryChange = vi.fn();
+    render(<MapCanvas {...baseProps({ areaDrawMode: "rectangle", onAreaGeometryChange })} />);
+    fireCanvasPointer("pointerdown", {
+      pointerId: 11,
+      button: 0,
+      clientX: 12000,
+      clientY: 2200,
+    });
+    fireCanvasPointer("pointermove", {
+      pointerId: 11,
+      clientX: 12100,
+      clientY: 2300,
+    });
     expect(state.dragPanDisabled).toBe(true);
 
     fireEvent.keyDown(window, { key: "Escape" });
 
+    expect(onAreaGeometryChange).not.toHaveBeenCalled();
+    expect(state.releasedPointerIds).toEqual([11]);
     expect(state.dragPanDisabled).toBe(false);
     expect(state.doubleClickDisabled).toBe(false);
+    expect(state.canvas?.style.cursor).toBe("");
+    expect(last(state.setDataPayloads.filter((entry) => entry.id === "area-scan-geometry"))?.data)
+      .toEqual({ type: "FeatureCollection", features: [] });
   });
 
-  it("bypasses NLSC in no-source mode and latches PMTiles failure to emergency", () => {
+  it("starts offline mode on PMTiles and latches its failure to emergency", () => {
     const { container } = render(
       <MapCanvas {...baseProps({ operatingMode: "NO_LIVE_SOURCE" })} />,
     );
@@ -496,57 +801,113 @@ describe("MapCanvas", () => {
     expect(state.styles).toHaveLength(transitions);
   });
 
-  it("warns on Cloud NLSC failure without invoking an offline fallback", () => {
+  it("tries OpenFreeMap when online mode becomes known after PMTiles fails", () => {
+    const props = baseProps({
+      operatingMode: "NO_LIVE_SOURCE",
+      onlineBasemap: false,
+      areaGeometry: {
+        type: "Polygon" as const,
+        coordinates: [[[120, 22], [121, 22], [121, 23], [120, 22]]],
+      },
+      areaVessels: [vessels[0]],
+    });
+    const { container, rerender } = render(<MapCanvas {...props} />);
+
+    act(() => state.handlers.error?.({ error: new Error("PMTiles source fetch failed") }));
+    expect(container.querySelector(".map-canvas")).toHaveAttribute(
+      "data-basemap-stage",
+      "emergency",
+    );
+
+    rerender(<MapCanvas {...props} onlineBasemap />);
+
+    expect(last(state.styles)).toBe("https://tiles.openfreemap.org/styles/liberty");
+    expect(container.querySelector(".map-canvas")).toHaveAttribute(
+      "data-basemap-stage",
+      "online",
+    );
+
+    act(() => state.styledataCb?.());
+    expect(state.sources).toEqual(expect.arrayContaining([
+      "live-vessels",
+      "area-scan-geometry",
+      "area-scan-draft-path",
+      "area-scan-draft-vertices",
+      "area-scan-vessels",
+    ]));
+  });
+
+  it("applies an online preference learned before the initial style loads", () => {
+    state.deferLoad = true;
+    const props = baseProps({ operatingMode: "NO_LIVE_SOURCE", onlineBasemap: false });
+    const { rerender } = render(<MapCanvas {...props} />);
+    expect(JSON.stringify(state.options?.style)).toContain("pmtiles:///offline/taiwan.pmtiles");
+
+    rerender(<MapCanvas {...props} onlineBasemap />);
+    act(() => state.handlers.load?.());
+
+    expect(last(state.styles)).toBe("https://tiles.openfreemap.org/styles/liberty");
+  });
+
+  it("falls back from OpenFreeMap to PMTiles and then emergency geometry", () => {
     const onBaseMapError = vi.fn();
     const { container } = render(
       <MapCanvas
         {...baseProps({ operatingMode: "CLOUD_LIVE", onBaseMapError })}
       />,
     );
-    expect(JSON.stringify(state.options?.style)).toContain("wmts.nlsc.gov.tw");
+    expect(state.options?.style).toBe("https://tiles.openfreemap.org/styles/liberty");
 
-    act(() => state.handlers.error?.({ error: new Error("NLSC tile fetch failed") }));
+    act(() => state.handlers.error?.({ error: new Error("online style fetch failed") }));
 
-    expect(onBaseMapError).toHaveBeenCalledWith("NLSC tile fetch failed");
-    expect(state.styles).toHaveLength(0);
+    expect(onBaseMapError).toHaveBeenCalledWith("online style fetch failed");
+    expect(JSON.stringify(last(state.styles))).toContain("pmtiles:///offline/taiwan.pmtiles");
     expect(container.querySelector(".map-canvas")).toHaveAttribute(
       "data-basemap-stage",
-      "nlsc",
+      "pmtiles",
     );
 
-    act(() => state.handlers.error?.({ error: new Error("NLSC tile retry failed") }));
-    expect(state.styles).toHaveLength(0);
+    act(() => state.handlers.error?.({ error: new Error("PMTiles source fetch failed") }));
+    expect(JSON.stringify(last(state.styles))).not.toMatch(/https?:|pmtiles:/);
     expect(container.querySelector(".map-canvas")).toHaveAttribute(
       "data-basemap-stage",
-      "nlsc",
+      "emergency",
     );
   });
 
-  it("preserves every MapCanvas overlay after a Cloud basemap warning", () => {
-    render(<MapCanvas {...baseProps({ operatingMode: "CLOUD_LIVE" })} />);
-    const sourcesBefore = [...state.sources];
-    const layersBefore = state.layers.map((layer) => layer.id);
-    expect(sourcesBefore).toEqual(
-      expect.arrayContaining(["live-vessels", "selected-track", "ports", "airspace"]),
-    );
-    expect(layersBefore).toEqual(
-      expect.arrayContaining([
-        "live-vessels-halo",
-        "live-vessels-dot",
-        "live-vessels-symbols",
-        "selected-track-line",
-        "ports-circle",
-        "ports-label",
-        "airspace-fill",
-        "airspace-line",
-      ]),
+  it("restores vessel, Area Scan, and future overlay seams after online fallback", () => {
+    render(
+      <MapCanvas
+        {...baseProps({
+          operatingMode: "CLOUD_LIVE",
+          areaGeometry: {
+            type: "Polygon",
+            coordinates: [[[120, 22], [121, 22], [121, 23], [120, 22]]],
+          },
+          areaVessels: [vessels[0]],
+        })}
+      />,
     );
 
-    act(() => state.handlers.error?.({ error: new Error("CORS tile request blocked") }));
+    act(() => state.handlers.error?.({ error: new Error("online style fetch failed") }));
+    act(() => state.styledataCb?.());
 
-    expect(state.styles).toHaveLength(0);
-    expect(state.sources).toEqual(sourcesBefore);
-    expect(state.layers.map((layer) => layer.id)).toEqual(layersBefore);
+    expect(state.sources).toEqual(expect.arrayContaining([
+      "live-vessels",
+      "selected-track",
+      "ports",
+      "airspace",
+      "area-scan-geometry",
+      "area-scan-draft-path",
+      "area-scan-draft-vertices",
+      "area-scan-vessels",
+    ]));
+    expect(state.layers.map((layer) => layer.id)).toEqual(expect.arrayContaining([
+      "live-vessels-symbols",
+      "area-scan-fill",
+      "area-scan-line",
+      "area-scan-vessels-symbols",
+    ]));
   });
 
   it("pushes all vessels onto a single GeoJSON source with valid orientation", () => {
@@ -559,6 +920,42 @@ describe("MapCanvas", () => {
     // v2: heading 511 is a sentinel -> falls back to COG (90), never 511.
     expect(vesselPush.data.features[1].properties.orientation).toBe(90);
     expect(vesselPush.data.features[1].properties.isInterpolated).toBe(true);
+    expect(vesselPush.data.features[0].properties.category).toBe("Tanker");
+    expect(vesselPush.data.features[1].properties.category).toBe("Cargo");
+    expect(vesselPush.data.features[0].properties.publicId).toBe("v1");
+    expect(vesselPush.data.features[0].properties).not.toHaveProperty("provider_id");
+    expect(vesselPush.data.features[0].properties).not.toHaveProperty("threat");
+    expect(vesselPush.data.features[0].properties).not.toHaveProperty("risk");
+  });
+
+  it("renders live and Area Scan vessels with data-driven ship symbol layers", () => {
+    render(<MapCanvas {...baseProps({ areaVessels: [vessels[0]] })} />);
+
+    const liveLayer = state.layers.find((layer) => layer.id === "live-vessels-symbols");
+    const scanLayer = state.layers.find((layer) => layer.id === "area-scan-vessels-symbols");
+    expect(liveLayer?.type).toBe("symbol");
+    expect(scanLayer?.type).toBe("symbol");
+    expect(liveLayer?.layout?.["icon-image"]).toBe("ship-icon");
+    expect(scanLayer?.layout?.["icon-image"]).toBe("ship-icon");
+    expect(liveLayer?.layout?.["icon-rotate"]).toEqual(["get", "orientation"]);
+    expect(scanLayer?.layout?.["icon-rotate"]).toEqual(["get", "orientation"]);
+    expect(state.layers.find((layer) => layer.id === "live-vessels-dot")).toBeUndefined();
+    expect(state.layers.find((layer) => layer.id === "area-scan-vessels-dot")).toBeUndefined();
+  });
+
+  it("uses neutral orientation when heading and COG are invalid", () => {
+    const invalid = {
+      ...vessels[0],
+      properties: {
+        ...vessels[0].properties,
+        heading_deg: Number.NaN,
+        cog_deg: 360,
+      },
+    };
+    render(<MapCanvas {...baseProps({ vessels: [invalid] })} />);
+
+    const vesselPush = state.setDataPayloads.find((p) => p.id === "live-vessels");
+    expect(vesselPush.data.features[0].properties.orientation).toBe(0);
   });
 
   it("preserves authoritative cached and stale display states on map features", () => {
@@ -659,7 +1056,7 @@ describe("MapCanvas", () => {
     }));
     expect(last(state.popupHtml)).toContain("LIVE NAME");
 
-    act(() => state.layerHandlers["mousemove:area-scan-vessels-dot"]?.({
+    act(() => state.layerHandlers["mousemove:area-scan-vessels-symbols"]?.({
       features: [{ id: "shared-hover", source: "area-scan-vessels" }],
       lngLat: { lng: 120, lat: 22.3 },
     }));
@@ -754,30 +1151,27 @@ describe("MapCanvas", () => {
 
   // --- Rendering reliability regression tests (zero-vessel bug) ------------ //
 
-  it("installs the always-visible vessel dot layer, halo, symbol, and ship image", () => {
+  it("installs the always-visible vessel ship layer, halo, and shared ship image", () => {
     render(<MapCanvas {...baseProps()} />);
     expect(state.images).toContain("ship-icon");
     expect(state.sources).toContain("live-vessels");
-    expect(state.layers.find((l) => l.id === "live-vessels-dot")).toBeTruthy();
     expect(state.layers.find((l) => l.id === "live-vessels-halo")).toBeTruthy();
     expect(state.layers.find((l) => l.id === "live-vessels-symbols")).toBeTruthy();
   });
 
-  it("the primary vessel dot layer is a circle (renders without a loaded sprite/style)", () => {
+  it("the primary vessel marker is a MapLibre symbol layer", () => {
     render(<MapCanvas {...baseProps()} />);
-    const dot = state.layers.find((l) => l.id === "live-vessels-dot");
-    expect(dot?.type).toBe("circle");
+    const symbol = state.layers.find((l) => l.id === "live-vessels-symbols");
+    expect(symbol?.type).toBe("symbol");
   });
 
-  it("orders vessel layers above the basemap (dot above halo, symbol above dot)", () => {
+  it("orders the vessel symbol above its selection halo", () => {
     render(<MapCanvas {...baseProps()} />);
     const ids = state.layers.map((l) => l.id);
     const halo = ids.indexOf("live-vessels-halo");
-    const dot = ids.indexOf("live-vessels-dot");
     const sym = ids.indexOf("live-vessels-symbols");
     expect(halo).toBeGreaterThanOrEqual(0);
-    expect(dot).toBeGreaterThan(halo);
-    expect(sym).toBeGreaterThan(dot);
+    expect(sym).toBeGreaterThan(halo);
   });
 
   it("pushes real vessel features onto the single source when vessel_count > 0", () => {
@@ -789,29 +1183,29 @@ describe("MapCanvas", () => {
 
   it("keeps the vessel layer visible by default (visibility === visible)", () => {
     render(<MapCanvas {...baseProps()} />);
-    const dotVis = state.layoutProps.filter(
-      (p) => p.layer === "live-vessels-dot" && p.prop === "visibility",
+    const symbolVisibility = state.layoutProps.filter(
+      (p) => p.layer === "live-vessels-symbols" && p.prop === "visibility",
     );
-    expect(dotVis.length).toBeGreaterThan(0);
-    expect(dotVis.every((p) => p.value === "visible")).toBe(true);
+    expect(symbolVisibility.length).toBeGreaterThan(0);
+    expect(symbolVisibility.every((p) => p.value === "visible")).toBe(true);
   });
 
   it("hides vessels when the liveVessels layer is toggled off", () => {
     render(
       <MapCanvas {...baseProps({ layers: { ...DEFAULT_LAYER_STATE, liveVessels: false } })} />,
     );
-    const dotVis = state.layoutProps.filter(
-      (p) => p.layer === "live-vessels-dot" && p.prop === "visibility",
+    const symbolVisibility = state.layoutProps.filter(
+      (p) => p.layer === "live-vessels-symbols" && p.prop === "visibility",
     );
-    expect(dotVis.length).toBeGreaterThan(0);
-    expect(dotVis.every((p) => p.value === "none")).toBe(true);
+    expect(symbolVisibility.length).toBeGreaterThan(0);
+    expect(symbolVisibility.every((p) => p.value === "none")).toBe(true);
   });
 
   it("reinstalls ship image, source, and vessel layers after a basemap style reload", () => {
     const { rerender } = render(<MapCanvas {...baseProps({ layers: DEFAULT_LAYER_STATE })} />);
     // Sanity: present after initial load.
     expect(state.images).toContain("ship-icon");
-    expect(state.layers.find((l) => l.id === "live-vessels-dot")).toBeTruthy();
+    expect(state.layers.find((l) => l.id === "live-vessels-symbols")).toBeTruthy();
 
     // Switch basemap -> setStyle() wipes custom layers/sources/images.
     rerender(
@@ -824,7 +1218,6 @@ describe("MapCanvas", () => {
     // Everything is reinstalled after the style reload.
     expect(state.images).toContain("ship-icon");
     expect(state.sources).toContain("live-vessels");
-    expect(state.layers.find((l) => l.id === "live-vessels-dot")).toBeTruthy();
     expect(state.layers.find((l) => l.id === "live-vessels-halo")).toBeTruthy();
     expect(state.layers.find((l) => l.id === "live-vessels-symbols")).toBeTruthy();
   });
@@ -840,22 +1233,20 @@ describe("MapCanvas", () => {
     expect(pushesAfter.length).toBeGreaterThan(0);
     // Correct order preserved.
     const ids = state.layers.map((l) => l.id);
-    expect(ids.indexOf("live-vessels-dot")).toBeGreaterThan(ids.indexOf("live-vessels-halo"));
-    expect(ids.indexOf("live-vessels-symbols")).toBeGreaterThan(ids.indexOf("live-vessels-dot"));
+    expect(ids.indexOf("live-vessels-symbols")).toBeGreaterThan(ids.indexOf("live-vessels-halo"));
   });
 
-  it("keeps unselected vessels visible (dot layer not filtered by selection)", () => {
+  it("keeps unselected vessels visible in the symbol layer", () => {
     render(<MapCanvas {...baseProps({ selectedId: null })} />);
     const push = state.setDataPayloads.find((p) => p.id === "live-vessels");
     // All features present even with nothing selected.
     expect(push.data.features.length).toBe(2);
-    const dot = state.layers.find((l) => l.id === "live-vessels-dot");
-    expect(dot).toBeTruthy();
-    // Dot layer is visible (not hidden when no selection).
-    const dotVis = state.layoutProps.filter(
-      (p) => p.layer === "live-vessels-dot" && p.prop === "visibility",
+    const symbol = state.layers.find((l) => l.id === "live-vessels-symbols");
+    expect(symbol).toBeTruthy();
+    const symbolVisibility = state.layoutProps.filter(
+      (p) => p.layer === "live-vessels-symbols" && p.prop === "visibility",
     );
-    expect(dotVis.every((p) => p.value === "visible")).toBe(true);
+    expect(symbolVisibility.every((p) => p.value === "visible")).toBe(true);
   });
 
   it("fits the map to a preset region when fitBoundsNonce changes", () => {
@@ -915,6 +1306,8 @@ describe("MapCanvas", () => {
       "ports",
       "airspace",
       "area-scan-geometry",
+      "area-scan-draft-path",
+      "area-scan-draft-vertices",
       "area-scan-vessels",
     ];
     expect(state.sources.every((s) => builtInSources.includes(s))).toBe(true);
@@ -932,7 +1325,6 @@ describe("MapCanvas", () => {
   it("keeps built-in vessel layers intact alongside overlays", () => {
     render(<MapCanvas {...baseProps({ overlays: sampleOverlays })} />);
     expect(state.sources).toContain("live-vessels");
-    expect(state.layers.find((l) => l.id === "live-vessels-dot")).toBeTruthy();
     expect(state.layers.find((l) => l.id === "live-vessels-symbols")).toBeTruthy();
     expect(state.layers.find((l) => l.id === "ports-circle")).toBeTruthy();
   });

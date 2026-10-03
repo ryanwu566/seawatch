@@ -7,7 +7,7 @@ import { readRouteDeviation, UNKNOWN_ROUTE_DEVIATION } from "./routeDeviation";
 import type { LiveVesselFeature, LiveTrack } from "../../api/live";
 import type { GeographicContext, RouteDeviationEvidence } from "./geographicTypes";
 
-const zh = DICTIONARIES["zh-Hant"];
+const zh = DICTIONARIES.en;
 // Forbidden words per task spec, plus the broader card guard list.
 const PROHIBITED = ["threat", "suspicious", "dangerous", "illegal", "abnormal", "hostile"];
 
@@ -240,10 +240,9 @@ describe("Geographic Context section (rendered)", () => {
     await waitFor(() =>
       expect(section.querySelector('[data-field="coast"]')?.textContent).toMatch(/2\.3 km/),
     );
-    // Default language is zh-Hant, so the port renders its Chinese name.
-    expect(section.querySelector('[data-field="port"]')?.textContent).toContain("高雄港");
+    expect(section.querySelector('[data-field="port"]')?.textContent).toContain("Kaohsiung");
     expect(section.querySelector('[data-field="port-distance"]')?.textContent).toMatch(/5\.1 km/);
-    expect(section.querySelector('[data-field="area"]')?.textContent).toContain("高雄港進場區");
+    expect(section.querySelector('[data-field="area"]')?.textContent).toContain("Kaohsiung approach");
     // Port name is official; distance derived.
     expect(section.querySelector('[data-provenance="official"]')).not.toBeNull();
     expect(section.querySelector('[data-provenance="derived"]')).not.toBeNull();

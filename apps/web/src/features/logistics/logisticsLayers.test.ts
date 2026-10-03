@@ -58,6 +58,7 @@ describe("logisticsLayers builders", () => {
     expect(fc.features).toHaveLength(1);
     expect(fc.features[0].properties?.port_id).toBe("kaohsiung");
     expect(fc.features[0].properties?.status).toBe("disrupted");
+    expect(String(fc.features[0].properties?.label)).not.toMatch(/[\u3400-\u9fff]/u);
   });
 
   it("renders alternative ports and excludes the disrupted one", () => {
@@ -80,6 +81,7 @@ describe("logisticsLayers builders", () => {
     const food = fc.features.filter((f) => f.properties?.commodity === "food");
     expect(medical?.properties?.color).toBe("#ef4444");
     expect(food).toHaveLength(2);
+    expect(LOGISTICS_SCHEMATIC_LABEL).toBe("SCHEMATIC CONNECTOR");
     for (const f of fc.features) {
       expect(f.properties?.schematic).toBe(true);
       expect(f.properties?.schematic_label).toBe(LOGISTICS_SCHEMATIC_LABEL);

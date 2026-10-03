@@ -276,7 +276,10 @@ def _client_with_vessel() -> TestClient:
     return TestClient(create_app())
 
 
-def test_live_health_endpoint() -> None:
+def test_live_health_endpoint(monkeypatch) -> None:
+    monkeypatch.setenv("SEAWATCH_LIVE_INGEST", "false")
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_SIGNING_KEY", "health-signing-secret-at-least-32-bytes")
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK", "true")
     client = _client_with_vessel()
     try:
         resp = client.get("/live/health")
@@ -285,6 +288,9 @@ def test_live_health_endpoint() -> None:
         assert body["provider"] == "open_waters"
         assert body["vessel_count"] == 1
         assert "message_age_seconds" in body
+        assert body["live_ingest_enabled"] is False
+        assert body["area_scan_autoauth_loopback_enabled"] is True
+        assert "health-signing-secret" not in resp.text
     finally:
         live_pkg.reset_live_state()
 

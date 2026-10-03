@@ -6,7 +6,7 @@ import { VesselPanel } from "./VesselPanel";
 import type { LiveVesselFeature, LiveTrack } from "../api/live";
 import { getDemoScenario } from "../features/intelligence/demoScenario";
 
-const zh = DICTIONARIES["zh-Hant"];
+const zh = DICTIONARIES.en;
 
 beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})) as unknown as typeof fetch);

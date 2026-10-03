@@ -76,6 +76,24 @@ class AreaScanSummary:
 
 
 @dataclass(frozen=True)
+class AreaScanPlan:
+    area_square_km: float
+    provider_queries: int | None
+    max_provider_queries: int
+    can_scan: bool
+    reason: str | None = None
+
+    def to_public_dict(self) -> dict:
+        return {
+            "area_square_km": self.area_square_km,
+            "provider_queries": self.provider_queries,
+            "max_provider_queries": self.max_provider_queries,
+            "can_scan": self.can_scan,
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
 class AreaScanResult:
     source: str
     scanned_at: datetime
@@ -121,6 +139,8 @@ class _TrackEntry:
 class _NormalizedAreaScanObservation:
     observation: LiveVesselObservation
     provider_observed_at: datetime | None
+    provider_vessel_type: str | None
+    provider_vessel_type_specific: str | None
 
 
 class AreaScanService:
@@ -267,6 +287,10 @@ class AreaScanService:
                 provider_observed_at=provider_observed_at,
             )
             properties = observation.to_public_properties(public_id=public_id)
+            properties["provider_vessel_type"] = normalized.provider_vessel_type
+            properties["provider_vessel_type_specific"] = (
+                normalized.provider_vessel_type_specific
+            )
             properties["observed_at"] = (
                 provider_observed_at.isoformat()
                 if provider_observed_at is not None
@@ -353,6 +377,8 @@ class AreaScanService:
                         mmsi=trusted_mmsi,
                     ),
                     provider_observed_at=candidate.observed_at,
+                    provider_vessel_type=candidate.vessel_type,
+                    provider_vessel_type_specific=candidate.vessel_type_specific,
                 )
             )
         return tuple(normalized)
@@ -497,6 +523,34 @@ def validate_scan_geometry(request: AreaScanRequest) -> ValidatedPolygon:
     if polygon.is_empty or polygon.area <= 0 or not polygon.is_valid:
         raise ScanValidationError("Polygon geometry is invalid")
     return ValidatedPolygon(polygon=polygon)
+
+
+def plan_scan_geometry(request: AreaScanRequest) -> AreaScanPlan:
+    """Validate and price a scan locally without contacting Datalastic."""
+
+    validated = validate_scan_geometry(request)
+    area_square_meters, _ = Geod(ellps="WGS84").geometry_area_perimeter(
+        validated.polygon
+    )
+    area_square_km = round(abs(area_square_meters) / 1_000_000.0, 2)
+    try:
+        circles = cover_polygon(validated.polygon)
+    except ScanValidationError as exc:
+        if str(exc) != _TOO_LARGE:
+            raise
+        return AreaScanPlan(
+            area_square_km=area_square_km,
+            provider_queries=None,
+            max_provider_queries=MAX_PROVIDER_CIRCLES,
+            can_scan=False,
+            reason="too_large",
+        )
+    return AreaScanPlan(
+        area_square_km=area_square_km,
+        provider_queries=len(circles),
+        max_provider_queries=MAX_PROVIDER_CIRCLES,
+        can_scan=True,
+    )
 
 
 def canonical_geometry_key(polygon: Polygon) -> str:

@@ -8,7 +8,7 @@ import {
   getDemoScenario,
 } from "./demoScenario";
 
-const zh = DICTIONARIES["zh-Hant"];
+const zh = DICTIONARIES.en;
 // Task-mandated forbidden words plus the broader card guard list.
 const PROHIBITED = ["dangerous", "suspicious", "threat", "illegal", "abnormal", "hostile"];
 
@@ -97,9 +97,9 @@ describe("Vessel Intelligence Card in DEMO mode", () => {
     renderDemoCard();
     const section = screen.getByTestId("geographic-context");
     expect(section.querySelector('[data-field="coast"]')?.textContent).toMatch(/8\.6 km/);
-    expect(section.querySelector('[data-field="port"]')?.textContent).toContain("臺中港");
+    expect(section.querySelector('[data-field="port"]')?.textContent).toContain("Taichung");
     expect(section.querySelector('[data-field="port-distance"]')?.textContent).toMatch(/12\.3 km/);
-    expect(section.querySelector('[data-field="area"]')?.textContent).toContain("臺中港進場區");
+    expect(section.querySelector('[data-field="area"]')?.textContent).toContain("Taichung approach");
     // Port name official, distances derived — provenance preserved.
     expect(section.querySelector('[data-provenance="official"]')).not.toBeNull();
     expect(section.querySelector('[data-provenance="derived"]')).not.toBeNull();

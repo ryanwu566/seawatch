@@ -34,6 +34,7 @@ class AreaScanAccessConfig:
 
     signing_key: str | None = field(default=None, repr=False)
     operator_credential: str | None = field(default=None, repr=False)
+    autoauth_loopback: bool = False
     allow_insecure_cookie: bool = False
     max_body_bytes: int = DEFAULT_MAX_SCAN_BODY_BYTES
     max_scans_per_window: int = DEFAULT_MAX_SCANS_PER_MINUTE
@@ -89,15 +90,24 @@ class AreaScanAccessConfig:
             env.get("SEAWATCH_AREA_SCAN_ALLOW_INSECURE_COOKIE"),
             False,
         )
+        autoauth_loopback, autoauth_valid = _boolean(
+            env.get("SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK"),
+            False,
+        )
         return cls(
             signing_key=env.get("SEAWATCH_AREA_SCAN_SIGNING_KEY"),
             operator_credential=env.get("SEAWATCH_AREA_SCAN_OPERATOR_KEY"),
+            autoauth_loopback=autoauth_loopback,
             allow_insecure_cookie=allow_insecure_cookie,
             max_body_bytes=max_body,
             max_scans_per_window=max_scans,
             max_provider_requests_per_window=max_provider_requests,
             valid_configuration=(
-                body_valid and scans_valid and requests_valid and cookie_valid
+                body_valid
+                and scans_valid
+                and requests_valid
+                and cookie_valid
+                and autoauth_valid
             ),
         )
 

@@ -5,7 +5,7 @@ import { SearchControl } from "./SearchControl";
 import { DICTIONARIES } from "../i18n/dictionaries";
 import type { LiveVesselFeature } from "../api/live";
 
-const zh = DICTIONARIES["zh-Hant"];
+const zh = DICTIONARIES.en;
 
 function wrap(ui: React.ReactElement) {
   return render(<I18nProvider>{ui}</I18nProvider>);
@@ -73,6 +73,8 @@ describe("SearchControl", () => {
     fireEvent.change(input, { target: { value: "kaohsiung" } });
     const portResult = container.querySelector(".result-port");
     expect(portResult).toBeTruthy();
+    expect(screen.getByText("Port of Kaohsiung")).toBeInTheDocument();
+    expect(container.querySelector(".search-results")?.textContent).not.toMatch(/[\u3400-\u9fff]/u);
     fireEvent.click((portResult as HTMLElement).closest("button") as HTMLButtonElement);
     expect(onFitBounds).toHaveBeenCalled();
     expect(onFitBounds.mock.calls[0][0]).toHaveLength(4);

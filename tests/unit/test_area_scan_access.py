@@ -109,6 +109,36 @@ def test_invalid_access_limits_disable_admission_instead_of_opening_it() -> None
 
 
 @pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(None, False), ("false", False), ("true", True), ("YES", True)],
+)
+def test_loopback_autoauth_requires_explicit_valid_opt_in(
+    raw: str | None,
+    expected: bool,
+) -> None:
+    values = {"SEAWATCH_AREA_SCAN_SIGNING_KEY": SIGNING_KEY}
+    if raw is not None:
+        values["SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK"] = raw
+
+    config = access.AreaScanAccessConfig.from_env(values)
+
+    assert config.autoauth_loopback is expected
+    assert config.configured is True
+
+
+def test_invalid_loopback_autoauth_value_fails_closed() -> None:
+    config = access.AreaScanAccessConfig.from_env(
+        {
+            "SEAWATCH_AREA_SCAN_SIGNING_KEY": SIGNING_KEY,
+            "SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK": "sometimes",
+        }
+    )
+
+    assert config.autoauth_loopback is False
+    assert config.configured is False
+
+
+@pytest.mark.parametrize(
     ("name", "value", "expected"),
     [
         ("SEAWATCH_AREA_SCAN_MAX_BODY_BYTES", "65537", access.DEFAULT_MAX_SCAN_BODY_BYTES),

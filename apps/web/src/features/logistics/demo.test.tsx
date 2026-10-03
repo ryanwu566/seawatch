@@ -192,7 +192,7 @@ function renderDemo() {
 
 async function runToResult() {
   const utils = renderDemo();
-  const runLabel = DICTIONARIES["zh-Hant"].logistics.runSimulation;
+  const runLabel = DICTIONARIES.en.logistics.runSimulation;
   const button = await utils.findByRole("button", { name: runLabel });
   button.click();
   await waitFor(() =>
@@ -233,11 +233,11 @@ describe("Resilience demo — RESPOND (Kaohsiung disruption)", () => {
     expect(within(fuelRows[0] as HTMLElement).getByText("40")).toBeInTheDocument();
 
     // Alternatives metrics (ETA / distance / cost / capacity / risk).
-    const alt = utils.getByLabelText(DICTIONARIES["zh-Hant"].logistics.alternatives);
-    const taichung = within(alt).getByText(/臺中港 Taichung/).closest("tr")!;
+    const alt = utils.getByLabelText(DICTIONARIES.en.logistics.alternatives);
+    const taichung = within(alt).getByText("Taichung").closest("tr")!;
     expect(within(taichung).getByText(/185.8/)).toBeInTheDocument();
     expect(within(taichung).getByText("100%")).toBeInTheDocument(); // util 1.0
-    const keelung = within(alt).getByText(/基隆港 Keelung/).closest("tr")!;
+    const keelung = within(alt).getByText("Keelung").closest("tr")!;
     expect(within(keelung).getByText(/314.7/)).toBeInTheDocument();
 
     // Decision Brief + trade-offs render from structured fields.
@@ -266,13 +266,14 @@ describe("Resilience demo — RESPOND (Kaohsiung disruption)", () => {
     expect(badge.querySelector('[data-source-class="scenario"] .truth-badge-count')?.textContent).toBe("7");
     expect(badge.querySelector('[data-source-class="synthetic"] .truth-badge-count')?.textContent).toBe("0");
     // Schematic connectors remain labeled, never presented as measured routes.
-    expect(utils.getAllByText(/SCHEMATIC CONNECTOR \/ 示意連線/).length).toBeGreaterThan(0);
+    expect(utils.getAllByText(/SCHEMATIC CONNECTOR/).length).toBeGreaterThan(0);
   });
 
   it("4. rendered demo output contains no prohibited autonomous-command wording", async () => {
     const utils = await runToResult();
     const text = utils.container.textContent ?? "";
     expect(findForbiddenTerm(text)).toBeNull();
+    expect(text).not.toMatch(/[\u3400-\u9fff]/u);
   });
 });
 
@@ -289,10 +290,10 @@ describe("Resilience demo — SURVIVE (read-only Phase 8 operating context)", ()
 
   it("6. renders Cloud / Edge / Replay mode labels correctly", async () => {
     const cases: Array<[string, string]> = [
-      ["CLOUD_LIVE", DICTIONARIES["zh-Hant"].modeCloud],
-      ["EDGE_LIVE", DICTIONARIES["zh-Hant"].modeEdge],
-      ["EDGE_REPLAY", DICTIONARIES["zh-Hant"].modeReplay],
-      ["NO_LIVE_SOURCE", DICTIONARIES["zh-Hant"].modeNoSource],
+      ["CLOUD_LIVE", DICTIONARIES.en.modeCloud],
+      ["EDGE_LIVE", DICTIONARIES.en.modeEdge],
+      ["EDGE_REPLAY", DICTIONARIES.en.modeReplay],
+      ["NO_LIVE_SOURCE", DICTIONARIES.en.modeNoSource],
     ];
     for (const [mode, label] of cases) {
       operatingMode = mode;

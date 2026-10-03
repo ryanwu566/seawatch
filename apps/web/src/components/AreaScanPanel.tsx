@@ -1,6 +1,7 @@
 import { useState } from "react";
-import type { AreaScanResponse } from "../api/live";
+import type { AreaScanPlan, AreaScanResponse } from "../api/live";
 import { useI18n } from "../i18n/I18nContext";
+import { countVesselCategories } from "../lib/vesselCategory";
 
 export type AreaDrawMode = "polygon" | "rectangle" | null;
 
@@ -8,11 +9,15 @@ interface AreaScanPanelProps {
   drawMode: AreaDrawMode;
   geometry: GeoJSON.Polygon | null;
   loading: boolean;
+  planning: boolean;
+  plan: AreaScanPlan | null;
   result: AreaScanResponse | null;
   error: string | null;
   authenticated: boolean;
   authenticating: boolean;
+  operatorAuthenticationRequired: boolean;
   onDrawMode: (mode: Exclude<AreaDrawMode, null>) => void;
+  onOpen: () => void;
   onAuthenticate: (operatorCredential: string) => void;
   onScan: () => void;
   onClear: () => void;
@@ -22,11 +27,15 @@ export function AreaScanPanel({
   drawMode,
   geometry,
   loading,
+  planning,
+  plan,
   result,
   error,
   authenticated,
   authenticating,
+  operatorAuthenticationRequired,
   onDrawMode,
+  onOpen,
   onAuthenticate,
   onScan,
   onClear,
@@ -34,6 +43,10 @@ export function AreaScanPanel({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [operatorCredential, setOperatorCredential] = useState("");
+  const categoryCounts = result ? countVesselCategories(result.vessels) : [];
+  const canScan = Boolean(
+    geometry && authenticated && !loading && !planning && plan?.can_scan,
+  );
 
   const authenticate = () => {
     const credential = operatorCredential.trim();
@@ -44,7 +57,14 @@ export function AreaScanPanel({
 
   if (!open) {
     return (
-      <button type="button" className="area-scan-entry" onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className="area-scan-entry"
+        onClick={() => {
+          setOpen(true);
+          onOpen();
+        }}
+      >
         {t.areaScan}
       </button>
     );
@@ -78,11 +98,25 @@ export function AreaScanPanel({
 
       <p className="area-scan-hint">{geometry ? t.areaScanReady : t.areaScanDrawHint}</p>
 
+      {planning && <p className="area-scan-hint" role="status">{t.areaScanPlanning}</p>}
+      {geometry && plan && (
+        <dl className="area-scan-plan" aria-label={t.areaScanSelectedArea}>
+          <div><dt>{t.areaScanSelectedArea}</dt><dd>~ {plan.area_square_km} km²</dd></div>
+          {plan.provider_queries !== null && (
+            <div><dt>{t.areaScanEstimatedQueries}</dt><dd>{plan.provider_queries}</dd></div>
+          )}
+          <div><dt>{t.areaScanMaximumAllowed}</dt><dd>{plan.max_provider_queries}</dd></div>
+        </dl>
+      )}
+      {plan?.reason === "too_large" && (
+        <p className="area-scan-error" role="alert">{t.areaScanTooLargeShort}</p>
+      )}
+
       {authenticated ? (
         <p className="area-scan-authenticated" role="status">
           {t.areaScanAuthenticated}
         </p>
-      ) : (
+      ) : operatorAuthenticationRequired ? (
         <div className="area-scan-auth">
           <label>
             <span>{t.areaScanOperatorCredential}</span>
@@ -102,14 +136,27 @@ export function AreaScanPanel({
             {authenticating ? t.areaScanAuthenticating : t.areaScanAuthenticate}
           </button>
         </div>
-      )}
+      ) : authenticating ? (
+        <p className="area-scan-authenticated" role="status">
+          {t.areaScanAuthenticating}
+        </p>
+      ) : null}
 
       {result && (
         <dl className="area-scan-summary" aria-live="polite">
           <div><dt>{t.areaScanResults}</dt><dd>{result.total}</dd></div>
           <div><dt>{t.source}</dt><dd>{t.datalasticLiveAis}</dd></div>
-          <div><dt>{t.areaScanTime}</dt><dd>{new Date(result.scanned_at).toLocaleTimeString()}</dd></div>
+          <div>
+            <dt>{t.areaScanTime}</dt>
+            <dd>{new Date(result.scanned_at).toLocaleString("en-US", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}</dd>
+          </div>
           <div><dt>{t.areaScanQueries}</dt><dd>{result.scan.provider_queries}</dd></div>
+          {categoryCounts.map(({ category, count }) => (
+            <div key={category}><dt>{category}</dt><dd>{count}</dd></div>
+          ))}
         </dl>
       )}
       {result?.cached && <span className="area-scan-cached">{t.areaScanCached}</span>}
@@ -118,10 +165,10 @@ export function AreaScanPanel({
       <div className="area-scan-actions">
         <button
           type="button"
-          disabled={!geometry || !authenticated}
+          disabled={!canScan}
           onClick={onScan}
         >
-          {loading ? t.areaScanning : t.scanArea}
+          {loading ? t.areaScanning : result ? t.areaScanAgain : t.scanArea}
         </button>
         <button type="button" onClick={onClear}>
           {t.clearAreaScan}

@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { I18nProvider } from "../i18n/I18nContext";
+import { DICTIONARIES } from "../i18n/dictionaries";
 import { VesselPanel } from "./VesselPanel";
 import { LayerControl } from "./LayerControl";
 import { StatusCards } from "./StatusCards";
 import { DEFAULT_LAYER_STATE } from "../lib/layerState";
 import type { LiveVesselFeature, LiveTrack } from "../api/live";
+
+const t = DICTIONARIES.en;
 
 function wrap(ui: React.ReactElement) {
   return render(<I18nProvider>{ui}</I18nProvider>);
@@ -38,27 +41,25 @@ const interpolated: LiveVesselFeature = {
 };
 
 describe("VesselPanel", () => {
-  it("shows friendly fields in Traditional Chinese by default", () => {
+  it("shows friendly fields in English by default", () => {
     wrap(
       <VesselPanel vessel={measured} track={null} trackLoading={false} demo={false} onClose={() => {}} />,
     );
     expect(screen.getByText("CLIPPER ERIS")).toBeInTheDocument();
-    expect(screen.getByText("目前航速")).toBeInTheDocument(); // Speed
-    expect(screen.getByText("位置狀態")).toBeInTheDocument(); // Position status
-    // "即時 AIS" appears both as the integrity badge and the position status.
-    expect(screen.getAllByText("即時 AIS").length).toBeGreaterThanOrEqual(1);
-    // "實際 AIS" is the measured position-status value.
-    expect(screen.getByText("實際 AIS")).toBeInTheDocument();
+    expect(screen.getByText(t.speed)).toBeInTheDocument();
+    expect(screen.getByText(t.positionStatus)).toBeInTheDocument();
+    expect(screen.getAllByText(t.badgeLiveAis).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(t.positionMeasured)).toBeInTheDocument();
     // Friendly source, never raw provider id, in the main panel.
     expect(screen.queryByText("aishub")).not.toBeInTheDocument();
   });
 
-  it("shows '未公開船名' when the vessel has no name", () => {
+  it("shows the English fallback when the vessel has no name", () => {
     const anon = { ...measured, properties: { ...measured.properties, name: null } };
     wrap(
       <VesselPanel vessel={anon} track={null} trackLoading={false} demo={false} onClose={() => {}} />,
     );
-    expect(screen.getByText("未公開船名")).toBeInTheDocument();
+    expect(screen.getByText(t.noVesselName)).toBeInTheDocument();
   });
 
   it("distinguishes a provider-interpolated vessel", () => {
@@ -71,7 +72,7 @@ describe("VesselPanel", () => {
         onClose={() => {}}
       />,
     );
-    expect(screen.getAllByText("供應商插值").length).toBeGreaterThanOrEqual(1); // Provider Interpolated
+    expect(screen.getAllByText(t.badgeProviderInterpolated).length).toBeGreaterThanOrEqual(1);
   });
 
   it("shows a no-recent-update notice for a missing (dropped-out) vessel", () => {
@@ -85,7 +86,7 @@ describe("VesselPanel", () => {
         onClose={() => {}}
       />,
     );
-    expect(screen.getByText("此船舶暫時沒有新資料")).toBeInTheDocument();
+    expect(screen.getByText(t.noRecentUpdate)).toBeInTheDocument();
   });
 
   it("shows Building Track History when fewer than 2 points", () => {
@@ -98,7 +99,7 @@ describe("VesselPanel", () => {
     wrap(
       <VesselPanel vessel={measured} track={track} trackLoading={false} demo={false} onClose={() => {}} />,
     );
-    expect(screen.getByText("航跡累積中")).toBeInTheDocument(); // Building Track History
+    expect(screen.getByText(t.buildingTrackHistory)).toBeInTheDocument();
   });
 
   it("reveals Advanced Analysis only on expand, with benchmark disclaimer", () => {
@@ -107,9 +108,9 @@ describe("VesselPanel", () => {
     );
     // Collapsed: benchmark source not shown yet.
     expect(screen.queryByText(/MarineCadastre/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText(/進階分析/)); // Advanced Analysis
+    fireEvent.click(screen.getByText(new RegExp(t.advancedAnalysis)));
     expect(screen.getByText(/MarineCadastre/)).toBeInTheDocument();
-    expect(screen.getByText(/舊金山灣/)).toBeInTheDocument(); // benchmark disclaimer
+    expect(screen.getByText(new RegExp(t.benchmarkDisclaimer))).toBeInTheDocument();
   });
 
   it("fires onClose", () => {
@@ -117,7 +118,7 @@ describe("VesselPanel", () => {
     wrap(
       <VesselPanel vessel={measured} track={null} trackLoading={false} demo={false} onClose={onClose} />,
     );
-    fireEvent.click(screen.getByLabelText("關閉"));
+    fireEvent.click(screen.getByLabelText(t.closePanel));
     expect(onClose).toHaveBeenCalled();
   });
 });
@@ -126,8 +127,8 @@ describe("LayerControl", () => {
   it("toggles a maritime layer", () => {
     const onChange = vi.fn();
     wrap(<LayerControl layers={DEFAULT_LAYER_STATE} onChange={onChange} />);
-    fireEvent.click(screen.getByText("圖層")); // open Layers
-    const portsLabel = screen.getByText("商港"); // Commercial Ports
+    fireEvent.click(screen.getByText(t.layers));
+    const portsLabel = screen.getByText(t.layerPorts);
     const checkbox = portsLabel.querySelector("input") as HTMLInputElement;
     fireEvent.click(checkbox);
     expect(onChange).toHaveBeenCalledWith(
@@ -138,8 +139,8 @@ describe("LayerControl", () => {
   it("switches base map to orthophoto", () => {
     const onChange = vi.fn();
     wrap(<LayerControl layers={DEFAULT_LAYER_STATE} onChange={onChange} />);
-    fireEvent.click(screen.getByText("圖層"));
-    const ortho = screen.getByText("正射影像").querySelector("input") as HTMLInputElement;
+    fireEvent.click(screen.getByText(t.layers));
+    const ortho = screen.getByText(t.layerOrthophoto).querySelector("input") as HTMLInputElement;
     fireEvent.click(ortho);
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ baseMap: "nlsc-photo" }));
   });
@@ -151,7 +152,7 @@ describe("StatusCards", () => {
       <StatusCards vesselCount={1606} needsReview={0} freshestAgeSeconds={7} source="open_waters" />,
     );
     expect(screen.getByText("1,606")).toBeInTheDocument();
-    expect(screen.getByText("目前船舶")).toBeInTheDocument(); // Vessels Now
+    expect(screen.getByText(t.vesselsNow)).toBeInTheDocument();
     expect(screen.getByText("open_waters")).toBeInTheDocument();
   });
 });

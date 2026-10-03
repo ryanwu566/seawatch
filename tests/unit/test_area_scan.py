@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import httpx
 from pyproj import Geod
 from shapely.geometry import Point
 from fastapi.testclient import TestClient
@@ -17,6 +18,7 @@ from apps.api.seawatch.live.area_scan import (
     ScanValidationError,
     canonical_geometry_key,
     cover_polygon,
+    plan_scan_geometry,
     validate_scan_geometry,
 )
 from apps.api.seawatch.live.area_scan_access import mint_area_scan_capability
@@ -117,6 +119,26 @@ def test_excessive_coordinate_count_is_rejected() -> None:
     points.append(points[0])
     with pytest.raises(ScanValidationError, match="too many coordinates"):
         validate_scan_geometry(_request([points]))
+
+
+def test_non_billable_scan_plan_returns_area_query_count_and_limit() -> None:
+    plan = plan_scan_geometry(_rectangle(120.0, 22.0, 120.1, 22.1))
+
+    assert plan.can_scan is True
+    assert plan.area_square_km > 0
+    assert plan.provider_queries == 1
+    assert plan.max_provider_queries == MAX_PROVIDER_CIRCLES
+    assert plan.reason is None
+
+
+def test_non_billable_scan_plan_marks_oversized_geometry_without_provider_work() -> None:
+    plan = plan_scan_geometry(_rectangle(115.0, 15.0, 130.0, 30.0))
+
+    assert plan.can_scan is False
+    assert plan.area_square_km > 0
+    assert plan.provider_queries is None
+    assert plan.max_provider_queries == MAX_PROVIDER_CIRCLES
+    assert plan.reason == "too_large"
 
 
 def test_canonical_key_ignores_ring_start_and_orientation() -> None:
@@ -379,6 +401,8 @@ def test_valid_mmsi_uses_existing_identity_and_raw_ids_never_serialize() -> None
     feature = payload["vessels"][0]
 
     assert feature["id"] == registry.public_id_for_mmsi(416000001)
+    assert feature["properties"]["provider_vessel_type"] == "Cargo"
+    assert feature["properties"]["provider_vessel_type_specific"] == "Container Ship"
     serialized = str(payload).lower()
     for forbidden in ("mmsi", "416000001", "imo", "9876543", "raw-uuid-1"):
         assert forbidden not in serialized
@@ -876,6 +900,32 @@ def test_area_scan_route_returns_safe_features_and_track(monkeypatch) -> None:
         reset_live_runtime()
 
 
+def test_area_scan_plan_route_never_contacts_provider(monkeypatch) -> None:
+    monkeypatch.setenv("DATALASTIC_API_KEY", "route-secret")
+    monkeypatch.setenv("SEAWATCH_IDENTITY_KEY", "stable-test-key")
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_SIGNING_KEY", TEST_SIGNING_KEY)
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_OPERATOR_KEY", TEST_OPERATOR_KEY)
+    monkeypatch.setattr(DatalasticClient, "stat", _healthy_stat)
+    reset_live_runtime()
+    runtime = get_live_runtime()
+    provider = _Provider((_vessel(),))
+    runtime.area_scan_service.set_provider(provider)
+
+    try:
+        with TestClient(create_app()) as client:
+            response = client.post(
+                "/live/area-scan/plan",
+                json=_rectangle(120.0, 22.0, 120.1, 22.1).model_dump(),
+                headers=_auth_headers(runtime),
+            )
+        assert response.status_code == 200
+        assert response.json()["provider_queries"] == 1
+        assert response.json()["max_provider_queries"] == MAX_PROVIDER_CIRCLES
+        assert provider.calls == 0
+    finally:
+        reset_live_runtime()
+
+
 def test_area_scan_route_maps_provider_failure_to_sanitized_503(monkeypatch) -> None:
     monkeypatch.setenv("DATALASTIC_API_KEY", "route-secret")
     monkeypatch.setenv("SEAWATCH_AREA_SCAN_SIGNING_KEY", TEST_SIGNING_KEY)
@@ -1046,17 +1096,28 @@ def test_operator_session_issues_httponly_capability_and_enables_scan(
     provider = _Provider((_vessel(),))
     runtime.area_scan_service.set_provider(provider)
 
-    try:
-        with TestClient(create_app(), base_url="http://127.0.0.1") as client:
-            session = client.post(
+    async def scenario() -> tuple[httpx.Response, httpx.Response]:
+        transport = httpx.ASGITransport(
+            app=create_app(),
+            client=("127.0.0.1", 55123),
+        )
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://127.0.0.1",
+        ) as client:
+            session = await client.post(
                 "/live/area-scan/session",
                 json={"operator_credential": TEST_OPERATOR_KEY},
             )
-            response = client.post(
+            response = await client.post(
                 "/live/area-scan",
                 json=_rectangle(120.0, 22.0, 121.0, 23.0).model_dump(),
                 headers={"X-SeaWatch-Area-Scan": "1"},
             )
+            return session, response
+
+    try:
+        session, response = asyncio.run(scenario())
         assert session.status_code == 200
         assert session.json() == {"authenticated": True, "expires_in_seconds": 900}
         set_cookie = session.headers["set-cookie"]
@@ -1067,6 +1128,136 @@ def test_operator_session_issues_httponly_capability_and_enables_scan(
         assert TEST_SIGNING_KEY not in session.text
         assert response.status_code == 200
         assert provider.calls == 1
+    finally:
+        reset_live_runtime()
+
+
+def test_loopback_autoauth_issues_session_without_operator_credential(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("DATALASTIC_API_KEY", "route-secret")
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_SIGNING_KEY", TEST_SIGNING_KEY)
+    monkeypatch.delenv("SEAWATCH_AREA_SCAN_OPERATOR_KEY", raising=False)
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK", "true")
+    monkeypatch.delenv("SEAWATCH_AREA_SCAN_ALLOW_INSECURE_COOKIE", raising=False)
+    reset_live_runtime()
+    runtime = get_live_runtime()
+    provider = _Provider((_vessel(),))
+    runtime.area_scan_service.set_provider(provider)
+
+    async def scenario() -> tuple[httpx.Response, httpx.Response]:
+        transport = httpx.ASGITransport(
+            app=create_app(),
+            client=("127.0.0.1", 55123),
+        )
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://localhost",
+        ) as client:
+            session = await client.post("/live/area-scan/session", json={})
+            scan = await client.post(
+                "/live/area-scan",
+                json=_rectangle(120.0, 22.0, 121.0, 23.0).model_dump(),
+                headers={"X-SeaWatch-Area-Scan": "1"},
+            )
+            return session, scan
+
+    try:
+        session, scan = asyncio.run(scenario())
+        assert session.status_code == 200
+        assert session.json() == {"authenticated": True, "expires_in_seconds": 900}
+        assert "HttpOnly" in session.headers["set-cookie"]
+        assert scan.status_code == 200
+        assert provider.calls == 1
+    finally:
+        reset_live_runtime()
+
+
+def test_loopback_without_autoauth_still_requires_operator_authentication(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("DATALASTIC_API_KEY", "route-secret")
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_SIGNING_KEY", TEST_SIGNING_KEY)
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_OPERATOR_KEY", TEST_OPERATOR_KEY)
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK", "false")
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_ALLOW_INSECURE_COOKIE", "true")
+    reset_live_runtime()
+    runtime = get_live_runtime()
+    provider = _Provider((_vessel(),))
+    runtime.area_scan_service.set_provider(provider)
+
+    async def scenario() -> tuple[httpx.Response, httpx.Response]:
+        transport = httpx.ASGITransport(
+            app=create_app(),
+            client=("127.0.0.1", 55123),
+        )
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://localhost",
+        ) as client:
+            session = await client.post("/live/area-scan/session", json={})
+            scan = await client.post(
+                "/live/area-scan",
+                json=_rectangle(120.0, 22.0, 121.0, 23.0).model_dump(),
+                headers={"X-SeaWatch-Area-Scan": "1"},
+            )
+            return session, scan
+
+    try:
+        session, scan = asyncio.run(scenario())
+        assert session.status_code == 401
+        assert "set-cookie" not in session.headers
+        assert scan.status_code == 401
+        assert provider.calls == 0
+    finally:
+        reset_live_runtime()
+
+
+@pytest.mark.parametrize(
+    ("base_url", "peer"),
+    [
+        ("http://localhost", "203.0.113.17"),
+        ("http://public.example", "127.0.0.1"),
+        ("http://127.0.0.2", "127.0.0.1"),
+    ],
+)
+def test_non_loopback_request_cannot_bypass_auth_when_autoauth_is_enabled(
+    monkeypatch,
+    base_url: str,
+    peer: str,
+) -> None:
+    monkeypatch.setenv("DATALASTIC_API_KEY", "route-secret")
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_SIGNING_KEY", TEST_SIGNING_KEY)
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_OPERATOR_KEY", TEST_OPERATOR_KEY)
+    monkeypatch.setenv("SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK", "true")
+    reset_live_runtime()
+    runtime = get_live_runtime()
+    provider = _Provider((_vessel(),))
+    runtime.area_scan_service.set_provider(provider)
+
+    async def scenario() -> tuple[httpx.Response, httpx.Response]:
+        transport = httpx.ASGITransport(
+            app=create_app(),
+            client=(peer, 55123),
+        )
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url=base_url,
+        ) as client:
+            session = await client.post("/live/area-scan/session", json={})
+            scan = await client.post(
+                "/live/area-scan",
+                json=_rectangle(120.0, 22.0, 121.0, 23.0).model_dump(),
+                headers={"X-SeaWatch-Area-Scan": "1"},
+            )
+            return session, scan
+
+    try:
+        session, scan = asyncio.run(scenario())
+        assert session.status_code == 401
+        assert "set-cookie" not in session.headers
+        assert scan.status_code == 401
+        assert provider.calls == 0
     finally:
         reset_live_runtime()
 
@@ -1183,16 +1374,27 @@ def test_cookie_authenticated_scan_requires_non_simple_csrf_header_before_provid
     provider = _Provider((_vessel(),))
     runtime.area_scan_service.set_provider(provider)
 
-    try:
-        with TestClient(create_app(), base_url="http://127.0.0.1") as client:
-            session = client.post(
+    async def scenario() -> tuple[httpx.Response, httpx.Response]:
+        transport = httpx.ASGITransport(
+            app=create_app(),
+            client=("127.0.0.1", 55123),
+        )
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://127.0.0.1",
+        ) as client:
+            session = await client.post(
                 "/live/area-scan/session",
                 json={"operator_credential": TEST_OPERATOR_KEY},
             )
-            response = client.post(
+            response = await client.post(
                 "/live/area-scan",
                 json=_rectangle(120.0, 22.0, 121.0, 23.0).model_dump(),
             )
+            return session, response
+
+    try:
+        session, response = asyncio.run(scenario())
         assert session.status_code == 200
         assert response.status_code == 403
         assert provider.calls == 0
