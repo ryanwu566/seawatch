@@ -143,7 +143,7 @@ AIS (real / simulated)  ->  tracks (Track objects)  ->  context learned from his
 ```
 
 Code: `apps/api/seawatch/detection/` (Python), API: `apps/api/seawatch/api/detection.py`, UI: `apps/web/src/features/watch/`.
-Longer write-ups: `docs/detection-stack.md`, `docs/rulebook.md` (generated from the live thresholds), `docs/taiwan-real-data.md`,
+Integration directions: `docs/INTEGRATION.md`. Longer write-ups: `docs/detection-stack.md`, `docs/rulebook.md` (generated from the live thresholds), `docs/taiwan-real-data.md`,
 `docs/research-vessel-data.md`, `docs/path-analysis.md`, `docs/integration-answers.md`, `docs/rules-walkthrough.md`, `docs/threat-definition.md`, `docs/real-outcomes.md`.
 
 ### 2. Run it
