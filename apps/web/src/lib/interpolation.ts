@@ -39,6 +39,9 @@ export function projectPosition(
   fix: MeasuredFix,
   nowMs: number,
 ): { lon: number; lat: number; interpolated: boolean } {
+  if (!Number.isFinite(fix.observedAtMs)) {
+    return { lon: fix.lon, lat: fix.lat, interpolated: false };
+  }
   const sog = fix.sogKnots ?? 0;
   const course = fix.courseDeg;
   const elapsed = Math.min(

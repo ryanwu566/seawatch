@@ -4,6 +4,10 @@ import {
   fetchResilienceStatus,
   fetchLiveTrack,
   fetchLiveVessels,
+  authenticateAreaScan,
+  scanLiveArea,
+  AreaScanApiError,
+  type AreaScanResponse,
   type Bbox,
   type LiveHealth,
   type LiveTrack,
@@ -20,6 +24,7 @@ import { LayerControl } from "../components/LayerControl";
 import { SearchControl } from "../components/SearchControl";
 import { VesselPanel } from "../components/VesselPanel";
 import { MapCanvas, type Viewport } from "../components/MapCanvas";
+import { AreaScanPanel, type AreaDrawMode } from "../components/AreaScanPanel";
 import { DEFAULT_LAYER_STATE, type LayerState } from "../lib/layerState";
 import { deriveLiveStatus } from "../lib/liveStatus";
 import { modePresentation } from "../lib/resilience";
@@ -29,6 +34,7 @@ import { getDemoScenario } from "../features/intelligence/demoScenario";
 
 const POLL_MS = 8000;
 const VIEWPORT_DEBOUNCE_MS = 400;
+type VesselSelectionSource = "live" | "datalastic";
 
 /**
  * Taiwan-first, map-first live maritime awareness experience. The map dominates;
@@ -44,6 +50,7 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   const [resilience, setResilience] = useState<ResilienceStatus | null>(null);
   const [layers, setLayers] = useState<LayerState>(DEFAULT_LAYER_STATE);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<VesselSelectionSource | null>(null);
   const [track, setTrack] = useState<LiveTrack | null>(null);
   const [trackLoading, setTrackLoading] = useState(false);
   const [follow, setFollow] = useState(false);
@@ -53,6 +60,13 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   const [fitBounds, setFitBounds] = useState<[number, number, number, number] | null>(null);
   const [fitNonce, setFitNonce] = useState(0);
   const [loadedOnce, setLoadedOnce] = useState(false);
+  const [areaDrawMode, setAreaDrawMode] = useState<AreaDrawMode>(null);
+  const [areaGeometry, setAreaGeometry] = useState<GeoJSON.Polygon | null>(null);
+  const [areaResult, setAreaResult] = useState<AreaScanResponse | null>(null);
+  const [areaLoading, setAreaLoading] = useState(false);
+  const [areaError, setAreaError] = useState<string | null>(null);
+  const [areaAuthenticated, setAreaAuthenticated] = useState(false);
+  const [areaAuthenticating, setAreaAuthenticating] = useState(false);
 
   // DEMO fixture (frontend-only, illustrative). The demo vessel is NEVER added
   // to the live `vessels` array; it is held entirely separately and opens only
@@ -62,12 +76,15 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   const demoScenario = useMemo(() => getDemoScenario(), []);
   const openDemo = useCallback(() => {
     setSelectedId(null); // ensure no live vessel is selected simultaneously
+    setSelectedSource(null);
     setDemoOpen(true);
   }, []);
   const closeDemo = useCallback(() => setDemoOpen(false), []);
 
   const viewportRef = useRef<Bbox | null>(null);
   const debounceRef = useRef<number | null>(null);
+  const areaScanGenerationRef = useRef(0);
+  const areaScanAbortRef = useRef<AbortController | null>(null);
 
   const loadVessels = useCallback(async () => {
     try {
@@ -108,9 +125,20 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
     [loadVessels],
   );
 
+  const areaVessels = areaResult?.vessels ?? [];
+  const allSearchVessels = useMemo(() => {
+    const byId = new Map(vessels.map((v) => [v.id, v]));
+    for (const vessel of areaVessels) byId.set(vessel.id, vessel);
+    return [...byId.values()];
+  }, [vessels, areaVessels]);
   const selected = useMemo(
-    () => (selectedId ? (vessels.find((v) => v.id === selectedId) ?? null) : null),
-    [vessels, selectedId],
+    () =>
+      selectedId
+        ? selectedSource === "datalastic"
+          ? (areaVessels.find((v) => v.id === selectedId) ?? null)
+          : (vessels.find((v) => v.id === selectedId) ?? null)
+        : null,
+    [areaVessels, vessels, selectedId, selectedSource],
   );
   const selectedMissing = selectedId !== null && selected === null;
 
@@ -126,31 +154,42 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
     }
     setTrack(null);
     setTrackLoading(true);
-    let cancelled = false;
-    fetchLiveTrack(selectedId)
+    const controller = new AbortController();
+    fetchLiveTrack(
+      selectedId,
+      controller.signal,
+      selectedSource === "datalastic" ? "datalastic" : undefined,
+    )
       .then((tk) => {
-        if (!cancelled) setTrack(tk);
+        if (!controller.signal.aborted) setTrack(tk);
       })
       .catch(() => {
-        if (!cancelled) setTrack(null);
+        if (!controller.signal.aborted) setTrack(null);
       })
       .finally(() => {
-        if (!cancelled) setTrackLoading(false);
+        if (!controller.signal.aborted) setTrackLoading(false);
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [selectedId]);
+  }, [selectedId, selectedSource]);
 
-  const handleSelectVessel = useCallback((feature: LiveVesselFeature) => {
+  const handleSelectVessel = useCallback((
+    feature: LiveVesselFeature,
+    source?: VesselSelectionSource,
+  ) => {
     setDemoOpen(false); // live selection and demo are mutually exclusive
     setSelectedId(feature.id);
+    setSelectedSource(
+      source ?? (feature.properties.source === "datalastic" ? "datalastic" : "live"),
+    );
     setFollow(true);
     setPaused(false);
   }, []);
 
   const handleDeselect = useCallback(() => {
     setSelectedId(null);
+    setSelectedSource(null);
     setTrack(null);
     setFollow(false);
     setPaused(false);
@@ -159,6 +198,7 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        setAreaDrawMode(null);
         handleDeselect();
         closeDemo();
       }
@@ -184,10 +224,91 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
     setFitNonce((n) => n + 1);
   }, []);
 
-  const freshestAge =
-    vessels.length === 0
-      ? null
-      : vessels.reduce((min, v) => Math.min(min, v.properties.data_age_seconds), Infinity);
+  const handleAreaDrawMode = useCallback((mode: Exclude<AreaDrawMode, null>) => {
+    areaScanGenerationRef.current += 1;
+    areaScanAbortRef.current?.abort();
+    areaScanAbortRef.current = null;
+    setAreaLoading(false);
+    setAreaDrawMode(mode);
+    setAreaGeometry(null);
+    setAreaResult(null);
+    setAreaError(null);
+  }, []);
+
+  const handleAreaGeometryChange = useCallback((geometry: GeoJSON.Polygon) => {
+    areaScanGenerationRef.current += 1;
+    areaScanAbortRef.current?.abort();
+    areaScanAbortRef.current = null;
+    setAreaLoading(false);
+    setAreaGeometry(geometry);
+    setAreaDrawMode(null);
+    setAreaResult(null);
+    setAreaError(null);
+  }, []);
+
+  const handleAreaAuthenticate = useCallback(async (operatorCredential: string) => {
+    setAreaAuthenticating(true);
+    setAreaError(null);
+    try {
+      await authenticateAreaScan(operatorCredential);
+      setAreaAuthenticated(true);
+    } catch {
+      setAreaAuthenticated(false);
+      setAreaError(t.areaScanAuthFailed);
+    } finally {
+      setAreaAuthenticating(false);
+    }
+  }, [t]);
+
+  const handleAreaScan = useCallback(async () => {
+    if (!areaGeometry || !areaAuthenticated) return;
+    const generation = areaScanGenerationRef.current + 1;
+    areaScanGenerationRef.current = generation;
+    areaScanAbortRef.current?.abort();
+    const controller = new AbortController();
+    areaScanAbortRef.current = controller;
+    setAreaLoading(true);
+    setAreaError(null);
+    try {
+      const result = await scanLiveArea(areaGeometry, controller.signal);
+      if (areaScanGenerationRef.current === generation) setAreaResult(result);
+    } catch (err) {
+      if (areaScanGenerationRef.current === generation && !controller.signal.aborted) {
+        if (err instanceof AreaScanApiError && (err.status === 401 || err.status === 403)) {
+          setAreaAuthenticated(false);
+          setAreaError(t.areaScanSessionExpired);
+        } else {
+          setAreaError(err instanceof AreaScanApiError ? err.message : t.datalasticUnavailable);
+        }
+      }
+    } finally {
+      if (areaScanGenerationRef.current === generation) {
+        setAreaLoading(false);
+        areaScanAbortRef.current = null;
+      }
+    }
+  }, [areaAuthenticated, areaGeometry, t]);
+
+  const handleAreaClear = useCallback(() => {
+    areaScanGenerationRef.current += 1;
+    areaScanAbortRef.current?.abort();
+    areaScanAbortRef.current = null;
+    const selectedWasArea = selectedSource === "datalastic";
+    setAreaLoading(false);
+    setAreaDrawMode(null);
+    setAreaGeometry(null);
+    setAreaResult(null);
+    setAreaError(null);
+    if (selectedWasArea) handleDeselect();
+  }, [selectedSource, handleDeselect]);
+
+  useEffect(() => () => areaScanAbortRef.current?.abort(), []);
+
+  const freshestAge = vessels.reduce<number | null>((minimum, vessel) => {
+    const age = vessel.properties.data_age_seconds;
+    if (age === null || !Number.isFinite(age)) return minimum;
+    return minimum === null ? age : Math.min(minimum, age);
+  }, null);
 
   const status = deriveLiveStatus({ demo: false, health, vesselCount: vessels.length });
   const effectiveResilience: ResilienceStatus =
@@ -230,7 +351,8 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   const sourceLabel = friendlySource(health?.provider ?? "open_waters", t);
 
   // Empty-viewport state: loaded, live (not reconnecting), but no vessels here.
-  const showEmptyState = loadedOnce && vessels.length === 0 && status !== "reconnecting";
+  const showEmptyState =
+    loadedOnce && vessels.length === 0 && areaVessels.length === 0 && status !== "reconnecting";
   const taiwanPreset = LOCATION_PRESETS[0];
 
   return (
@@ -261,6 +383,7 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
           vessels={layers.liveVessels ? vessels : []}
           layers={layers}
           selectedId={selectedId}
+          selectedSource={selectedSource}
           selectedTrack={selectedTrackGeo}
           follow={follow}
           fitBounds={fitBounds}
@@ -271,12 +394,29 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
           onUserInteract={handleUserInteract}
           onBaseMapError={setBaseMapError}
           operatingMode={effectiveResilience.mode}
+          areaDrawMode={areaDrawMode}
+          areaGeometry={areaGeometry}
+          areaVessels={areaVessels}
+          onAreaGeometryChange={handleAreaGeometryChange}
         />
 
         <div className="map-overlay-top-left">
           <OperatingStatusPanel status={effectiveResilience} />
+          <AreaScanPanel
+            drawMode={areaDrawMode}
+            geometry={areaGeometry}
+            loading={areaLoading}
+            result={areaResult}
+            error={areaError}
+            authenticated={areaAuthenticated}
+            authenticating={areaAuthenticating}
+            onDrawMode={handleAreaDrawMode}
+            onAuthenticate={handleAreaAuthenticate}
+            onScan={handleAreaScan}
+            onClear={handleAreaClear}
+          />
           <SearchControl
-            vessels={vessels}
+            vessels={allSearchVessels}
             onSelectVessel={handleSelectVessel}
             onFitBounds={handleFitBounds}
           />

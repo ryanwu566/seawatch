@@ -5,6 +5,7 @@ const LABEL_KEY: Record<IntegrityKind, keyof ReturnType<typeof labels>> = {
   live: "badgeLiveAis",
   cached: "badgeCached",
   stale: "badgeStale",
+  unknown: "valueUnknown",
   provider_interpolated: "badgeProviderInterpolated",
   visual_interpolation: "badgeVisualInterpolation",
   offline_demo: "badgeOfflineDemo",

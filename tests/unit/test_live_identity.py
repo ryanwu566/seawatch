@@ -62,6 +62,19 @@ def test_internal_mmsi_identity_entry_point_matches_live_observations() -> None:
     assert registry.public_id_for_mmsi(123) is None
 
 
+def test_placeholder_mmsi_values_never_receive_cross_source_identity() -> None:
+    registry = VesselIdentityRegistry("fixed-test-key")
+
+    for placeholder in (111111111, 123456789, 999999999):
+        assert registry.public_id_for_mmsi(placeholder) is None
+        public_id = registry.public_id_for(
+            _observation(f"provider-{placeholder}", placeholder)
+        )
+        binding = registry.resolve(public_id)
+        assert binding is not None
+        assert binding.mmsi is None
+
+
 def test_uncertain_identity_is_process_local_stable_and_collision_checked() -> None:
     tokens = iter(("same", "same", "different"))
     registry = VesselIdentityRegistry(
@@ -94,3 +107,18 @@ def test_reverse_binding_can_be_resolved_and_expired() -> None:
 
     registry.expire(public_id)
     assert registry.resolve(public_id) is None
+
+
+def test_source_specific_expiry_preserves_other_source_binding() -> None:
+    registry = VesselIdentityRegistry("fixed-test-key")
+    cloud = _observation("cloud-key", 416000001)
+    datalastic = _observation("scan-key", 416000001)
+    object.__setattr__(datalastic, "source", "datalastic")
+    public_id = registry.public_id_for(cloud)
+    assert registry.public_id_for(datalastic) == public_id
+
+    registry.expire_source(public_id, "datalastic", "scan-key")
+
+    assert registry.resolve_for_source(public_id, "datalastic", "scan-key") is None
+    assert registry.resolve_for_source(public_id, "aishub", "cloud-key") is not None
+    assert registry.resolve(public_id) is not None

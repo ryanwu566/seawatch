@@ -6,9 +6,11 @@ outputs. It performs no ranking computation and modifies no Phase 1-3 artifacts.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from contextlib import suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api import alerts, context, health, historical, live, logistics, resilience, tracks
 from .live import get_live_runtime
 from .live.config import LiveRuntimeConfig
+from .live.datalastic import ProviderError, ProviderErrorCategory
 from .web.serving import configure_local_web
 
 logger = logging.getLogger("seawatch.main")
@@ -62,6 +65,24 @@ def _live_ingest_enabled() -> bool:
     }
 
 
+async def _probe_datalastic_status(runtime) -> None:
+    """Run one sanitized status probe without affecting application startup."""
+
+    client = runtime.datalastic_client
+    if client is None:
+        return
+    try:
+        provider_status = await client.stat()
+    except ProviderError as exc:
+        runtime.datalastic_status.record_failure(exc.category)
+        logger.warning("Datalastic status probe failed (%s)", exc.category.value)
+    except Exception:  # noqa: BLE001 - no raw external errors may reach logs
+        runtime.datalastic_status.record_failure(ProviderErrorCategory.CONNECTION)
+        logger.warning("Datalastic status probe failed (connection)")
+    else:
+        runtime.datalastic_status.record_success(provider_status)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     """Start/stop independent Cloud and explicitly enabled Edge consumers."""
@@ -69,6 +90,9 @@ async def _lifespan(app: FastAPI):
     runtime = get_live_runtime()
     consumer = None
     edge_consumer = None
+    datalastic_probe = None
+    if runtime.datalastic_client is not None:
+        datalastic_probe = asyncio.create_task(_probe_datalastic_status(runtime))
     if _live_ingest_enabled():
         consumer = get_live_runtime().cloud.consumer
         try:
@@ -90,6 +114,13 @@ async def _lifespan(app: FastAPI):
     try:
         yield
     finally:
+        if datalastic_probe is not None:
+            if not datalastic_probe.done():
+                datalastic_probe.cancel()
+            with suppress(asyncio.CancelledError):
+                await datalastic_probe
+        if runtime.datalastic_client is not None:
+            await runtime.datalastic_client.aclose()
         if consumer is not None:
             await consumer.stop()
             logger.info("Live AIS ingest stopped")
@@ -110,7 +141,8 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
-        allow_methods=["GET"],
+        allow_credentials=True,
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
     app.include_router(health.router)

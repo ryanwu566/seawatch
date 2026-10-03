@@ -70,6 +70,8 @@ export function VesselPanel({
       ? t.positionProviderInterp
       : integrity === "stale"
         ? t.positionStale
+        : integrity === "unknown"
+          ? t.valueUnknown
         : t.positionMeasured;
 
   return (

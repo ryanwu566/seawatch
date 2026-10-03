@@ -6,7 +6,15 @@ from dataclasses import dataclass
 import logging
 
 from .active_view import ActiveVesselView
+from .area_scan import AreaScanService
+from .area_scan_access import AreaScanAccessConfig, AreaScanAdmissionController
 from .config import LiveRuntimeConfig
+from .datalastic import (
+    DatalasticAreaScanProvider,
+    DatalasticClient,
+    DatalasticConfig,
+    DatalasticStatusCache,
+)
 from .edge_ais import EdgeAisDecoder
 from .edge_ingest import EdgeAisConsumer
 from .identity import VesselIdentityRegistry
@@ -42,6 +50,12 @@ class LiveRuntime:
     identity_registry: VesselIdentityRegistry
     active_view: ActiveVesselView
     mode_manager: ResilienceModeManager
+    datalastic_config: DatalasticConfig
+    datalastic_client: DatalasticClient | None
+    datalastic_status: DatalasticStatusCache
+    area_scan_service: AreaScanService
+    area_scan_access: AreaScanAccessConfig
+    area_scan_admission: AreaScanAdmissionController
 
 
 _runtime: LiveRuntime | None = None
@@ -60,6 +74,24 @@ def _build_runtime() -> LiveRuntime:
     edge_store = LiveVesselStore()
     edge_consumer = EdgeAisConsumer(EdgeAisDecoder(), edge_store, config)
     identity_registry = VesselIdentityRegistry(config.identity_key)
+    datalastic_config = DatalasticConfig.from_env()
+    datalastic_client = (
+        DatalasticClient(datalastic_config) if datalastic_config.configured else None
+    )
+    datalastic_provider = (
+        DatalasticAreaScanProvider(datalastic_client)
+        if datalastic_client is not None
+        else None
+    )
+    datalastic_status = DatalasticStatusCache(
+        configured=datalastic_config.configured
+    )
+    area_scan_access = AreaScanAccessConfig.from_env()
+    area_scan_admission = AreaScanAdmissionController(
+        max_scans=area_scan_access.max_scans_per_window,
+        max_provider_requests=area_scan_access.max_provider_requests_per_window,
+        window_seconds=area_scan_access.window_seconds,
+    )
     return LiveRuntime(
         cloud=CloudLiveState(store=store, consumer=consumer),
         edge=EdgeLiveState(store=edge_store, consumer=edge_consumer),
@@ -67,6 +99,17 @@ def _build_runtime() -> LiveRuntime:
         identity_registry=identity_registry,
         active_view=ActiveVesselView(store, edge_store, identity_registry),
         mode_manager=ResilienceModeManager(config),
+        datalastic_config=datalastic_config,
+        datalastic_client=datalastic_client,
+        datalastic_status=datalastic_status,
+        area_scan_service=AreaScanService(
+            provider=datalastic_provider,
+            identity_registry=identity_registry,
+            status_cache=datalastic_status,
+            admission=area_scan_admission,
+        ),
+        area_scan_access=area_scan_access,
+        area_scan_admission=area_scan_admission,
     )
 
 

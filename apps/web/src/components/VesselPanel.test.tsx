@@ -16,7 +16,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function feature(): LiveVesselFeature {
+function feature(
+  overrides: Partial<LiveVesselFeature["properties"]> = {},
+): LiveVesselFeature {
   return {
     type: "Feature",
     id: "v_opaque123",
@@ -34,6 +36,7 @@ function feature(): LiveVesselFeature {
       source: "open_waters",
       synthesized: false,
       data_age_seconds: 12,
+      ...overrides,
     },
   };
 }
@@ -187,5 +190,44 @@ describe("VesselPanel live source non-regression", () => {
     // Live position status is NOT the demo label.
     const status = document.querySelector('[data-field="position-status"]');
     expect(status?.textContent).not.toBe(zh.demoPositionStatus);
+  });
+
+  it.each([
+    [61, "fresh", "live"],
+    [300, "fresh", "live"],
+    [899, "fresh", "live"],
+    [900, "stale", "stale"],
+  ] as const)(
+    "renders backend Area Scan freshness at age %is as %s",
+    (dataAgeSeconds, freshnessState, expectedKind) => {
+      renderPanel(feature({
+        source: "datalastic",
+        data_age_seconds: dataAgeSeconds,
+        freshness_state: freshnessState,
+      }));
+
+      expect(document.querySelector(".integrity-badge")).toHaveAttribute(
+        "data-kind",
+        expectedKind,
+      );
+    },
+  );
+
+  it("renders an unknown Area Scan timestamp and age as unknown", () => {
+    renderPanel(feature({
+      source: "datalastic",
+      observed_at: null,
+      data_age_seconds: null,
+      freshness_state: "unknown",
+    }));
+
+    expect(document.querySelector(".integrity-badge")).toHaveAttribute(
+      "data-kind",
+      "unknown",
+    );
+    expect(document.querySelector('[data-field="position-status"]')).toHaveTextContent(
+      zh.valueUnknown,
+    );
+    expect(screen.getByText(`${zh.dataFreshness}: —`)).toBeInTheDocument();
   });
 });

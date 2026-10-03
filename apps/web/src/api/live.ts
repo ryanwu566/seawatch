@@ -51,12 +51,13 @@ export interface LiveVesselFeature {
     name: string | null;
     destination: string | null;
     /** Upstream AIS report time (ISO-8601 UTC). */
-    observed_at: string;
+    observed_at: string | null;
     source: string;
     /** True when the provider interpolated the position (not a measured fix). */
     synthesized: boolean;
     /** Server-computed age of the AIS fix at response time, in seconds. */
-    data_age_seconds: number;
+    data_age_seconds: number | null;
+    freshness_state?: "fresh" | "stale" | "unknown";
     observation_origin?: ObservationOrigin;
     display_state?: DisplayState;
     active_source?: boolean;
@@ -92,6 +93,19 @@ export interface LiveHealth {
   simulated?: boolean;
   cloud?: SourceStatus;
   edge?: SourceStatus;
+  provider_status?: DatalasticProviderStatus;
+}
+
+export interface DatalasticProviderStatus {
+  provider: "datalastic";
+  configured: boolean;
+  reachable: boolean | null;
+  key_status: "valid" | "invalid" | "unknown";
+  addons: boolean | null;
+  requests_remaining: number | null;
+  rate_limit_remaining: number | null;
+  last_success_at: string | null;
+  last_error_category: string | null;
 }
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -143,9 +157,100 @@ export interface LiveTrack {
     point_count: number;
     observed_from: string | null;
     observed_to: string | null;
+    source?: string;
   };
 }
 
-export function fetchLiveTrack(vesselId: string, signal?: AbortSignal): Promise<LiveTrack> {
-  return getJson<LiveTrack>(`/live/vessels/${encodeURIComponent(vesselId)}/track`, signal);
+export function fetchLiveTrack(
+  vesselId: string,
+  signal?: AbortSignal,
+  source?: "datalastic",
+): Promise<LiveTrack> {
+  const qualifier = source === "datalastic" ? "?source=datalastic" : "";
+  return getJson<LiveTrack>(
+    `/live/vessels/${encodeURIComponent(vesselId)}/track${qualifier}`,
+    signal,
+  );
+}
+
+export interface AreaScanResponse {
+  source: "datalastic";
+  scanned_at: string;
+  cached: boolean;
+  scan: {
+    geometry_type: "Polygon";
+    provider_queries: number;
+  };
+  total: number;
+  vessels: LiveVesselFeature[];
+}
+
+export class AreaScanApiError extends Error {
+  readonly status: number;
+  readonly retryAfterSeconds: number | null;
+
+  constructor(status: number, message: string, retryAfterSeconds: number | null) {
+    super(message);
+    this.name = "AreaScanApiError";
+    this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+export interface AreaScanSessionResponse {
+  authenticated: true;
+  expires_in_seconds: number;
+}
+
+export async function authenticateAreaScan(
+  operatorCredential: string,
+  signal?: AbortSignal,
+): Promise<AreaScanSessionResponse> {
+  const response = await fetch(`${getBaseUrl()}/live/area-scan/session`, {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ operator_credential: operatorCredential }),
+    signal,
+  });
+  if (!response.ok) throw await areaScanError(response);
+  return (await response.json()) as AreaScanSessionResponse;
+}
+
+export async function scanLiveArea(
+  geometry: GeoJSON.Polygon,
+  signal?: AbortSignal,
+): Promise<AreaScanResponse> {
+  const response = await fetch(`${getBaseUrl()}/live/area-scan`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-SeaWatch-Area-Scan": "1",
+    },
+    body: JSON.stringify({ geometry }),
+    signal,
+  });
+  if (!response.ok) throw await areaScanError(response);
+  return (await response.json()) as AreaScanResponse;
+}
+
+async function areaScanError(response: Response): Promise<AreaScanApiError> {
+  let detail = "Area Scan unavailable";
+  try {
+    const payload = (await response.json()) as { detail?: unknown };
+    if (typeof payload.detail === "string" && payload.detail.trim()) detail = payload.detail;
+  } catch {
+    // Use the fixed local fallback; never surface raw provider response text.
+  }
+  const retryHeader = response.headers.get("Retry-After");
+  const parsedRetry = retryHeader === null ? Number.NaN : Number.parseInt(retryHeader, 10);
+  return new AreaScanApiError(
+    response.status,
+    detail,
+    Number.isFinite(parsedRetry) && parsedRetry >= 0 && parsedRetry <= 5
+      ? parsedRetry
+      : null,
+  );
 }

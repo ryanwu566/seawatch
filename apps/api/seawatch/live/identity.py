@@ -13,6 +13,18 @@ from dataclasses import dataclass
 from .schema import LiveVesselObservation
 
 
+_KNOWN_MMSI_PLACEHOLDERS = {123_456_789}
+
+
+def is_valid_mmsi(mmsi: int | None) -> bool:
+    """Return whether an integer is safe to use as cross-source vessel identity."""
+
+    if isinstance(mmsi, bool) or mmsi is None or not 100_000_000 <= mmsi <= 999_999_999:
+        return False
+    digits = str(mmsi)
+    return mmsi not in _KNOWN_MMSI_PLACEHOLDERS and len(set(digits)) > 1
+
+
 @dataclass(frozen=True)
 class IdentityBinding:
     public_id: str
@@ -43,7 +55,7 @@ class VesselIdentityRegistry:
 
     @staticmethod
     def _valid_mmsi(mmsi: int | None) -> bool:
-        return mmsi is not None and 100_000_000 <= mmsi <= 999_999_999
+        return is_valid_mmsi(mmsi)
 
     def _mmsi_public_id(self, mmsi: int) -> str:
         digest = hmac.new(
@@ -121,3 +133,26 @@ class VesselIdentityRegistry:
             ]
             for source in stale_sources:
                 del self._source_ids[source]
+
+    def expire_source(
+        self, public_id: str, source_name: str, source_key: str
+    ) -> None:
+        """Remove one source binding without disturbing the same MMSI elsewhere."""
+
+        source_identity = (source_name, source_key)
+        with self._lock:
+            bindings = self._source_bindings.get(public_id)
+            if bindings is None or source_identity not in bindings:
+                return
+            del bindings[source_identity]
+            self._source_ids.pop(source_identity, None)
+            if not bindings:
+                self._source_bindings.pop(public_id, None)
+                self._bindings.pop(public_id, None)
+                return
+            current = self._bindings.get(public_id)
+            if (
+                current is not None
+                and (current.source_name, current.source_key) == source_identity
+            ):
+                self._bindings[public_id] = bindings[sorted(bindings)[0]]

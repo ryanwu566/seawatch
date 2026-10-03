@@ -89,6 +89,47 @@ describe("data-integrity classification", () => {
   it("classifies demo mode distinctly and never blurs it", () => {
     expect(classifyVessel(feature({}), { demo: true })).toBe("offline_demo");
   });
+
+  it.each([
+    [30, "fresh", "live"],
+    [61, "fresh", "live"],
+    [300, "fresh", "live"],
+    [899, "fresh", "live"],
+    [900, "stale", "stale"],
+    [1_200, "stale", "stale"],
+  ] as const)(
+    "uses Area Scan freshness_state at age %is instead of generic thresholds",
+    (dataAgeSeconds, freshnessState, expected) => {
+      expect(classifyVessel(feature({
+        source: "datalastic",
+        data_age_seconds: dataAgeSeconds,
+        freshness_state: freshnessState,
+      }))).toBe(expected);
+    },
+  );
+
+  it("keeps an Area Scan observation with an unknown timestamp unknown", () => {
+    const unknownTimestamp: LiveVesselFeature = feature({
+      source: "datalastic",
+      observed_at: null,
+      data_age_seconds: null,
+      freshness_state: "unknown",
+    });
+
+    expect(classifyVessel(unknownTimestamp)).toBe("unknown");
+  });
+
+  it("retains generic live-vessel age classification without freshness_state", () => {
+    expect(classifyVessel(feature({ source: "open_waters", data_age_seconds: 61 }))).toBe(
+      "cached",
+    );
+    expect(classifyVessel(feature({ source: "open_waters", data_age_seconds: 300 }))).toBe(
+      "cached",
+    );
+    expect(classifyVessel(feature({ source: "open_waters", data_age_seconds: 301 }))).toBe(
+      "stale",
+    );
+  });
 });
 
 describe("formatAge", () => {

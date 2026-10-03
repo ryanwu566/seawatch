@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render } from "@testing-library/react";
 import type { LiveVesselFeature } from "../api/live";
 
 // Record interactions with the mocked MapLibre map.
@@ -21,6 +21,8 @@ const state: {
   styledataCb: ((e?: any) => void) | null;
   events: string[];
   styles: any[];
+  dragPanDisabled: boolean;
+  doubleClickDisabled: boolean;
 } = {
   options: null,
   setDataPayloads: [],
@@ -39,10 +41,24 @@ const state: {
   styledataCb: null,
   events: [],
   styles: [],
+  dragPanDisabled: false,
+  doubleClickDisabled: false,
 };
+
+function last<T>(values: T[]): T | undefined {
+  return values[values.length - 1];
+}
 
 vi.mock("maplibre-gl", () => {
   class FakeMap {
+    dragPan = {
+      disable: () => { state.dragPanDisabled = true; },
+      enable: () => { state.dragPanDisabled = false; },
+    };
+    doubleClickZoom = {
+      disable: () => { state.doubleClickDisabled = true; },
+      enable: () => { state.doubleClickDisabled = false; },
+    };
     constructor(options: Record<string, unknown>) {
       state.events.push("map");
       state.options = options;
@@ -238,6 +254,8 @@ describe("MapCanvas", () => {
     state.styledataCb = null;
     state.events = [];
     state.styles = [];
+    state.dragPanDisabled = false;
+    state.doubleClickDisabled = false;
   });
 
   it("initializes centered on Taiwan", () => {
@@ -249,6 +267,215 @@ describe("MapCanvas", () => {
     expect(center[0]).toBeLessThan(123);
     expect(center[1]).toBeGreaterThan(21);
     expect(center[1]).toBeLessThan(26);
+  });
+
+  it("finishes polygon drawing as closed longitude-latitude GeoJSON", () => {
+    const onAreaGeometryChange = vi.fn();
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaDrawMode: "polygon",
+          onAreaGeometryChange,
+        })}
+      />,
+    );
+
+    expect(state.doubleClickDisabled).toBe(true);
+    act(() => state.handlers.click?.({ lngLat: { lng: 120, lat: 22 }, point: {} }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 22 }, point: {} }));
+    act(() => state.handlers.click?.({ lngLat: { lng: 121, lat: 23 }, point: {} }));
+    expect(onAreaGeometryChange).not.toHaveBeenCalled();
+    act(() => state.handlers.dblclick?.({ preventDefault: () => {} }));
+
+    expect(onAreaGeometryChange).toHaveBeenCalledWith({
+      type: "Polygon",
+      coordinates: [[[120, 22], [121, 22], [121, 23], [120, 22]]],
+    });
+  });
+
+  it("finishes rectangle drawing on mouseup without an implicit scan", () => {
+    const onAreaGeometryChange = vi.fn();
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaDrawMode: "rectangle",
+          onAreaGeometryChange,
+        })}
+      />,
+    );
+
+    act(() => state.handlers.mousedown?.({ lngLat: { lng: 120, lat: 22 } }));
+    expect(state.dragPanDisabled).toBe(true);
+    act(() => state.handlers.mousemove?.({ lngLat: { lng: 121, lat: 23 } }));
+    expect(onAreaGeometryChange).not.toHaveBeenCalled();
+    act(() => state.handlers.mouseup?.({ lngLat: { lng: 121, lat: 23 } }));
+
+    expect(onAreaGeometryChange).toHaveBeenCalledWith({
+      type: "Polygon",
+      coordinates: [[[120, 22], [121, 22], [121, 23], [120, 23], [120, 22]]],
+    });
+    expect(state.dragPanDisabled).toBe(false);
+  });
+
+  it("renders and selects emphasized Area Scan vessels on a separate source", () => {
+    const onSelectVessel = vi.fn();
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaGeometry: {
+            type: "Polygon",
+            coordinates: [[[120, 22], [121, 22], [121, 23], [120, 22]]],
+          },
+          areaVessels: [vessels[0]],
+          onSelectVessel,
+        })}
+      />,
+    );
+
+    expect(state.sources).toContain("area-scan-geometry");
+    expect(state.sources).toContain("area-scan-vessels");
+    expect(state.layers.map((layer) => layer.id)).toEqual(
+      expect.arrayContaining([
+        "area-scan-fill",
+        "area-scan-line",
+        "area-scan-vessels-dot",
+      ]),
+    );
+    act(() =>
+      state.layerHandlers["click:area-scan-vessels-dot"]?.({ features: [{ id: "v1" }] }),
+    );
+    expect(onSelectVessel).toHaveBeenCalledWith(vessels[0], "datalastic");
+  });
+
+  it("keeps same-ID live and Area Scan marker provenance separate", () => {
+    const onSelectVessel = vi.fn();
+    const scanVersion: LiveVesselFeature = {
+      ...vessels[0],
+      geometry: { type: "Point", coordinates: [122, 24] },
+      properties: { ...vessels[0].properties, name: "SCAN", source: "datalastic" },
+    };
+    render(
+      <MapCanvas
+        {...baseProps({ areaVessels: [scanVersion], onSelectVessel })}
+      />,
+    );
+
+    act(() =>
+      state.layerHandlers["click:live-vessels-dot"]?.({
+        features: [{ id: "v1", layer: { id: "live-vessels-dot" } }],
+      }),
+    );
+    act(() =>
+      state.layerHandlers["click:area-scan-vessels-dot"]?.({
+        features: [{ id: "v1", layer: { id: "area-scan-vessels-dot" } }],
+      }),
+    );
+
+    expect(onSelectVessel).toHaveBeenNthCalledWith(1, vessels[0], "live");
+    expect(onSelectVessel).toHaveBeenNthCalledWith(2, scanVersion, "datalastic");
+  });
+
+  it("flies to and selects only the requested source when IDs collide", () => {
+    const scanVersion: LiveVesselFeature = {
+      ...vessels[0],
+      geometry: { type: "Point", coordinates: [122, 24] },
+      properties: { ...vessels[0].properties, source: "datalastic" },
+    };
+    render(
+      <MapCanvas
+        {...baseProps({
+          selectedId: "v1",
+          selectedSource: "datalastic",
+          areaVessels: [scanVersion],
+        })}
+      />,
+    );
+
+    expect(last(state.flyToCalls)?.center).toEqual([122, 24]);
+    const liveState = state.featureStates.find(
+      (entry: any) => entry.id.source === "live-vessels" && entry.id.id === "v1",
+    );
+    const scanState = state.featureStates.find(
+      (entry: any) => entry.id.source === "area-scan-vessels" && entry.id.id === "v1",
+    );
+    expect(liveState?.state.selected).toBe(false);
+    expect(scanState?.state.selected).toBe(true);
+  });
+
+  it("clears only Area Scan sources and live refresh never overwrites them", () => {
+    const scanVersion: LiveVesselFeature = {
+      ...vessels[0],
+      id: "scan-1",
+      properties: { ...vessels[0].properties, provider_id: "scan-1", source: "datalastic" },
+    };
+    const geometry: GeoJSON.Polygon = {
+      type: "Polygon",
+      coordinates: [[[120, 22], [121, 22], [121, 23], [120, 22]]],
+    };
+    const { rerender } = render(
+      <MapCanvas {...baseProps({ areaGeometry: geometry, areaVessels: [scanVersion] })} />,
+    );
+
+    rerender(
+      <MapCanvas
+        {...baseProps({
+          vessels: [vessels[1]],
+          areaGeometry: geometry,
+          areaVessels: [scanVersion],
+        })}
+      />,
+    );
+    const retained = last(
+      state.setDataPayloads.filter((entry) => entry.id === "area-scan-vessels"),
+    );
+    expect(retained.data.features[0].id).toBe("scan-1");
+
+    rerender(<MapCanvas {...baseProps({ vessels: [vessels[1]], areaGeometry: null, areaVessels: [] })} />);
+    const clearedVessels = last(
+      state.setDataPayloads.filter((entry) => entry.id === "area-scan-vessels"),
+    );
+    const clearedGeometry = last(
+      state.setDataPayloads.filter((entry) => entry.id === "area-scan-geometry"),
+    );
+    expect(clearedVessels.data.features).toEqual([]);
+    expect(clearedGeometry.data.features).toEqual([]);
+  });
+
+  it("restores Area Scan geometry and vessels after style reload", () => {
+    const geometry: GeoJSON.Polygon = {
+      type: "Polygon",
+      coordinates: [[[120, 22], [121, 22], [121, 23], [120, 22]]],
+    };
+    const { rerender } = render(
+      <MapCanvas {...baseProps({ areaGeometry: geometry, areaVessels: [vessels[0]] })} />,
+    );
+    rerender(
+      <MapCanvas
+        {...baseProps({
+          areaGeometry: geometry,
+          areaVessels: [vessels[0]],
+          layers: { ...DEFAULT_LAYER_STATE, baseMap: "nlsc-photo" },
+        })}
+      />,
+    );
+    act(() => state.styledataCb?.());
+
+    expect(state.sources).toEqual(expect.arrayContaining(["area-scan-geometry", "area-scan-vessels"]));
+    expect(
+      last(state.setDataPayloads.filter((entry) => entry.id === "area-scan-vessels"))
+        ?.data.features[0].id,
+    ).toBe("v1");
+  });
+
+  it("Escape cancels drawing internals and restores pointer interactions", () => {
+    render(<MapCanvas {...baseProps({ areaDrawMode: "rectangle" })} />);
+    act(() => state.handlers.mousedown?.({ lngLat: { lng: 120, lat: 22 } }));
+    expect(state.dragPanDisabled).toBe(true);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(state.dragPanDisabled).toBe(false);
+    expect(state.doubleClickDisabled).toBe(false);
   });
 
   it("bypasses NLSC in no-source mode and latches PMTiles failure to emergency", () => {
@@ -364,7 +591,10 @@ describe("MapCanvas", () => {
     const clickHandler = state.layerHandlers["click:live-vessels-symbols"];
     expect(clickHandler).toBeTruthy();
     clickHandler({ features: [{ id: "v1" }] });
-    expect(onSelectVessel).toHaveBeenCalledWith(expect.objectContaining({ id: "v1" }));
+    expect(onSelectVessel).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "v1" }),
+      "live",
+    );
   });
 
   it("deselects when clicking empty map (no vessel under cursor)", () => {
@@ -407,6 +637,35 @@ describe("MapCanvas", () => {
     expect(onSelectVessel).not.toHaveBeenCalled();
   });
 
+  it("keeps hover provenance separate when live and Area Scan share an id", () => {
+    const sharedLive = {
+      ...vessels[0],
+      id: "shared-hover",
+      properties: { ...vessels[0].properties, provider_id: "shared-hover", name: "LIVE NAME" },
+    };
+    const sharedArea = {
+      ...sharedLive,
+      properties: { ...sharedLive.properties, name: "AREA NAME", source: "datalastic" },
+    };
+    render(
+      <MapCanvas
+        {...baseProps({ vessels: [sharedLive], areaVessels: [sharedArea] })}
+      />,
+    );
+
+    act(() => state.layerHandlers["mousemove:live-vessels-symbols"]?.({
+      features: [{ id: "shared-hover", source: "live-vessels" }],
+      lngLat: { lng: 120, lat: 22.3 },
+    }));
+    expect(last(state.popupHtml)).toContain("LIVE NAME");
+
+    act(() => state.layerHandlers["mousemove:area-scan-vessels-dot"]?.({
+      features: [{ id: "shared-hover", source: "area-scan-vessels" }],
+      lngLat: { lng: 120, lat: 22.3 },
+    }));
+    expect(last(state.popupHtml)).toContain("AREA NAME");
+  });
+
   it("pauses follow when the user drags the map", () => {
     const onUserInteract = vi.fn();
     render(<MapCanvas {...baseProps({ follow: true, selectedId: "v1", onUserInteract })} />);
@@ -414,6 +673,83 @@ describe("MapCanvas", () => {
     expect(dragstart).toBeTruthy();
     dragstart();
     expect(onUserInteract).toHaveBeenCalled();
+  });
+
+  it("follows a stale Area Scan vessel at its measured position without projection", () => {
+    const callbacks: FrameRequestCallback[] = [];
+    const animationFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      callbacks.push(cb);
+      return callbacks.length;
+    });
+    const staleAreaVessel: LiveVesselFeature = {
+      ...vessels[0],
+      id: "area-stale",
+      geometry: { type: "Point", coordinates: [120.25, 22.55] },
+      properties: {
+        ...vessels[0].properties,
+        provider_id: "area-stale",
+        source: "datalastic",
+        sog_knots: 20,
+        cog_deg: 90,
+        heading_deg: 90,
+        freshness_state: "stale",
+        data_age_seconds: 1_200,
+      },
+    };
+
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaVessels: [staleAreaVessel],
+          selectedId: staleAreaVessel.id,
+          selectedSource: "datalastic",
+          follow: true,
+        })}
+      />,
+    );
+    act(() => callbacks[0]?.(0));
+
+    expect(last(state.easeToCalls)?.center).toEqual([120.25, 22.55]);
+    animationFrame.mockRestore();
+  });
+
+  it("follows an unknown-timestamp Area Scan vessel at its measured position", () => {
+    const callbacks: FrameRequestCallback[] = [];
+    const animationFrame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
+      callbacks.push(cb);
+      return callbacks.length;
+    });
+    const unknownAreaVessel: LiveVesselFeature = {
+      ...vessels[0],
+      id: "area-unknown",
+      geometry: { type: "Point", coordinates: [120.25, 22.55] },
+      properties: {
+        ...vessels[0].properties,
+        provider_id: "area-unknown",
+        source: "datalastic",
+        sog_knots: 20,
+        cog_deg: 90,
+        heading_deg: 90,
+        observed_at: null,
+        freshness_state: "unknown",
+        data_age_seconds: null,
+      },
+    };
+
+    render(
+      <MapCanvas
+        {...baseProps({
+          areaVessels: [unknownAreaVessel],
+          selectedId: unknownAreaVessel.id,
+          selectedSource: "datalastic",
+          follow: true,
+        })}
+      />,
+    );
+    act(() => callbacks[0]?.(0));
+
+    expect(last(state.easeToCalls)?.center).toEqual([120.25, 22.55]);
+    animationFrame.mockRestore();
   });
 
   // --- Rendering reliability regression tests (zero-vessel bug) ------------ //
@@ -570,10 +906,17 @@ describe("MapCanvas", () => {
     ],
   };
 
-  it("preserves current behavior exactly when overlays are absent", () => {
+  it("does not install caller overlays when generic overlays are absent", () => {
     render(<MapCanvas {...baseProps()} />);
-    // No source/layer ids other than the built-in vessel/track/port/airspace set.
-    const builtInSources = ["live-vessels", "selected-track", "ports", "airspace"];
+    // Only built-in sources, including the dedicated Area Scan paths, exist.
+    const builtInSources = [
+      "live-vessels",
+      "selected-track",
+      "ports",
+      "airspace",
+      "area-scan-geometry",
+      "area-scan-vessels",
+    ];
     expect(state.sources.every((s) => builtInSources.includes(s))).toBe(true);
     expect(state.layers.every((l) => !l.id.startsWith("ext-"))).toBe(true);
   });

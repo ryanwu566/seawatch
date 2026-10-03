@@ -145,6 +145,29 @@ export interface Dict {
   demoPositionStatus: string;
   demoSourceLabel: string;
 
+  // Explicit Datalastic Area Scan
+  areaScan: string;
+  areaScanPolygon: string;
+  areaScanRectangle: string;
+  areaScanDrawHint: string;
+  areaScanReady: string;
+  areaScanOperatorCredential: string;
+  areaScanOperatorCredentialHint: string;
+  areaScanAuthenticate: string;
+  areaScanAuthenticating: string;
+  areaScanAuthenticated: string;
+  areaScanAuthFailed: string;
+  areaScanSessionExpired: string;
+  scanArea: string;
+  clearAreaScan: string;
+  areaScanning: string;
+  areaScanResults: string;
+  areaScanTime: string;
+  areaScanQueries: string;
+  areaScanCached: string;
+  datalasticLiveAis: string;
+  datalasticUnavailable: string;
+
   // Layers
   layers: string;
   baseMaps: string;
@@ -447,6 +470,27 @@ const zhHant: Dict = {
   demoViewVessel: "檢視示範船舶",
   demoPositionStatus: "示範 / 說明用途",
   demoSourceLabel: "示範資料",
+  areaScan: "區域掃描",
+  areaScanPolygon: "多邊形",
+  areaScanRectangle: "矩形",
+  areaScanDrawHint: "在地圖上繪製掃描範圍",
+  areaScanReady: "已選取區域",
+  areaScanOperatorCredential: "區域掃描操作密碼",
+  areaScanOperatorCredentialHint: "輸入伺服器設定的操作密碼",
+  areaScanAuthenticate: "啟用區域掃描",
+  areaScanAuthenticating: "驗證中…",
+  areaScanAuthenticated: "區域掃描工作階段已啟用",
+  areaScanAuthFailed: "區域掃描操作驗證失敗",
+  areaScanSessionExpired: "區域掃描工作階段已失效，請重新驗證",
+  scanArea: "掃描區域",
+  clearAreaScan: "清除",
+  areaScanning: "掃描中…",
+  areaScanResults: "掃描船舶",
+  areaScanTime: "掃描時間",
+  areaScanQueries: "供應商查詢",
+  areaScanCached: "快取結果",
+  datalasticLiveAis: "Datalastic Live AIS",
+  datalasticUnavailable: "Datalastic Live AIS 目前無法使用",
   illustrativeAirspace: "示意空域",
 
   loading: "載入中…",
@@ -696,6 +740,27 @@ const en: Dict = {
   demoViewVessel: "View demo vessel",
   demoPositionStatus: "DEMO / Illustrative",
   demoSourceLabel: "Demo fixture",
+  areaScan: "Area Scan",
+  areaScanPolygon: "Polygon",
+  areaScanRectangle: "Rectangle",
+  areaScanDrawHint: "Draw a scan area on the map",
+  areaScanReady: "Area selected",
+  areaScanOperatorCredential: "Area Scan operator credential",
+  areaScanOperatorCredentialHint: "Enter the server-configured operator credential",
+  areaScanAuthenticate: "Enable Area Scan",
+  areaScanAuthenticating: "Authenticating…",
+  areaScanAuthenticated: "Area Scan session enabled",
+  areaScanAuthFailed: "Area Scan operator authentication failed",
+  areaScanSessionExpired: "Area Scan session expired; authenticate again",
+  scanArea: "Scan Area",
+  clearAreaScan: "Clear",
+  areaScanning: "Scanning…",
+  areaScanResults: "Vessels found",
+  areaScanTime: "Scan time",
+  areaScanQueries: "Provider queries",
+  areaScanCached: "Cached result",
+  datalasticLiveAis: "Datalastic Live AIS",
+  datalasticUnavailable: "Datalastic Live AIS currently unavailable",
   illustrativeAirspace: "Illustrative Airspace",
 
   loading: "Loading…",

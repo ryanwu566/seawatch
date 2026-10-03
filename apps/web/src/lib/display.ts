@@ -6,10 +6,10 @@ import type { Dict } from "../i18n/dictionaries";
  * Map a raw provider id to a friendly, bilingual source label. The raw id is
  * only ever shown under advanced/debug info, never in the main UI.
  */
-export function friendlySource(_providerId: string, t: Dict): string {
+export function friendlySource(providerId: string, t: Dict): string {
   // All live data currently comes from the Open Waters AIS feed. The friendly
   // label follows the active language (即時 AIS / Live AIS).
-  return t.liveSourceLabel;
+  return providerId === "datalastic" ? t.datalasticLiveAis : t.liveSourceLabel;
 }
 
 /** The attribution line always names the real upstream feed. */

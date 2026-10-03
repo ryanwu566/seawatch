@@ -21,6 +21,7 @@ import {
 import { projectPosition, type MeasuredFix } from "../lib/interpolation";
 import { normalizeOrientation } from "../lib/orientation";
 import { makeShipIcon } from "../lib/shipIcon";
+import type { AreaDrawMode } from "./AreaScanPanel";
 
 export interface Viewport {
   minLat: number;
@@ -33,19 +34,27 @@ interface MapCanvasProps {
   vessels: LiveVesselFeature[];
   layers: LayerState;
   selectedId: string | null;
+  selectedSource?: "live" | "datalastic" | null;
   selectedTrack: GeoJSON.Feature | null;
   follow: boolean;
   /** Fit the map to these [west,south,east,north] bounds (preset navigation). */
   fitBounds?: [number, number, number, number] | null;
   /** Nonce bumped by the caller to re-trigger the same fitBounds. */
   fitBoundsNonce?: number;
-  onSelectVessel: (feature: LiveVesselFeature) => void;
+  onSelectVessel: (
+    feature: LiveVesselFeature,
+    source?: "live" | "datalastic",
+  ) => void;
   onDeselect: () => void;
   onViewportChange: (viewport: Viewport) => void;
   /** Fired when the user manually pans/zooms, so follow mode can pause. */
   onUserInteract?: () => void;
   onBaseMapError?: (message: string | null) => void;
   operatingMode?: OperatingMode;
+  areaDrawMode?: AreaDrawMode;
+  areaGeometry?: GeoJSON.Polygon | null;
+  areaVessels?: LiveVesselFeature[];
+  onAreaGeometryChange?: (geometry: GeoJSON.Polygon) => void;
   /**
    * Optional, generic GeoJSON overlay layer groups rendered ABOVE the built-in
    * overlays. This is a logistics-agnostic seam: the caller supplies named
@@ -77,10 +86,16 @@ const AIRSPACE_SOURCE = "airspace";
 const AIRSPACE_FILL = "airspace-fill";
 const AIRSPACE_LINE = "airspace-line";
 const SHIP_ICON = "ship-icon";
+const AREA_GEOMETRY_SOURCE = "area-scan-geometry";
+const AREA_FILL_LAYER = "area-scan-fill";
+const AREA_LINE_LAYER = "area-scan-line";
+const AREA_VESSEL_SOURCE = "area-scan-vessels";
+const AREA_VESSEL_LAYER = "area-scan-vessels-dot";
 
 // Both vessel layers are interactive; the dot always renders, the symbol may
 // not until the raster style is loaded.
 const VESSEL_INTERACTIVE_LAYERS = [VESSEL_LAYER, VESSEL_DOT_LAYER];
+const ALL_VESSEL_INTERACTIVE_LAYERS = [...VESSEL_INTERACTIVE_LAYERS, AREA_VESSEL_LAYER];
 
 const FOLLOW_ZOOM = 11;
 
@@ -95,6 +110,7 @@ export function MapCanvas({
   vessels,
   layers,
   selectedId,
+  selectedSource = null,
   selectedTrack,
   follow,
   fitBounds,
@@ -105,6 +121,10 @@ export function MapCanvas({
   onUserInteract,
   onBaseMapError,
   operatingMode = "CLOUD_LIVE",
+  areaDrawMode = null,
+  areaGeometry = null,
+  areaVessels = [],
+  onAreaGeometryChange,
   overlays = null,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -114,12 +134,19 @@ export function MapCanvas({
   const rafRef = useRef<number | null>(null);
   const currentBaseRef = useRef<string>(layers.baseMap);
   const selectedIdRef = useRef<string | null>(selectedId);
+  const selectedSourceRef = useRef<"live" | "datalastic" | null>(selectedSource);
   const followRef = useRef<boolean>(follow);
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const programmaticMoveRef = useRef(false);
   const failureRef = useRef<OnlineFailureState>("healthy");
   const operatingModeRef = useRef(operatingMode);
   const overlaysRef = useRef<MapOverlays | null>(overlays);
+  const areaDrawModeRef = useRef<AreaDrawMode>(areaDrawMode);
+  const areaGeometryRef = useRef<GeoJSON.Polygon | null>(areaGeometry);
+  const areaVesselsRef = useRef<LiveVesselFeature[]>(areaVessels);
+  const onAreaGeometryChangeRef = useRef(onAreaGeometryChange);
+  const polygonDraftRef = useRef<Array<[number, number]>>([]);
+  const rectangleStartRef = useRef<[number, number] | null>(null);
   const initialStage = selectOfflineBasemap(operatingMode, "healthy");
   const stageRef = useRef<BasemapStage>(initialStage);
   const [basemapStage, setBasemapStage] = useState<BasemapStage>(initialStage);
@@ -127,9 +154,14 @@ export function MapCanvas({
   // Keep latest props in refs for the animation loop and event handlers.
   vesselsRef.current = vessels;
   selectedIdRef.current = selectedId;
+  selectedSourceRef.current = selectedSource;
   followRef.current = follow;
   operatingModeRef.current = operatingMode;
   overlaysRef.current = overlays;
+  areaDrawModeRef.current = areaDrawMode;
+  areaGeometryRef.current = areaGeometry;
+  areaVesselsRef.current = areaVessels;
+  onAreaGeometryChangeRef.current = onAreaGeometryChange;
 
   // Initialize the map once.
   useEffect(() => {
@@ -163,7 +195,16 @@ export function MapCanvas({
           setBasemapStage(nextStage);
           map.setStyle(styleForStage(nextStage, layers.baseMap));
           map.once("styledata", () =>
-            restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current, overlaysRef.current),
+            restoreOverlays(
+              map,
+              layers,
+              vesselsRef.current,
+              selectedIdRef.current,
+              selectedSourceRef.current,
+              areaGeometryRef.current,
+              areaVesselsRef.current,
+              overlaysRef.current,
+            ),
           );
         }
       }
@@ -172,7 +213,19 @@ export function MapCanvas({
     map.on("load", () => {
       loadedRef.current = true;
       installOverlays(map, overlaysRef.current);
-      applyVessels(map, vesselsRef.current, selectedIdRef.current);
+      applyVessels(
+        map,
+        vesselsRef.current,
+        selectedIdRef.current,
+        selectedSourceRef.current,
+      );
+      applyAreaGeometry(map, areaGeometryRef.current);
+      applyAreaVessels(
+        map,
+        areaVesselsRef.current,
+        selectedIdRef.current,
+        selectedSourceRef.current,
+      );
       applyLayerVisibility(map, layers, selectedIdRef.current);
       applyPorts(map, layers);
       applyAirspace(map, layers);
@@ -194,25 +247,91 @@ export function MapCanvas({
       const feature = e.features?.[0];
       if (!feature) return;
       const match = vesselsRef.current.find((v) => v.id === feature.id);
-      if (match) onSelectVessel(match);
+      if (match) onSelectVessel(match, "live");
+    });
+    map.on("click", AREA_VESSEL_LAYER, (e) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const match = areaVesselsRef.current.find((v) => v.id === feature.id);
+      if (match) onSelectVessel(match, "datalastic");
     });
 
-    // Click empty map (not on a vessel) -> deselect.
+    // Polygon drawing is local-only until the user explicitly presses Scan.
+    // Coordinates are always GeoJSON longitude-latitude order.
     map.on("click", (e) => {
-      const hits = map.queryRenderedFeatures(e.point, { layers: existingLayers(map, VESSEL_INTERACTIVE_LAYERS) });
+      if (areaDrawModeRef.current === "polygon") {
+        polygonDraftRef.current.push([e.lngLat.lng, e.lngLat.lat]);
+        if (polygonDraftRef.current.length >= 3) {
+          applyAreaGeometry(map, polygonFromPoints(polygonDraftRef.current));
+        }
+        return;
+      }
+      if (areaDrawModeRef.current !== null) return;
+      const hits = map.queryRenderedFeatures(e.point, {
+        layers: existingLayers(map, ALL_VESSEL_INTERACTIVE_LAYERS),
+      });
       if (hits.length === 0) onDeselect();
     });
 
+    map.on("dblclick", (e) => {
+      if (areaDrawModeRef.current !== "polygon") return;
+      e.preventDefault?.();
+      if (polygonDraftRef.current.length < 3) return;
+      const geometry = polygonFromPoints(polygonDraftRef.current);
+      polygonDraftRef.current = [];
+      applyAreaGeometry(map, geometry);
+      onAreaGeometryChangeRef.current?.(geometry);
+    });
+
+    map.on("mousedown", (e) => {
+      if (areaDrawModeRef.current !== "rectangle") return;
+      rectangleStartRef.current = [e.lngLat.lng, e.lngLat.lat];
+      map.dragPan.disable();
+    });
+    map.on("mousemove", (e) => {
+      const start = rectangleStartRef.current;
+      if (areaDrawModeRef.current !== "rectangle" || !start) return;
+      applyAreaGeometry(map, rectangleFromCorners(start, [e.lngLat.lng, e.lngLat.lat]));
+    });
+    map.on("mouseup", (e) => {
+      const start = rectangleStartRef.current;
+      if (areaDrawModeRef.current !== "rectangle" || !start) return;
+      const geometry = rectangleFromCorners(start, [e.lngLat.lng, e.lngLat.lat]);
+      rectangleStartRef.current = null;
+      map.dragPan.enable();
+      applyAreaGeometry(map, geometry);
+      onAreaGeometryChangeRef.current?.(geometry);
+    });
+
+    const cancelDrawing = () => {
+      polygonDraftRef.current = [];
+      rectangleStartRef.current = null;
+      map.dragPan.enable();
+      map.doubleClickZoom.enable();
+      applyAreaGeometry(map, areaGeometryRef.current);
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") cancelDrawing();
+    };
+    const onPointerUp = () => {
+      if (rectangleStartRef.current !== null) cancelDrawing();
+    };
+    window.addEventListener("keydown", onEscape);
+    window.addEventListener("pointerup", onPointerUp);
+
     // Hover tooltip (desktop) — lightweight, does not open the panel.
-    map.on("mousemove", VESSEL_INTERACTIVE_LAYERS, (e) => {
+    map.on("mousemove", ALL_VESSEL_INTERACTIVE_LAYERS, (e) => {
       map.getCanvas().style.cursor = "pointer";
       const feature = e.features?.[0];
       if (!feature) return;
-      const match = vesselsRef.current.find((v) => v.id === feature.id);
+      const sourceVessels = feature.source === AREA_VESSEL_SOURCE
+        ? areaVesselsRef.current
+        : vesselsRef.current;
+      const match = sourceVessels.find((v) => v.id === feature.id);
       if (!match) return;
       showHoverPopup(map, popupRef, match, e.lngLat);
     });
-    map.on("mouseleave", VESSEL_INTERACTIVE_LAYERS, () => {
+    map.on("mouseleave", ALL_VESSEL_INTERACTIVE_LAYERS, () => {
       map.getCanvas().style.cursor = "";
       popupRef.current?.remove();
     });
@@ -224,6 +343,10 @@ export function MapCanvas({
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       loadedRef.current = false;
       popupRef.current?.remove();
+      window.removeEventListener("keydown", onEscape);
+      window.removeEventListener("pointerup", onPointerUp);
+      map.dragPan.enable();
+      map.doubleClickZoom.enable();
       map.remove();
       mapRef.current = null;
     };
@@ -241,7 +364,16 @@ export function MapCanvas({
     setBasemapStage(nextStage);
     map.setStyle(styleForStage(nextStage, layers.baseMap));
     map.once("styledata", () =>
-      restoreOverlays(map, layers, vesselsRef.current, selectedIdRef.current, overlaysRef.current),
+      restoreOverlays(
+        map,
+        layers,
+        vesselsRef.current,
+        selectedIdRef.current,
+        selectedSourceRef.current,
+        areaGeometryRef.current,
+        areaVesselsRef.current,
+        overlaysRef.current,
+      ),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operatingMode]);
@@ -257,7 +389,14 @@ export function MapCanvas({
     map.setStyle(nlscStyle(layers.baseMap));
     map.once("styledata", () => {
       installOverlays(map, overlaysRef.current);
-      applyVessels(map, vesselsRef.current, selectedIdRef.current);
+      applyVessels(map, vesselsRef.current, selectedIdRef.current, selectedSourceRef.current);
+      applyAreaGeometry(map, areaGeometryRef.current);
+      applyAreaVessels(
+        map,
+        areaVesselsRef.current,
+        selectedIdRef.current,
+        selectedSourceRef.current,
+      );
       applyLayerVisibility(map, layers, selectedIdRef.current);
       applyPorts(map, layers);
       applyAirspace(map, layers);
@@ -269,11 +408,28 @@ export function MapCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    applyVessels(map, vessels, selectedId);
+    applyVessels(map, vessels, selectedId, selectedSource);
     applyLayerVisibility(map, layers, selectedId);
     applyPorts(map, layers);
     applyAirspace(map, layers);
-  }, [vessels, layers, selectedId]);
+  }, [vessels, layers, selectedId, selectedSource]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    applyAreaGeometry(map, areaGeometry);
+    applyAreaVessels(map, areaVessels, selectedId, selectedSource);
+  }, [areaGeometry, areaVessels, selectedId, selectedSource]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    polygonDraftRef.current = [];
+    rectangleStartRef.current = null;
+    if (areaDrawMode === "polygon") map.doubleClickZoom.disable();
+    else map.doubleClickZoom.enable();
+    if (areaDrawMode !== "rectangle") map.dragPan.enable();
+  }, [areaDrawMode]);
 
   // Install/refresh generic caller overlays when they change. Null preserves
   // current behavior (nothing extra is touched).
@@ -287,14 +443,22 @@ export function MapCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    applySelectedState(map, vesselsRef.current, selectedId);
-  }, [selectedId]);
+    applySelectedState(
+      map,
+      vesselsRef.current,
+      selectedId,
+      areaVesselsRef.current,
+      selectedSource,
+    );
+  }, [selectedId, selectedSource]);
 
   // Fly to the newly selected vessel.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current || !selectedId) return;
-    const match = vesselsRef.current.find((v) => v.id === selectedId);
+    const selectedVessels =
+      selectedSource === "datalastic" ? areaVesselsRef.current : vesselsRef.current;
+    const match = selectedVessels.find((v) => v.id === selectedId);
     if (!match) return;
     programmaticMoveRef.current = true;
     map.flyTo({
@@ -308,7 +472,7 @@ export function MapCanvas({
       programmaticMoveRef.current = false;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  }, [selectedId, selectedSource]);
 
   // Fit to a preset region (quick-location navigation).
   useEffect(() => {
@@ -343,8 +507,27 @@ export function MapCanvas({
     const step = () => {
       const map = mapRef.current;
       if (map && loadedRef.current) {
-        applyVessels(map, vesselsRef.current, selectedIdRef.current);
-        maybeFollow(map, vesselsRef.current, selectedIdRef.current, followRef, programmaticMoveRef);
+        applyVessels(
+          map,
+          vesselsRef.current,
+          selectedIdRef.current,
+          selectedSourceRef.current,
+        );
+        applyAreaVessels(
+          map,
+          areaVesselsRef.current,
+          selectedIdRef.current,
+          selectedSourceRef.current,
+        );
+        maybeFollow(
+          map,
+          selectedSourceRef.current === "datalastic"
+            ? areaVesselsRef.current
+            : vesselsRef.current,
+          selectedIdRef.current,
+          followRef,
+          programmaticMoveRef,
+        );
       }
       rafRef.current = requestAnimationFrame(step);
     };
@@ -559,6 +742,54 @@ function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
       paint: { "line-color": "#a855f7", "line-width": 1.5, "line-dasharray": [2, 2] },
     });
   }
+  if (!map.getSource(AREA_GEOMETRY_SOURCE)) {
+    map.addSource(AREA_GEOMETRY_SOURCE, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+  }
+  if (!map.getLayer(AREA_FILL_LAYER)) {
+    map.addLayer({
+      id: AREA_FILL_LAYER,
+      type: "fill",
+      source: AREA_GEOMETRY_SOURCE,
+      paint: { "fill-color": "#f59e0b", "fill-opacity": 0.14 },
+    });
+  }
+  if (!map.getLayer(AREA_LINE_LAYER)) {
+    map.addLayer({
+      id: AREA_LINE_LAYER,
+      type: "line",
+      source: AREA_GEOMETRY_SOURCE,
+      paint: { "line-color": "#fbbf24", "line-width": 2.5 },
+    });
+  }
+  if (!map.getSource(AREA_VESSEL_SOURCE)) {
+    map.addSource(AREA_VESSEL_SOURCE, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+      promoteId: "fid",
+    });
+  }
+  if (!map.getLayer(AREA_VESSEL_LAYER)) {
+    map.addLayer({
+      id: AREA_VESSEL_LAYER,
+      type: "circle",
+      source: AREA_VESSEL_SOURCE,
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 4.5, 10, 7],
+        "circle-color": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false],
+          "#fde68a",
+          "#f59e0b",
+        ],
+        "circle-opacity": 0.95,
+        "circle-stroke-color": "#fff7ed",
+        "circle-stroke-width": 2,
+      },
+    });
+  }
   // Generic, caller-provided overlays (logistics-agnostic). Installed last so
   // they render above the built-in layers, and re-installed on every style
   // change via restoreOverlays. Idempotent: existing sources are updated via
@@ -595,10 +826,15 @@ function restoreOverlays(
   layers: LayerState,
   vessels: LiveVesselFeature[],
   selectedId: string | null,
+  selectedSource: "live" | "datalastic" | null,
+  areaGeometry: GeoJSON.Polygon | null,
+  areaVessels: LiveVesselFeature[],
   overlays?: MapOverlays | null,
 ) {
   installOverlays(map, overlays);
-  applyVessels(map, vessels, selectedId);
+  applyVessels(map, vessels, selectedId, selectedSource);
+  applyAreaGeometry(map, areaGeometry);
+  applyAreaVessels(map, areaVessels, selectedId, selectedSource);
   applyLayerVisibility(map, layers, selectedId);
   applyPorts(map, layers);
   applyAirspace(map, layers);
@@ -609,6 +845,7 @@ function applyVessels(
   map: maplibregl.Map,
   vessels: LiveVesselFeature[],
   selectedId: string | null,
+  selectedSource: "live" | "datalastic" | null,
 ) {
   const source = map.getSource(VESSEL_SOURCE) as maplibregl.GeoJSONSource | undefined;
   if (!source) return;
@@ -620,7 +857,7 @@ function applyVessels(
       lat: v.geometry.coordinates[1],
       sogKnots: v.properties.sog_knots,
       courseDeg: course,
-      observedAtMs: Date.parse(v.properties.observed_at),
+      observedAtMs: Date.parse(v.properties.observed_at ?? ""),
     };
     const projected = projectPosition(fix, now);
     const isInterpolated = projected.interpolated || v.properties.synthesized;
@@ -638,7 +875,35 @@ function applyVessels(
     };
   });
   source.setData({ type: "FeatureCollection", features });
-  applySelectedState(map, vessels, selectedId);
+  applySelectedState(map, vessels, selectedId, [], selectedSource);
+}
+
+function applyAreaGeometry(map: maplibregl.Map, geometry: GeoJSON.Polygon | null) {
+  const source = map.getSource(AREA_GEOMETRY_SOURCE) as maplibregl.GeoJSONSource | undefined;
+  if (!source) return;
+  source.setData(
+    geometry
+      ? { type: "Feature", geometry, properties: {} }
+      : { type: "FeatureCollection", features: [] },
+  );
+}
+
+function applyAreaVessels(
+  map: maplibregl.Map,
+  vessels: LiveVesselFeature[],
+  selectedId: string | null,
+  selectedSource: "live" | "datalastic" | null,
+) {
+  const source = map.getSource(AREA_VESSEL_SOURCE) as maplibregl.GeoJSONSource | undefined;
+  if (!source) return;
+  source.setData({
+    type: "FeatureCollection",
+    features: vessels.map((v) => ({
+      ...v,
+      properties: { ...v.properties, fid: v.id },
+    })),
+  });
+  applySelectedState(map, [], selectedId, vessels, selectedSource);
 }
 
 /** Set the "selected" feature-state on the active vessel, clearing others. */
@@ -646,18 +911,52 @@ function applySelectedState(
   map: maplibregl.Map,
   vessels: LiveVesselFeature[],
   selectedId: string | null,
+  areaVessels: LiveVesselFeature[] = [],
+  selectedSource: "live" | "datalastic" | null = null,
 ) {
-  if (!map.getSource(VESSEL_SOURCE)) return;
-  for (const v of vessels) {
-    try {
-      map.setFeatureState(
-        { source: VESSEL_SOURCE, id: v.id },
-        { selected: selectedId !== null && v.id === selectedId },
-      );
-    } catch {
-      // Feature not yet in the tile index; ignore.
+  for (const [source, sourceVessels] of [
+    [VESSEL_SOURCE, vessels],
+    [AREA_VESSEL_SOURCE, areaVessels],
+  ] as const) {
+    if (!map.getSource(source)) continue;
+    for (const v of sourceVessels) {
+      try {
+        map.setFeatureState(
+          { source, id: v.id },
+          {
+            selected:
+              selectedId !== null &&
+              v.id === selectedId &&
+              (source === AREA_VESSEL_SOURCE
+                ? selectedSource === "datalastic"
+                : selectedSource !== "datalastic"),
+          },
+        );
+      } catch {
+        // Feature not yet in the tile index; ignore.
+      }
     }
   }
+}
+
+function polygonFromPoints(points: Array<[number, number]>): GeoJSON.Polygon {
+  return { type: "Polygon", coordinates: [[...points, points[0]]] };
+}
+
+function rectangleFromCorners(
+  start: [number, number],
+  end: [number, number],
+): GeoJSON.Polygon {
+  return {
+    type: "Polygon",
+    coordinates: [[
+      [start[0], start[1]],
+      [end[0], start[1]],
+      [end[0], end[1]],
+      [start[0], end[1]],
+      [start[0], start[1]],
+    ]],
+  };
 }
 
 /** Smoothly keep the map centered on the selected vessel while following. */
@@ -673,16 +972,22 @@ function maybeFollow(
   if (!match) return;
   const now = Date.now();
   const course = normalizeOrientation(match.properties.heading_deg, match.properties.cog_deg);
-  const projected = projectPosition(
-    {
-      lon: match.geometry.coordinates[0],
-      lat: match.geometry.coordinates[1],
-      sogKnots: match.properties.sog_knots,
-      courseDeg: course,
-      observedAtMs: Date.parse(match.properties.observed_at),
-    },
-    now,
-  );
+  const projected = match.properties.freshness_state === "stale"
+    || match.properties.freshness_state === "unknown"
+    ? {
+        lon: match.geometry.coordinates[0],
+        lat: match.geometry.coordinates[1],
+      }
+    : projectPosition(
+        {
+          lon: match.geometry.coordinates[0],
+          lat: match.geometry.coordinates[1],
+          sogKnots: match.properties.sog_knots,
+          courseDeg: course,
+          observedAtMs: Date.parse(match.properties.observed_at ?? ""),
+        },
+        now,
+      );
   const center = map.getCenter();
   const dLon = Math.abs(center.lng - projected.lon);
   const dLat = Math.abs(center.lat - projected.lat);
@@ -702,7 +1007,9 @@ function showHoverPopup(
   const sog = v.properties.sog_knots === null ? "—" : `${v.properties.sog_knots.toFixed(1)} kn`;
   const course = normalizeOrientation(v.properties.heading_deg, v.properties.cog_deg);
   const courseStr = course === null ? "—" : `${Math.round(course)}°`;
-  const age = `${Math.round(v.properties.data_age_seconds)}s`;
+  const age = v.properties.data_age_seconds === null
+    ? "—"
+    : `${Math.round(v.properties.data_age_seconds)}s`;
   const html = `<div class="vessel-tooltip"><strong>${escapeHtml(name)}</strong><br/>${sog} · ${courseStr} · ${age}</div>`;
   if (!popupRef.current) {
     popupRef.current = new maplibregl.Popup({

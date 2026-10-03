@@ -110,7 +110,9 @@ function buildObservation(feature: LiveVesselFeature): VesselObservation {
     speedKnots: observed(p.sog_knots),
     headingDeg: observed(course),
     lastUpdateSeconds: observed(
-      Number.isFinite(p.data_age_seconds) ? p.data_age_seconds : null,
+      typeof p.data_age_seconds === "number" && Number.isFinite(p.data_age_seconds)
+        ? p.data_age_seconds
+        : null,
     ),
   };
 }
