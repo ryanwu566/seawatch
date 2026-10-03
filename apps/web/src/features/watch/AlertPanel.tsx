@@ -108,6 +108,28 @@ export function AlertPanel({ detail, loading, busy, onStatus, onNote, onClose }:
           <p className="wf-fine">Risk combines behaviours as independent evidence (noisy-OR), weighted by data confidence. It is a review priority, not a probability of wrongdoing.</p>
         </section>
 
+        {detail.ml?.available && (
+          <section className={`wf-ml ${detail.ml.agreement}`}>
+            <h3>Statistical second opinion</h3>
+            <p>
+              <b>{detail.ml.agreement === "agree" ? "Model agrees" : "Rules only"}</b> - {detail.ml.note}
+            </p>
+            <div className="wf-ml-scores">
+              <span>Anomaly score <b>{detail.ml.if_score?.toFixed(0)}</b>/100 <small>(unsupervised)</small></span>
+              <span>Behaviour match <b>{detail.ml.gb_score?.toFixed(0)}</b>/100 <small>(supervised)</small></span>
+            </div>
+            {detail.ml.deviations && detail.ml.deviations.length > 0 && (
+              <ul className="wf-bullets">
+                {detail.ml.deviations.map((d) => (
+                  <li key={d.label}>
+                    {d.label}: <b>{d.value}{d.unit && ` ${d.unit}`}</b> vs typical {d.typical}{d.unit && ` ${d.unit}`}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         <section>
           <h3>Event timeline</h3>
           <ol className="wf-timeline">

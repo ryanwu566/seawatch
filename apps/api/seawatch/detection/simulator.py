@@ -198,8 +198,9 @@ def _lane_start(route, f_event: float, hours_before: float, speed: float):
 # World builder
 # --------------------------------------------------------------------------- #
 class _World:
-    def __init__(self, seed: int, t0: float = T0, hours: float = HOURS):
+    def __init__(self, seed: int, t0: float = T0, hours: float = HOURS, hard: bool = False):
         self.rng = np.random.default_rng(seed)
+        self.hard = hard
         self.t0, self.t1 = t0, t0 + hours * 3600
         self.receivers = build_receivers()
         self.zones = build_zones()
@@ -226,6 +227,11 @@ class _World:
         self._n += 1
         return f"{prefix}-{self._n:03d}"
 
+    def k(self) -> float:
+        """Event-strength scale: 1 in demo mode; in hard mode events range from marginal to clear."""
+
+        return float(self.rng.uniform(0.45, 1.15)) if self.hard else 1.0
+
     # reporting layer --------------------------------------------------------
     def covered(self, lat, lon):
         d = np.full(np.shape(lat), 1e9)
@@ -249,6 +255,11 @@ class _World:
         la = la + self.rng.normal(0, 15 / 111_320.0, la.size)
         lo = lo + self.rng.normal(0, 15 / 111_320.0, lo.size)
         keep = (t >= self.t0) & (t <= self.t1)
+        if self.hard:
+            keep &= self.rng.random(t.size) > 0.06  # random message loss
+            if self.rng.random() < 0.12 and t.size > 30:  # benign receiver / transponder outage
+                a = t[self.rng.integers(10, t.size - 10)]
+                keep &= ~((t >= a) & (t <= a + self.rng.uniform(45, 90) * 60))
         for a, b in dark or []:
             keep &= ~((t >= a) & (t <= b))
         return Track(mmsi, name, ship_type, flag, t[keep], la[keep], lo[keep],
@@ -308,7 +319,7 @@ class _World:
         m = Mover(self.rng, *pts[0], tev - 3 * 3600)
         for p in pts[1:]:
             m.go_to(*p, sp, wander=0.02)
-        dur = self.rng.uniform(95, 150) * 60
+        dur = self.rng.uniform(95, 150) * 60 * self.k()
         self.add(self.report(m, stype, mmsi, name, flag, dark=[(tev, tev + dur)]))
         self.label("dark_gap", [mmsi], tev, tev + dur, "Tanker stops transmitting for ~2h mid-strait while under way")
 
@@ -347,7 +358,7 @@ class _World:
         m = Mover(self.rng, *pts[0], tev - 2 * 3600)
         m.go_to(23.93, 119.48, sp)
         t_a = m.t
-        m.circle(23.95, 119.44, 1.1, self.rng.uniform(230, 290), 2.3)
+        m.circle(23.95, 119.44, 1.1, self.rng.uniform(230, 290) * self.k(), 2.3)
         t_b = m.t
         m.go_to(24.0, 119.7, sp)
         m.go_to(24.8, 120.3, sp)
@@ -373,7 +384,7 @@ class _World:
         m = Mover(self.rng, 23.70, 119.55, tev - 80 * 60)
         m.go_to(23.95, 119.31, 9.5)
         t_in = m.t
-        m.hold(75, 0.3)
+        m.hold(75 * self.k(), 0.3)
         t_out = m.t
         m.go_to(24.05, 119.75, 10.5)
         m.go_to(24.80, 120.3, 12)
@@ -384,6 +395,7 @@ class _World:
         tev = self._tev(8, 20)
         P = (23.62 + self.rng.uniform(-.05, .05), 119.82)
         ids = [self.identity("tanker", "CN"), self.identity("tanker", "PA")]
+        kk = self.k()
         legs = []
         for k, (mmsi, name, flag) in enumerate(ids):
             start = (22.9, 120.0) if k == 0 else (24.6, 120.15)
@@ -391,14 +403,14 @@ class _World:
             lead = float(haversine_m(*start, *tgt)) / (11 * KN_MS)
             m = Mover(self.rng, *start, tev - lead)
             m.go_to(P[0] + k * 0.004, P[1] + k * 0.003, 11)
-            m.hold(95, 0.5, jitter_nm=0.04)
+            m.hold(95 * kk, 0.5, jitter_nm=0.04)
             t_hold = m.t
             m.go_to(*(start if k else (24.6, 120.15)), 11)
             legs.append((m, mmsi, name, flag, t_hold))
         for m, mmsi, name, flag, _ in legs:
             self.add(self.report(m, "tanker", mmsi, name, flag))
         t_end = legs[0][4]
-        self.label("rendezvous", [i[0] for i in ids], t_end - 95 * 60, t_end, "Two tankers meet and drift together ~95 min at sea")
+        self.label("rendezvous", [i[0] for i in ids], t_end - 95 * kk * 60, t_end, "Two tankers meet and drift together ~95 min at sea")
 
     def ev_spoof(self):
         route, stype, sp = ROUTES["kaohsiung_hongkong"], "cargo", 13.0
@@ -455,6 +467,7 @@ class _World:
         tev = self._tev(8, 20)
         C = (23.55 + self.rng.uniform(-.04, .04), 118.62)
         mm = []
+        kk = self.k()
         for k in range(6):
             mmsi, name, flag = self.identity("fishing", "CN")
             ang = k * 60 + self.rng.uniform(-10, 10)
@@ -462,11 +475,11 @@ class _World:
             sl = C[0] + r / 60 * math.cos(math.radians(ang)), C[1] + r / 60 * math.sin(math.radians(ang)) / 0.92
             m = Mover(self.rng, *sl, tev - 2.2 * 3600)
             m.go_to(C[0] + self.rng.normal(0, .008), C[1] + self.rng.normal(0, .008), 7.5)
-            m.hold(100, 1.2, jitter_nm=0.1)
+            m.hold(100 * kk, 1.2, jitter_nm=0.1)
             m.go_to(*sl, 7.5)
             mm.append(mmsi)
             self.add(self.report(m, "fishing", mmsi, name, flag))
-        self.label("cluster", mm, tev, tev + 100 * 60 + 600, "Six fishing-type vessels converge and hold together outside any fishing ground")
+        self.label("cluster", mm, tev, tev + 100 * kk * 60 + 600, "Six fishing-type vessels converge and hold together outside any fishing ground")
 
     # benign look-alikes -----------------------------------------------------
     def benign_fishing_fleet(self, n=9):
@@ -521,18 +534,18 @@ EVENT_KINDS = {
 DEMO_PLAN = list(EVENT_KINDS)
 
 
-def normal_traffic(seed: int, n: int = 55) -> Scenario:
+def normal_traffic(seed: int, n: int = 55, hard: bool = False) -> Scenario:
     """Event-free traffic for pattern-of-life baselines ('historic' data)."""
 
-    w = _World(seed)
+    w = _World(seed, hard=hard)
     for _ in range(n):
         w.normal_vessel()
     return Scenario(f"history-{seed}", w.t0, w.t1, w.tracks, w.zones, w.receivers, [], seed)
 
 
 def build_scenario(seed: int = 7, plan: list[str] | None = None, n_normal: int = 55, benign: bool = True,
-                   name: str | None = None) -> Scenario:
-    w = _World(seed)
+                   name: str | None = None, hard: bool = False) -> Scenario:
+    w = _World(seed, hard=hard)
     for _ in range(n_normal):
         w.normal_vessel()
     for kind in (DEMO_PLAN if plan is None else plan):

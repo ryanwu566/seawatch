@@ -55,6 +55,7 @@ class Alert:
     recommended_action: str
     suppressed_by_feedback: str | None = None
     raised_at: float = 0.0
+    ml: dict[str, Any] | None = None
     status: str = "new"
     notes: list[dict[str, Any]] = field(default_factory=list)
 
@@ -64,7 +65,7 @@ class Alert:
             "confidence": round(self.confidence, 2), "mmsis": self.mmsis, "vessels": self.vessels,
             "t_start": self.t_start, "t_end": self.t_end, "raised_at": self.raised_at, "lat": round(self.lat, 4), "lon": round(self.lon, 4),
             "kinds": self.kinds, "status": self.status, "n_events": len(self.events),
-            "suppressed_by_feedback": self.suppressed_by_feedback, "n_notes": len(self.notes),
+            "ml_agreement": (self.ml or {}).get("agreement"), "suppressed_by_feedback": self.suppressed_by_feedback, "n_notes": len(self.notes),
             "top_reason": self.reasons[0] if self.reasons else "",
         }
 
@@ -73,7 +74,7 @@ class Alert:
         d.update({
             "reasons": self.reasons, "breakdown": self.breakdown,
             "benign_explanations": self.benign_explanations, "uncertainty": self.uncertainty,
-            "recommended_action": self.recommended_action, "notes": self.notes,
+            "recommended_action": self.recommended_action, "notes": self.notes, "ml": self.ml,
             "timeline": [e.to_dict() for e in sorted(self.events, key=lambda e: e.t_start)],
         })
         return d

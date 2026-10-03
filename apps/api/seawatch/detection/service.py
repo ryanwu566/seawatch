@@ -14,6 +14,7 @@ from .detectors import run_all
 from .evaluation import evaluate_alerts
 from .models import Event, Scenario
 from .simulator import build_scenario, normal_traffic
+from . import ml as mlmod
 from .state import FeedbackStore, default_store
 
 # When an event becomes *actionable* (earliest moment a live system could raise it).
@@ -39,6 +40,9 @@ class DetectionService:
         self.cfg = DetectionConfig()
         self.store = store or default_store()
         self._events: list[Event] | None = None
+        loaded = mlmod.load()
+        self.ml_models, self.ml_report = loaded if loaded else (None, None)
+        self._windows = None
         self._evt_cfg: dict | None = None
 
     # -- pipeline ---------------------------------------------------------- #
@@ -55,6 +59,21 @@ class DetectionService:
                 self._events, self._evt_cfg = ev, key
             return self._events
 
+    def ml_windows(self):
+        """ML window scores for the live scenario (computed once, only if a trained model exists)."""
+
+        if self.ml_models is None:
+            return None
+        with self.lock:
+            if self._windows is None:
+                from .features import window_features
+
+                df = window_features(self.scenario.tracks, self.scenario.t0, self.scenario.t1, self._context())
+                df["gb"] = self.ml_models.gb_score(df)
+                df["if"] = self.ml_models.if_score(df)
+                self._windows = df
+            return self._windows
+
     def alerts(self, as_of: float | None = None, include_dismissed: bool = False) -> list[Alert]:
         evs = self.events()
         if as_of is not None:
@@ -64,6 +83,9 @@ class DetectionService:
             self.store.apply(a)
             a.raised_at = min(e.metrics.get("detected_at", e.t_end) for e in a.events if e.kind != "dark_rendezvous") \
                 if any(e.kind != "dark_rendezvous" for e in a.events) else a.t_end
+            w = self.ml_windows()
+            if w is not None:
+                a.ml = mlmod.score_alert(self.ml_models, w, a.mmsis, a.t_start, a.t_end, a.risk)
         if not include_dismissed:
             al = [a for a in al if a.status != "false_alarm"]
         return al

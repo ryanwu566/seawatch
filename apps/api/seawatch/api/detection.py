@@ -104,6 +104,12 @@ def evaluation() -> dict[str, Any]:
     return get_service().evaluation()
 
 
+@router.get("/ml", summary="ML models: benchmark vs rules on held-out simulations")
+def ml_report() -> dict[str, Any]:
+    svc = get_service()
+    return {"trained": svc.ml_models is not None, "benchmark": svc.ml_report}
+
+
 @router.get("/truth", summary="Ground-truth labels (demo 'reveal answers')")
 def truth() -> dict[str, Any]:
     return {"truth": get_service().truth()}

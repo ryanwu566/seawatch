@@ -67,7 +67,17 @@ export interface BreakdownItem {
   points: number;
 }
 
+export interface MlOpinion {
+  available: boolean;
+  gb_score?: number;
+  if_score?: number;
+  agreement?: "agree" | "rules_only";
+  note?: string;
+  deviations?: { label: string; value: number; unit: string; typical: number; z: number }[];
+}
+
 export interface AlertDetail extends AlertSummary {
+  ml: MlOpinion | null;
   reasons: string[];
   breakdown: BreakdownItem[];
   benign_explanations: string[];
