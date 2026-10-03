@@ -220,7 +220,7 @@ class _World:
                 break
         name = f"{_ADJ[self.rng.integers(len(_ADJ))]} {_NOUN[self.rng.integers(len(_NOUN))]}"
         if ship_type == "fishing":
-            name = f"FU YUAN YU {self.rng.integers(100, 999)}" if flag != "US" else f"F/V {name.split()[0].title()} {name.split()[1].title()}"
+            name = f"HAI FENG YU {self.rng.integers(100, 999)}" if flag != "US" else f"F/V {name.split()[0].title()} {name.split()[1].title()}"
         return mmsi, name, flag
 
     def tid(self, prefix: str) -> str:

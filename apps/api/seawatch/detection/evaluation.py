@@ -19,6 +19,7 @@ ACCEPT = {
     "identity_conflict": {"identity_conflict", "position_jump"},
     "route_deviation": {"route_deviation"},
     "cluster": {"cluster", "rendezvous"},
+    "survey_pattern": {"survey_pattern"},
 }
 TOL_S = 3600.0
 

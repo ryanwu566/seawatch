@@ -93,10 +93,13 @@ export function vesselsFC(tracks: TrackDto[], t: number, flagged: Map<string, { 
   return { type: "FeatureCollection", features };
 }
 
+/** At most this many alert rings are drawn; the queue still lists everything. Keeps a busy picture readable. */
+const MAX_RINGS = 70;
+
 export function alertRingsFC(alerts: AlertSummary[]): FC {
   return {
     type: "FeatureCollection",
-    features: alerts.map((a) => ({
+    features: [...alerts].sort((a, b) => b.risk - a.risk).slice(0, MAX_RINGS).map((a) => ({
       type: "Feature",
       properties: { id: a.id, level: a.level, color: LEVEL_COLOR[a.level], risk: a.risk, title: a.title },
       geometry: { type: "Point", coordinates: [a.lon, a.lat] },

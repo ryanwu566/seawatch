@@ -31,6 +31,7 @@ export const KIND_META: Record<string, KindMeta> = {
   zone_entry: { label: "Zone entry", short: "ZONE", color: "#ff6b6b", what: "Entering a protected, restricted or cable zone." },
   position_jump: { label: "Position anomaly", short: "SPOOF?", color: "#74c0fc", what: "Reported position jumps in a physically impossible way." },
   identity_conflict: { label: "Identity conflict", short: "CLONE?", color: "#63e6be", what: "One MMSI reported from two places at once." },
+  survey_pattern: { label: "Survey-like track", short: "SURVEY", color: "#ff922b", what: "Back-and-forth lawnmower or zig-zag legs typical of seabed / cable survey work." },
   status_mismatch: { label: "Status mismatch", short: "STATUS", color: "#a5d8ff", what: "Declares itself anchored or moored but is under way." },
   route_deviation: { label: "Off-route", short: "OFF-ROUTE", color: "#ffd43b", what: "Travelling through water normal traffic does not use." },
   dark_rendezvous: { label: "Possible dark transfer", short: "DARK STS", color: "#e599f7", what: "One vessel dark while another stops where it could have gone." },
@@ -88,6 +89,7 @@ export function fmtPos(lat: number, lon: number): string {
 }
 
 export const FLAG_NAME: Record<string, string> = {
+  TWN: "Taiwan", CHN: "China", HKG: "Hong Kong", PAN: "Panama", LBR: "Liberia", MHL: "Marshall Is.", SGP: "Singapore", JPN: "Japan",
   TW: "Taiwan", CN: "China", HK: "Hong Kong", PA: "Panama", MH: "Marshall Is.", LR: "Liberia", JP: "Japan",
 };
 

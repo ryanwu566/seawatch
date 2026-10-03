@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from .alerts import Alert, build_alerts
-from .config import PARAM_SPECS, DetectionConfig
+from .config import PARAM_SPECS, PARAM_SPECS_HOURLY, DetectionConfig
 from .context import DetectionContext, TrafficBaseline
 from .detectors import run_all
 from .evaluation import evaluate_alerts
@@ -24,6 +24,12 @@ REGIONS: dict[str, dict[str, Any]] = {
         "note": "Real recorded AIS (NOAA, 3 Jan 2024) with labelled behaviours added. Models learned from the 1-2 Jan history.",
         "model_path": "data/models/ml_sf-bay.joblib", "features": PORTABLE,
     },
+    "taiwan-gfw": {
+        "label": "Taiwan waters - real AIS presence (GFW, Sep 2026)", "timezone": "Asia/Taipei", "data_kind": "real_plus_injected",
+        "note": "Real hourly AIS presence (Global Fishing Watch, ~11 km cells, 1-29 Sep 2026) with labelled behaviours added. "
+                "History (1-25 Sep) trains the baselines; the last 4 days are monitored. Not message-level AIS.",
+        "model_path": "data/models/ml_taiwan-gfw.joblib", "features": PORTABLE, "hourly": True,
+    },
     "taiwan": {
         "label": "Taiwan waters (simulated)", "timezone": "Asia/Taipei", "data_kind": "simulated",
         "note": "Fully simulated vessel tracks with labelled events - no live AIS feed connected.",
@@ -37,7 +43,13 @@ def available_regions() -> list[dict[str, Any]]:
 
     out = []
     for rid, r in REGIONS.items():
-        ok = rid != "sf-bay" or len(list(Path(".").glob("data/processed/sfbay_2024-01-0*.parquet"))) >= 2
+        ok = True
+        if rid == "sf-bay":
+            ok = len(list(Path(".").glob("data/processed/sfbay_2024-01-0*.parquet"))) >= 2
+        elif rid == "taiwan-gfw":
+            from . import gfw
+
+            ok = gfw.available()
         out.append({"id": rid, "label": r["label"], "data_kind": r["data_kind"], "available": ok})
     return out
 
@@ -49,7 +61,10 @@ def default_region() -> str:
     avail = {r["id"]: r["available"] for r in available_regions()}
     if want in avail and avail[want]:
         return want
-    return "sf-bay" if avail.get("sf-bay") else "taiwan"
+    for rid in ("taiwan-gfw", "sf-bay"):
+        if avail.get(rid):
+            return rid
+    return "taiwan"
 
 # When an event becomes *actionable* (earliest moment a live system could raise it).
 _DETECT_LAG = {
@@ -62,6 +77,7 @@ _DETECT_LAG = {
     "position_jump": lambda e, c: e.t_end,
     "identity_conflict": lambda e, c: min(e.t_end, e.t_start + 1800),
     "status_mismatch": lambda e, c: e.t_start + 900,
+    "survey_pattern": lambda e, c: e.t_start + 0.6 * (e.t_end - e.t_start),
 }
 
 
@@ -71,13 +87,23 @@ class DetectionService:
         self.seed = seed
         self.region = region
         self.info = REGIONS[region]
-        self.cfg = DetectionConfig()
+        self.hourly = bool(self.info.get("hourly"))
+        self.cfg = DetectionConfig.hourly() if self.hourly else DetectionConfig()
         self.store = store or default_store()
+        self.watch = self._load_watchlists()
         self._events: list[Event] | None = None
         self._windows = None
         self._evt_cfg: dict | None = None
         self.parts: dict[str, Any] = {}
-        if region == "sf-bay":
+        if region == "taiwan-gfw":
+            from . import twworld
+
+            data = twworld.load()
+            self.scenario, self.parts = twworld.build_tw_scenario(data)
+            self.baseline = self.parts["baseline"]
+            self._base_ctx = twworld.make_context(self.scenario, self.parts)
+            self.learned = self.parts["learned"]
+        elif region == "sf-bay":
             from . import sfworld
 
             days = sfworld.load_days(".")
@@ -93,6 +119,25 @@ class DetectionService:
             self.learned = mlmod.make_learned(False)
         loaded = mlmod.load(self.info["model_path"], self.info["features"])
         self.ml_models, self.ml_report = loaded if loaded else (None, None)
+        if self.ml_models is not None:  # scoring every window of a big feed takes minutes: do it off the request path
+            threading.Thread(target=self._warm_windows, daemon=True).start()
+
+    @staticmethod
+    def _load_watchlists():
+        """Reported research vessels (OSINT, cited) and the sanctions list, if present locally. Matched on IMO / MMSI only."""
+
+        from pathlib import Path
+
+        from . import labels
+
+        items = []
+        for loader, path in ((labels.load_osint, "data/labels/osint_vessels.csv"), (labels.load_ofac_sdn, "data/labels/ofac_sdn.csv")):
+            if Path(path).exists():
+                try:
+                    items += loader(path)
+                except Exception:  # noqa: BLE001 - a malformed list must never stop monitoring
+                    pass
+        return labels.LabelSet(items)
 
     # -- pipeline ---------------------------------------------------------- #
     def _context(self) -> DetectionContext:
@@ -111,27 +156,28 @@ class DetectionService:
                 self._events, self._evt_cfg = ev, key
             return self._events
 
+    def _warm_windows(self) -> None:
+        try:
+            from .features import window_features
+
+            df = window_features(self.scenario.tracks, self.scenario.t0, self.scenario.t1, self._context(),
+                                 learned=self.learned, cfg=self.cfg if self.hourly else None)
+            df["gb"] = self.ml_models.gb_score(df)
+            df["if"] = self.ml_models.if_score(df)
+            self._windows = df
+        except Exception:  # noqa: BLE001 - the ML second opinion is optional; never block monitoring
+            self._windows = None
+
     def ml_windows(self):
-        """ML window scores for the live scenario (computed once, only if a trained model exists)."""
+        """ML window scores for the live scenario; None until the background scoring has finished (or if no model exists)."""
 
-        if self.ml_models is None:
-            return None
-        with self.lock:
-            if self._windows is None:
-                from .features import window_features
-
-                df = window_features(self.scenario.tracks, self.scenario.t0, self.scenario.t1, self._context(),
-                                     learned=self.learned)
-                df["gb"] = self.ml_models.gb_score(df)
-                df["if"] = self.ml_models.if_score(df)
-                self._windows = df
-            return self._windows
+        return self._windows if self.ml_models is not None else None
 
     def alerts(self, as_of: float | None = None, include_dismissed: bool = False) -> list[Alert]:
         evs = self.events()
         if as_of is not None:
             evs = [e for e in evs if e.metrics.get("detected_at", e.t_end) <= as_of]
-        al = build_alerts(evs, self.scenario.tracks, self.cfg, self.store)
+        al = build_alerts(evs, self.scenario.tracks, self.cfg, self.store, self.watch)
         for a in al:
             self.store.apply(a)
             a.raised_at = min(e.metrics.get("detected_at", e.t_end) for e in a.events if e.kind != "dark_rendezvous") \
@@ -156,6 +202,7 @@ class DetectionService:
                        "polygon": [[round(a, 4), round(b, 4)] for a, b in z.polygon]} for z in s.zones],
             "receivers": [{"id": r.id, "lat": r.lat, "lon": r.lon, "range_nm": r.range_nm} for r in s.receivers],
             "simulated": self.info["data_kind"] == "simulated",
+            "hourly": self.hourly, "tracks_sampled": len(self.scenario.tracks) > 2500,
             "region": self.region, "region_label": self.info["label"], "timezone": self.info["timezone"],
             "data_kind": self.info["data_kind"], "note": self.info["note"], "bounds": self.bounds(),
         }
@@ -164,9 +211,16 @@ class DetectionService:
         la = np.concatenate([t.lat for t in self.scenario.tracks]); lo = np.concatenate([t.lon for t in self.scenario.tracks])
         return [[float(lo.min()) - 0.05, float(la.min()) - 0.05], [float(lo.max()) + 0.05, float(la.max()) + 0.05]]
 
-    def tracks(self) -> list[dict[str, Any]]:
+    def tracks(self, max_tracks: int = 2500) -> list[dict[str, Any]]:
+        """Tracks for the map. Big feeds are sampled: every vessel in an alert or a known event, plus the longest others."""
+
         out = []
-        for t in self.scenario.tracks:
+        tracks = self.scenario.tracks
+        if len(tracks) > max_tracks:
+            keep = {m for a in self.alerts(include_dismissed=True) for m in a.mmsis} | {m for t in self.scenario.truth for m in t.mmsis}
+            rest = sorted((t for t in tracks if t.mmsi not in keep), key=lambda t: -len(t))[: max(0, max_tracks - len(keep))]
+            tracks = [t for t in tracks if t.mmsi in keep] + rest
+        for t in tracks:
             out.append({
                 "mmsi": t.mmsi, "name": t.name, "type": t.ship_type, "flag": t.flag,
                 "t": [int(x) for x in t.t],
@@ -186,7 +240,8 @@ class DetectionService:
         return out
 
     def config(self) -> dict[str, Any]:
-        return {"values": self.cfg.to_dict(), "specs": PARAM_SPECS, "defaults": DetectionConfig().to_dict()}
+        defaults = DetectionConfig.hourly() if self.hourly else DetectionConfig()
+        return {"values": self.cfg.to_dict(), "specs": PARAM_SPECS_HOURLY if self.hourly else PARAM_SPECS, "defaults": defaults.to_dict()}
 
     def set_config(self, values: dict[str, Any]) -> None:
         with self.lock:
@@ -196,7 +251,7 @@ class DetectionService:
 
     def reset_config(self) -> None:
         with self.lock:
-            self.cfg = DetectionConfig()
+            self.cfg = DetectionConfig.hourly() if self.hourly else DetectionConfig()
 
 
 _service: DetectionService | None = None

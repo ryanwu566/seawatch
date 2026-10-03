@@ -52,10 +52,10 @@ class TrafficBaseline:
         ts.append(track.t[-1:]); las.append(track.lat[-1:]); los.append(track.lon[-1:]); sg.append(track.sog[-1:])
         return np.concatenate(ts), np.concatenate(las), np.concatenate(los), np.concatenate(sg)
 
-    def fit(self, tracks: list[Track]) -> "TrafficBaseline":
+    def fit(self, tracks: list[Track], max_dt_s: float = 1800.0) -> "TrafficBaseline":
         per_cell: dict[tuple[int, int], set[str]] = {}
         for tr in tracks:
-            _, la, lo, sg = self.densify(tr)
+            _, la, lo, sg = self.densify(tr, max_dt_s=max_dt_s)
             moving = np.nan_to_num(sg, nan=0.0) >= 3.0
             ci, cj = self._cells(la[moving], lo[moving])
             for key in set(zip(ci.tolist(), cj.tolist())):

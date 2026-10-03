@@ -12,7 +12,11 @@ python scripts/train_region_ml.py       # optional, ~2 min: ML second opinion fo
 .\scripts\run_demo.ps1                  # API :8000 + web :5173
 ```
 
-Without the SF data the app falls back to the fully simulated Taiwan world. Set `SEAWATCH_REGION=taiwan|sf-bay`
+Real Taiwan data (Global Fishing Watch presence, Sept 2026): point `SEAWATCH_DATA_ROOT` at the drive that holds `SeaWatchis\historical\processed\daily`
+(default `D:\SeaWatch`); the app then starts in the `taiwan-gfw` region. The first start builds the scenario and runs detection (about 2-3 minutes,
+done in the background while the UI loads); `python scripts/train_tw_ml.py` adds the ML second opinion (~7 minutes).
+
+Without either data set the app falls back to the fully simulated Taiwan world. Set `SEAWATCH_REGION=taiwan|sf-bay`
 to choose the start-up region; the header drop-down switches it live.
 
 ## Regions
@@ -20,6 +24,7 @@ to choose the start-up region; the header drop-down switches it live.
 | Region | Background traffic | Added behaviours |
 |---|---|---|
 | `sf-bay` | **Real** recorded AIS, 3 Jan 2024 (NOAA, CC0). Models learn from 1-2 Jan. | Injected into real vessels: dark gap, loitering, spoofed jump, MMSI clone. Scripted vessels in real water lanes: rendezvous, dark ship-to-ship transfer, cluster, restricted/cable zone entries. |
+| `taiwan-gfw` | **Real** hourly AIS presence, Global Fishing Watch, Sept 2026 (~11 km cells). History 1-25 Sep; monitored 26-29 Sep. | Injected: dark gap, loitering, jump, survey pattern. Scripted: rendezvous, dark transfer, cluster, zone entries. |
 | `taiwan` | Simulated (receiver coverage, benign look-alikes, satellite-only gaps). | Same set plus route deviation. |
 
 Ground truth exists only for added behaviours; alerts on untouched real vessels are **unverified**, not "false".
@@ -73,3 +78,6 @@ MMSI clone 18/24, loitering 14/24; ~12 unverified alerts per scenario on real tr
 Loitering misses are mostly pleasure craft near marinas and vessels whose own history shows they dwell there routinely.
 
 See also `docs/real-outcomes.md` for the real-label evaluation (sanctions list, documented incidents) and what it showed.
+
+See also `docs/taiwan-real-data.md` for the real Taiwan (Global Fishing Watch, Sept 2026) region, its hourly detection preset, the
+survey / zig-zag detector, and the real-label results (sanctions list, OSINT-reported PRC research vessels).

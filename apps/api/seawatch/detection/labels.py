@@ -75,6 +75,17 @@ def load_incidents(path: str | Path) -> list[VesselLabel]:
     return out
 
 
+def load_osint(path: str | Path) -> list[VesselLabel]:
+    """OSINT-reported vessels (data/labels/osint_vessels.csv): matched on IMO, each row cites its source."""
+
+    out: list[VesselLabel] = []
+    with open(path, encoding="utf8", newline="") as fh:
+        for r in csv.DictReader(row for row in fh if not row.startswith("#")):
+            out.append(VesselLabel("watchlist", r["imo"].strip(), r.get("mmsi", "").strip(), tuple(n for n in r["names"].split("|") if n),
+                                   r["category"], r["source_note"], note=r["observed"], confidence="reported"))
+    return out
+
+
 @dataclass
 class LabelSet:
     labels: list[VesselLabel] = field(default_factory=list)

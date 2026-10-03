@@ -36,8 +36,9 @@ PORTABLE = [
 ]
 
 
-def _neighbour_grids(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext):
-    grid, LAT, LON, SOG, _ = _resample(tracks, t0, t1, ctx)
+def _neighbour_grids(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, grid_s: float = GRID_S, bracket_s: float = 1200.0,
+                     near_m: float = 3000.0, group_nm: float = 3.0):
+    grid, LAT, LON, SOG, _ = _resample(tracks, t0, t1, ctx, grid_s, bracket_s)
     V, K = LAT.shape
     nn_slow = np.full((V, K), 99.0)
     group = np.zeros((V, K))
@@ -52,24 +53,27 @@ def _neighbour_grids(tracks: list[Track], t0: float, t1: float, ctx: DetectionCo
         slow = SOG[idx, k] <= 4.0
         for a in range(idx.size):
             if slow[a]:
-                cand = tree.query_ball_point(pts[a], 3000.0)
+                cand = tree.query_ball_point(pts[a], near_m)
                 ds = [np.hypot(*(pts[b] - pts[a])) for b in cand if b != a and slow[b]]
                 if ds:
                     nn_slow[idx[a], k] = min(ds) / NM_M
-            group[idx[a], k] = len(tree.query_ball_point(pts[a], 3 * NM_M))
+            group[idx[a], k] = len(tree.query_ball_point(pts[a], group_nm * NM_M))
     return grid, nn_slow, group
 
 
 def window_features(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext,
-                    truth: list[TruthEvent] | None = None, learned: LearnedContext | None = None) -> pd.DataFrame:
-    grid, nn_slow, group = _neighbour_grids(tracks, t0, t1, ctx)
+                    truth: list[TruthEvent] | None = None, learned: LearnedContext | None = None, cfg=None) -> pd.DataFrame:
+    ws_, st_ = (cfg.window_s, cfg.step_s) if cfg else (WINDOW_S, STEP_S)
+    coarse = bool(cfg and cfg.grid_s > 600)
+    grid, nn_slow, group = _neighbour_grids(tracks, t0, t1, ctx, cfg.grid_s if cfg else GRID_S, cfg.bracket_s if cfg else 1200.0,
+                                            12000.0 if coarse else 3000.0, 6.0 if coarse else 3.0)
     rows: list[dict] = []
     for v, tr in enumerate(tracks):
         if len(tr) < 2:
             continue
-        starts = np.arange(max(t0, tr.t[0] - 1800), min(t1, tr.t[-1] + 1800) - WINDOW_S + 1, STEP_S)
+        starts = np.arange(max(t0, tr.t[0] - st_ / 2), min(t1, tr.t[-1] + st_ / 2) - ws_ + 1, st_)
         for ws in starts:
-            we = ws + WINDOW_S
+            we = ws + ws_
             i0 = int(np.searchsorted(tr.t, ws))
             i1 = int(np.searchsorted(tr.t, we))
             lo, hi = max(0, i0 - 1), min(len(tr), i1 + 1)  # include neighbours for gap calc
@@ -99,7 +103,7 @@ def window_features(tracks: list[Track], t0: float, t1: float, ctx: DetectionCon
                 disp = np.hypot(x[-1] - x[0], y[-1] - y[0])
                 row["path_ratio"] = float(min(20.0, seg.sum() / max(disp, 200.0)))
                 dc = np.abs((np.diff(np.nan_to_num(cg)) + 180) % 360 - 180)
-                row["turn_per_h"] = float(dc.sum() / (WINDOW_S / 3600))
+                row["turn_per_h"] = float(dc.sum() / (ws_ / 3600))
             else:
                 row.update(radius_nm=0.0, path_ratio=1.0, turn_per_h=0.0)
             if la_ctx.size >= 2:
@@ -124,7 +128,7 @@ def window_features(tracks: list[Track], t0: float, t1: float, ctx: DetectionCon
             row["in_fish_frac"] = float(ctx.in_kinds(ref_la, ref_lo, ("fishing_ground",)).mean())
             if learned is not None and ref_la.size:
                 row["stop_area_frac"] = float(learned.stop_area_frac(ref_la, ref_lo))
-                exp_n = WINDOW_S / max(learned.expected_interval_s(float(ref_la.mean()), float(ref_lo.mean())), 1.0)
+                exp_n = ws_ / max(learned.expected_interval_s(float(ref_la.mean()), float(ref_lo.mean())), 1.0)
                 row["report_ratio"] = float(min(3.0, n / max(exp_n, 1.0)))
                 row["gap_ratio"] = float(min(60.0, max_gap * 60 / max(learned.expected_interval_s(float(ref_la.mean()), float(ref_lo.mean())), 1.0)))
             else:

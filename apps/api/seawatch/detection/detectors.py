@@ -99,13 +99,27 @@ def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig
             ends_la, ends_lo = np.array([la0, la1]), np.array([lo0, lo1])
             in_port = bool(ctx.in_kinds(ends_la, ends_lo, BENIGN_AREA_KINDS).any()) or (
                 float(np.nan_to_num(tr.sog[i], nan=0.0)) < 2.0 and bool(ctx.benign_mask(ends_la, ends_lo).any()))
-            if ctx.near_edge(la0, lo0) or ctx.near_edge(la1, lo1):
+            if ctx.near_edge(la0, lo0, cfg.edge_margin_nm) or ctx.near_edge(la1, lo1, cfg.edge_margin_nm):
                 continue  # left / re-entered the monitored area rather than going dark
             if in_port or (tr.status is not None and int(tr.status[i]) in STATIC_STATUS):
                 continue  # switching off alongside / at anchor is routine
+            coarse_feed = cfg.grid_s > 600  # hourly cells: the straight line between two reports says little about coverage en route
+            own_hist = ctx.habits.gap_p95.get(tr.mmsi) if ctx.habits is not None else None
+            if own_hist is not None and own_hist <= max(3 * typical, 3 * cfg.grid_s / 3):
+                # this vessel has a record of reporting steadily here, so the coverage guess is moot: it should have been seen
+                c0 = c1 = True
+                cov_frac = 1.0
+            elif coarse_feed:
+                cov_frac = 1.0 if (c0 and c1) else 0.5 * (c0 + c1)
             sat_only = cov_frac < 0.6 or not (c0 and c1)
             if sat_only and dt[i] < cfg.gap_min_minutes * 60 * 2.0:
                 continue  # sparse satellite-only reporting is expected here
+            own_p95 = ctx.habits.gap_p95.get(tr.mmsi) if ctx.habits is not None else None
+            if own_p95 is not None and dt[i] <= 1.25 * own_p95:
+                continue  # this vessel is routinely silent for this long
+            peer = ctx.habits.peer_percentile(tr.ship_type, dt[i]) if ctx.habits is not None else None
+            if peer is not None and peer < 0.93 and own_p95 is None:
+                continue  # ordinary for vessels of this type, and this vessel has no record of its own to say otherwise
             dur_min = dt[i] / 60
             sog_before = float(np.nan_to_num(tr.sog[i], nan=0.0))
             underway = sog_before >= 4.0
@@ -117,6 +131,14 @@ def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig
             elif sat_only:
                 sev -= 25
                 ev.append("The gap is in an area with satellite-only reporting, where long silences are common.")
+            if peer is not None and peer >= 0.97:
+                sev += 6
+                ev.append(f"Longer than {peer * 100:.0f}% of the silences seen from similar vessels in this feed.")
+            elif peer is not None and peer < 0.93:
+                sev -= 12
+            if own_p95 is not None:
+                sev += 8
+                ev.append(f"Longer than this vessel's own usual silences (its history rarely exceeds {fmt_dur(own_p95)}).")
             if underway:
                 sev += 8
                 ev.append(f"The vessel was under way ({sog_before:.1f} kn) when it went silent.")
@@ -130,10 +152,10 @@ def detect_gaps(tracks: list[Track], ctx: DetectionContext, cfg: DetectionConfig
                 ev.append(f"Position after the gap implies {implied:.0f} kn - physically implausible for most merchant ships.")
             else:
                 ev.append(f"Position after the gap is {dist_nm:.0f} nm away, consistent with continued transit (~{implied:.0f} kn implied).")
-            stationary = dist_nm < 1.5
+            stationary = dist_nm < cfg.stationary_nm
             if stationary and not (near_zone is not None and dz <= 5):
                 sev = min(sev, 28.0)
-                ev.append("The vessel reappeared where it vanished (under 1.5 nm away) - consistent with powering down at a berth or anchorage.")
+                ev.append("The vessel reappeared where it vanished (very close) - consistent with powering down at a berth or anchorage.")
             conf = 0.55 + (0.2 if (c0 and c1 and cov_frac >= 0.8) else 0.0) + (0.1 if i >= 5 else 0.0) - (0.2 if sat_only else 0.0)
             out.append(Event(
                 "", "ais_gap", [tr.mmsi], float(tr.t[i]), float(tr.t[j]), float(mid_lat), float(mid_lon),
@@ -252,8 +274,8 @@ def _merge_overlaps(events: list[Event]) -> list[Event]:
 GRID_S = 300.0
 
 
-def _resample(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext):
-    grid = np.arange(t0, t1 + 1, GRID_S)
+def _resample(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, grid_s: float = GRID_S, bracket_s: float = 1200.0):
+    grid = np.arange(t0, t1 + 1, grid_s)
     V, K = len(tracks), grid.size
     lat = np.full((V, K), np.nan)
     lon = np.full((V, K), np.nan)
@@ -266,7 +288,7 @@ def _resample(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext):
         gi = np.searchsorted(tr.t, grid[inside])
         gi = np.clip(gi, 1, len(tr) - 1)
         near = np.minimum(grid[inside] - tr.t[gi - 1], tr.t[gi] - grid[inside])
-        good = near <= 1200  # only trust the grid where fixes bracket it closely
+        good = near <= bracket_s  # only trust the grid where fixes bracket it closely
         idx = np.where(inside)[0][good]
         lat[v, idx] = np.interp(grid[idx], tr.t, tr.lat)
         lon[v, idx] = np.interp(grid[idx], tr.t, tr.lon)
@@ -280,7 +302,8 @@ def _resample(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext):
 def detect_proximity(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, cfg: DetectionConfig) -> list[Event]:
     if len(tracks) < 2:
         return []
-    grid, LAT, LON, SOG, STAT = _resample(tracks, t0, t1, ctx)
+    GS = cfg.grid_s
+    grid, LAT, LON, SOG, STAT = _resample(tracks, t0, t1, ctx, GS, cfg.bracket_s)
     V, K = LAT.shape
     exempt = np.zeros((V, K), bool)  # in port / anchorage, or fishing vessel in a fishing ground
     for v, tr in enumerate(tracks):
@@ -369,7 +392,7 @@ def detect_proximity(tracks: list[Track], t0: float, t1: float, ctx: DetectionCo
 
     out: list[Event] = []
     for (va, vb), k0, k1, steps in pair_done:
-        dur = (k1 - k0 + 1) * GRID_S
+        dur = (k1 - k0 + 1) * GS
         if dur < cfg.rendezvous_min_minutes * 60 or steps < 0.6 * (k1 - k0 + 1):
             continue
         a, b = tracks[va], tracks[vb]
@@ -399,7 +422,7 @@ def detect_proximity(tracks: list[Track], t0: float, t1: float, ctx: DetectionCo
                          path=[(float(LAT[va, k]), float(LON[va, k])) for k in range(k0, k1 + 1, max(1, (k1 - k0) // 20)) if not np.isnan(LAT[va, k])]))
     for g in group_done:
         k0, k1 = g["first"], g["last"]
-        dur = (k1 - k0 + 1) * GRID_S
+        dur = (k1 - k0 + 1) * GS
         core = [v for v, c in g["count"].items() if c >= 0.5 * g["steps"]]
         if dur < cfg.cluster_min_minutes * 60 or len(core) < cfg.cluster_min_vessels:
             continue
@@ -436,7 +459,7 @@ def detect_zone_entries(tracks: list[Track], ctx: DetectionContext, cfg: Detecti
     for tr in tracks:
         if tr.mmsi in ctx.allowlist or len(tr) < 2:
             continue
-        t, la, lo, sg = TrafficBaseline.densify(tr, 0.5)
+        t, la, lo, sg = TrafficBaseline.densify(tr, 0.5, max_dt_s=cfg.densify_max_dt_s)
         for z in ctx.zones:
             if z.kind not in SENSITIVE_KINDS or tr.mmsi in ctx.habitual.get(z.id, ()):
                 continue  # routine users of a zone (seen entering it in the history) are not unusual
@@ -448,9 +471,13 @@ def detect_zone_entries(tracks: list[Track], ctx: DetectionContext, cfg: Detecti
                 dwell = t[e] - t[s]
                 if dwell < cfg.zone_min_dwell_minutes * 60:
                     continue
-                slow = float(np.nanmin(sg[s:e + 1])) < 3.0 and dwell > 600
+                min_sg = float(np.nanmin(sg[s:e + 1])) if np.isfinite(sg[s:e + 1]).any() else 0.0
+                slow = min_sg < 3.0 and dwell > 600
                 sev = base[z.kind] * (0.6 + 0.4 * z.sensitivity) + 8 * min(1.0, dwell / 3600)
                 ev = [f"Entered {z.name} ({z.kind}) at {fmt_pos(la[s], lo[s])} and stayed {fmt_dur(max(dwell, 60))}."]
+                if not slow and dwell <= 2 * cfg.grid_s:
+                    sev -= 18
+                    ev.append("Brief pass through the zone at speed (no stop) - weighted as a transit, not a stay.")
                 if slow:
                     sev += 15
                     ev.append("The vessel slowed to a stop inside the zone" + (" - consistent with anchoring over a cable." if z.kind == "cable" else "."))
@@ -463,7 +490,7 @@ def detect_zone_entries(tracks: list[Track], ctx: DetectionContext, cfg: Detecti
                                  ["Authorised transit not on the watch-list", "Emergency diversion or weather avoidance",
                                   "Chart or navigation error"],
                                  ["The zone boundary is approximate; a crossing within ~0.5 nm of the edge may be a position error."],
-                                 {"dwell_s": float(dwell), "zone": z.id, "min_sog_kn": round(float(np.nanmin(sg[s:e + 1])), 1)},
+                                 {"dwell_s": float(dwell), "zone": z.id, "min_sog_kn": round(min_sg, 1)},
                                  zone_id=z.id,
                                  path=[(float(a), float(b)) for a, b in zip(la[s:e + 1:max(1, (e - s) // 30)], lo[s:e + 1:max(1, (e - s) // 30)])]))
     return out
@@ -542,7 +569,7 @@ def detect_route_deviation(tracks: list[Track], ctx: DetectionContext, cfg: Dete
     for tr in tracks:
         if len(tr) < 4 or tr.ship_type in ("fishing",):
             continue
-        t, la, lo, sg = TrafficBaseline.densify(tr, 1.0)
+        t, la, lo, sg = TrafficBaseline.densify(tr, 1.0, max_dt_s=cfg.densify_max_dt_s)
         fam = ctx.baseline.familiarity(la, lo)
         under = np.nan_to_num(sg, nan=0.0) >= cfg.deviation_min_speed_kn
         exempt = ctx.benign_mask(la, lo) | ctx.in_kinds(la, lo, ("fishing_ground",))
@@ -627,6 +654,9 @@ def run_all(tracks: list[Track], t0: float, t1: float, ctx: DetectionContext, cf
     events += detect_zone_entries(tracks, ctx, cfg)
     events += detect_kinematics(tracks, ctx, cfg)
     events += detect_status_mismatch(tracks, ctx, cfg)
+    from .survey import detect_survey_pattern
+
+    events += detect_survey_pattern(tracks, ctx, cfg)
     events += detect_route_deviation(tracks, ctx, cfg)
     _group_context(events)
     events.sort(key=lambda e: e.t_start)

@@ -128,3 +128,72 @@ def test_berthed_vessels_are_not_loitering_or_dark():
     ctx = DetectionContext([], [], None)
     assert detect_loitering([berthed], ctx, DetectionConfig()) == []
     assert detect_gaps([berthed], ctx, DetectionConfig()) == []
+
+
+# --- survey-like tracks + watch-list overlay + hourly data --------------------------------------------------------
+def _hourly_track(lat, lon, name="SURVEYOR", stype="other", imo="", mmsi="412000001"):
+    import numpy as np
+
+    from apps.api.seawatch.detection.models import Track
+
+    n = len(lat)
+    t = 1_790_000_000.0 + np.arange(n) * 3600.0
+    return Track(mmsi, name, stype, "CHN", t, np.asarray(lat, float), np.asarray(lon, float), np.full(n, 4.0), np.full(n, np.nan), None, imo)
+
+
+def _lawnmower(legs=6, leg_nm=36.0, spacing_nm=5.0, per_leg=10):
+    import numpy as np
+
+    lat, lon = [], []
+    y = 0.0
+    for k in range(legs):
+        xs = np.linspace(0, leg_nm, per_leg) if k % 2 == 0 else np.linspace(leg_nm, 0, per_leg)
+        for x in xs:
+            lon.append(122.0 + x / 60.0 / 0.91)
+            lat.append(24.0 + y / 60.0)
+        y += spacing_nm
+    return lat, lon
+
+
+def test_survey_detector_finds_lawnmower_but_not_transit_or_shuttle():
+    import numpy as np
+
+    from apps.api.seawatch.detection.survey import detect_survey_pattern
+
+    cfg = DetectionConfig.hourly()
+    ctx = DetectionContext([], [], None, bounds=(21.5, 118.0, 26.5, 123.5))
+    la, lo = _lawnmower()
+    assert len(detect_survey_pattern([_hourly_track(la, lo)], ctx, cfg)) == 1
+    n = len(la)
+    transit = _hourly_track(np.linspace(23.0, 25.5, n), np.linspace(120.0, 122.5, n), name="TRANSIT")
+    assert detect_survey_pattern([transit], ctx, cfg) == []
+    shuttle_lat = np.full(n, 24.0)
+    shuttle_lon = 122.0 + np.abs(np.sin(np.linspace(0, 6 * np.pi, n))) * 0.6
+    assert detect_survey_pattern([_hourly_track(shuttle_lat, shuttle_lon, name="SHUTTLE")], ctx, cfg) == []
+    assert detect_survey_pattern([_hourly_track(la, lo, stype="fishing")], ctx, cfg) == []  # trawling lines are routine
+
+
+def test_watchlist_overlay_adds_modest_risk_and_states_the_caveat():
+    from apps.api.seawatch.detection.alerts import build_alerts
+    from apps.api.seawatch.detection.labels import LabelSet, VesselLabel
+    from apps.api.seawatch.detection.models import Event
+
+    tr = _hourly_track(*_lawnmower(), imo="9854349")
+    ev = Event("E1", "ais_gap", [tr.mmsi], tr.t[5], tr.t[20], 24.0, 122.0, 85.0, 0.8, "gap", ["silent"], ["fault"], ["unknown"], {})
+    cfg = DetectionConfig.hourly()
+    plain = build_alerts([ev], [tr], cfg)[0]
+    wl = LabelSet([VesselLabel("watchlist", imo="9854349", category="prc_research_vessel_reported", source="test", note="surveyed X", confidence="reported")])
+    watched = build_alerts([ev], [tr], cfg, None, wl)[0]
+    assert 0 < watched.risk - plain.risk <= 8.5
+    assert watched.watch and "not evidence" in " ".join(watched.reasons)
+
+
+def test_hourly_preset_does_not_alert_on_ordinary_hourly_reporting():
+    import numpy as np
+
+    from apps.api.seawatch.detection.detectors import detect_gaps
+
+    cfg = DetectionConfig.hourly()
+    ctx = DetectionContext([], [], None, bounds=(21.5, 118.0, 26.5, 123.5))
+    steady = _hourly_track(np.linspace(23.0, 24.0, 40), np.linspace(120.0, 121.0, 40))
+    assert detect_gaps([steady], ctx, cfg) == []

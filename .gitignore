@@ -64,3 +64,7 @@ data/labels/ofac_sdn.csv
 data/labels/uk_conlist.csv
 data/labels/eu_fsf.csv
 data/raw/dma/
+
+# generated models / caches
+data/models/*.joblib
+data/processed/*.pkl

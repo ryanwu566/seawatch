@@ -36,11 +36,44 @@ class DetectionConfig:
     deviation_min_minutes: float = 60.0
     deviation_min_speed_kn: float = 5.0
     deviation_familiarity: float = 1.5
+    # --- Data resolution (defaults = minute-level AIS; see hourly()) --------
+    grid_s: float = 300.0  # proximity analysis time grid
+    bracket_s: float = 1200.0  # a grid point is trusted only if a report lies this close
+    window_s: float = 7200.0  # ML feature window
+    step_s: float = 3600.0
+    learn_cell_deg: float = 0.01  # cell size of learned stop areas
+    learn_max_dt_s: float = 1800.0  # reports further apart than this are not treated as continuous
+    learn_min_slow_s: float = 1800.0
+    learn_min_stop_vessels: int = 4
+    densify_max_dt_s: float = 1800.0
+    stationary_nm: float = 1.5  # a gap that ends this close to where it began is 'stayed put', not 'went somewhere dark'
+    edge_margin_nm: float = 2.0  # silences starting/ending this close to the area edge may just be leaving the feed
+    # --- Survey / lawnmower pattern -----------------------------------------
+    survey_min_legs: int = 4
+    survey_min_leg_nm: float = 3.0
+    survey_window_h: float = 24.0
     # --- Alerting ----------------------------------------------------------
     alert_link_hours: float = 12.0
     alert_min_risk: float = 30.0
     high_risk: float = 70.0
     medium_risk: float = 45.0
+
+    @classmethod
+    def hourly(cls) -> "DetectionConfig":
+        """Preset for hourly, ~11 km-cell presence data (e.g. Global Fishing Watch vessel presence)."""
+
+        return cls(
+            gap_min_minutes=360.0, gap_max_implied_knots=40.0,
+            loiter_radius_nm=5.0, loiter_min_minutes=480.0, loiter_max_speed_kn=4.0,
+            proximity_distance_nm=6.5, rendezvous_min_minutes=240.0, rendezvous_max_speed_kn=3.5,
+            cluster_distance_nm=9.0, cluster_min_vessels=6, cluster_min_minutes=240.0,
+            jump_min_implied_knots=70.0, jump_min_distance_nm=40.0, identity_min_alternations=3,
+            deviation_min_minutes=720.0, deviation_min_speed_kn=5.0, deviation_familiarity=1.5,
+            grid_s=3600.0, bracket_s=5400.0, window_s=43200.0, step_s=21600.0,
+            learn_cell_deg=0.1, learn_max_dt_s=5400.0, learn_min_slow_s=7200.0, learn_min_stop_vessels=5,
+            densify_max_dt_s=7200.0, stationary_nm=12.0, edge_margin_nm=12.0, alert_link_hours=24.0,
+            survey_min_legs=4, survey_min_leg_nm=14.0, survey_window_h=96.0, alert_min_risk=55.0, medium_risk=70.0, high_risk=82.0,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -73,6 +106,26 @@ PARAM_SPECS: list[dict[str, Any]] = [
          help="How long a vessel must travel through water that normal traffic does not use."),
     dict(name="deviation_familiarity", group="Route deviation", label="Familiar-water cut-off", unit="vessels", min=0.5, max=5, step=0.1,
          help="Water cells with less historic traffic than this count as unfamiliar."),
+    dict(name="alert_min_risk", group="Alerting", label="Minimum risk to alert", unit="score", min=10, max=80, step=1,
+         help="Alerts below this risk score are hidden. Raise it to cut noise."),
+    dict(name="high_risk", group="Alerting", label="High-risk level", unit="score", min=50, max=95, step=1,
+         help="Risk score at which an alert is rated HIGH."),
+]
+
+
+PARAM_SPECS_HOURLY: list[dict[str, Any]] = [
+    dict(name="gap_min_minutes", group="AIS gap", label="Minimum silence", unit="min", min=120, max=1440, step=60,
+         help="A vessel that is not seen for longer than this (inside the covered area) is flagged. Lower = more alerts."),
+    dict(name="loiter_min_minutes", group="Loitering", label="Minimum dwell", unit="min", min=240, max=2160, step=60,
+         help="How long a vessel must stay in the same ~11 km cell, away from port, before it counts as loitering."),
+    dict(name="rendezvous_min_minutes", group="Rendezvous", label="Minimum meeting time", unit="min", min=120, max=720, step=60,
+         help="Two vessels sharing a cell, both slow, for at least this long."),
+    dict(name="cluster_min_vessels", group="Clustering", label="Cluster size", unit="vessels", min=3, max=20, step=1,
+         help="Number of vessels gathered together to raise a cluster."),
+    dict(name="jump_min_implied_knots", group="Spoofing", label="Impossible speed", unit="kn", min=40, max=150, step=5,
+         help="A position change implying a speed above this is treated as physically implausible."),
+    dict(name="deviation_min_minutes", group="Route deviation", label="Time off normal routes", unit="min", min=240, max=2880, step=60,
+         help="How long a vessel must travel through water that normal traffic does not use."),
     dict(name="alert_min_risk", group="Alerting", label="Minimum risk to alert", unit="score", min=10, max=80, step=1,
          help="Alerts below this risk score are hidden. Raise it to cut noise."),
     dict(name="high_risk", group="Alerting", label="High-risk level", unit="score", min=50, max=95, step=1,

@@ -66,6 +66,21 @@ def _live_ingest_enabled() -> bool:
 async def _lifespan(app: FastAPI):
     """Start/stop independent Cloud and explicitly enabled Edge consumers."""
 
+    if os.environ.get("SEAWATCH_WARM_DETECTION", "true").strip().lower() in {"1", "true", "yes", "on"}:
+        import threading
+
+        def _warm() -> None:
+            try:
+                from .detection.service import get_service
+
+                svc = get_service()
+                svc.alerts()  # builds the scenario and runs detection once so the first screen opens instantly
+                logger.info("Detection service ready (region=%s)", svc.region)
+            except Exception as exc:  # noqa: BLE001 - monitoring UI must start even if the data is missing
+                logger.warning("Detection warm-up failed: %s", exc)
+
+        threading.Thread(target=_warm, daemon=True, name="detection-warmup").start()
+
     runtime = get_live_runtime()
     consumer = None
     edge_consumer = None

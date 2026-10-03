@@ -32,12 +32,13 @@ DATA_GLOB = "data/processed/sfbay_2024-01-0*.parquet"
 class WaterGrid:
     """Where vessels have actually been: gives us water, quiet water and routes."""
 
-    def __init__(self, tracks: list[Track]):
+    def __init__(self, tracks: list[Track], cell: float = CELL):
+        self.cell = cell
         la = np.concatenate([t.lat for t in tracks])
         lo = np.concatenate([t.lon for t in tracks])
         self.la0, self.lo0 = float(la.min()) - 0.02, float(lo.min()) - 0.02
-        self.ny = int((la.max() - self.la0) / CELL) + 3
-        self.nx = int((lo.max() - self.lo0) / CELL) + 3
+        self.ny = int((la.max() - self.la0) / self.cell) + 3
+        self.nx = int((lo.max() - self.lo0) / self.cell) + 3
         cnt = np.zeros((self.ny, self.nx), np.int32)
         ij = self.ij(la, lo)
         np.add.at(cnt, (ij[0], ij[1]), 1)
@@ -48,10 +49,10 @@ class WaterGrid:
         self.water = (pad[1:-1, 1:-1] + pad[:-2, 1:-1] + pad[2:, 1:-1] + pad[1:-1, :-2] + pad[1:-1, 2:]) > 0
 
     def ij(self, lat, lon):
-        return (np.floor((np.asarray(lat) - self.la0) / CELL).astype(int), np.floor((np.asarray(lon) - self.lo0) / CELL).astype(int))
+        return (np.floor((np.asarray(lat) - self.la0) / self.cell).astype(int), np.floor((np.asarray(lon) - self.lo0) / self.cell).astype(int))
 
     def xy(self, i: int, j: int) -> tuple[float, float]:
-        return self.la0 + (i + 0.5) * CELL, self.lo0 + (j + 0.5) * CELL
+        return self.la0 + (i + 0.5) * self.cell, self.lo0 + (j + 0.5) * self.cell
 
     def open_water(self, i: int, j: int, r: int = 3) -> bool:
         blk = self.water[max(0, i - r): i + r + 1, max(0, j - r): j + r + 1]
