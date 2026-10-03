@@ -7,6 +7,7 @@ import { friendlySource, vesselTypeLabel } from "../lib/display";
 import { IntegrityBadge } from "./IntegrityBadge";
 import { VesselIntelligenceCard } from "../features/intelligence/VesselIntelligenceCard";
 import type { GeographicContext } from "../features/intelligence/geographicTypes";
+import type { SatelliteEvidence } from "../features/intelligence/satelliteEvidence";
 
 interface VesselPanelProps {
   vessel: LiveVesselFeature | null;
@@ -21,6 +22,7 @@ interface VesselPanelProps {
    * live GIS fetch). Null for all live vessels.
    */
   demoContext?: GeographicContext | null;
+  satellite_evidence?: SatelliteEvidence[];
   onClose: () => void;
 }
 
@@ -36,6 +38,7 @@ export function VesselPanel({
   demo,
   missing,
   demoContext = null,
+  satellite_evidence,
   onClose,
 }: VesselPanelProps) {
   const { t, lang } = useI18n();
@@ -161,7 +164,12 @@ export function VesselPanel({
       </section>
 
       {/* Explainable Vessel Intelligence — collapsed, additive, review support */}
-      <VesselIntelligenceCard vessel={vessel} track={track} demoContext={demoContext} />
+      <VesselIntelligenceCard
+        vessel={vessel}
+        track={track}
+        demoContext={demoContext}
+        satellite_evidence={satellite_evidence}
+      />
 
       {/* Advanced analysis — collapsed, technical fields live here */}
       <section className="advanced-analysis">

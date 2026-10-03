@@ -14,6 +14,11 @@ import { readRouteDeviation } from "./routeDeviation";
 import type { RouteDeviationView } from "./routeDeviation";
 import { fetchGeographicContext } from "./geographicContextClient";
 import type { Confidence, GeographicContext } from "./geographicTypes";
+import type {
+  SatelliteEvidence,
+  SatelliteEvidenceProvenance,
+  SatelliteEvidenceValue,
+} from "./satelliteEvidence";
 
 /**
  * Explainable Vessel Intelligence Card — a collapsed, additive section inside
@@ -26,6 +31,7 @@ export function VesselIntelligenceCard({
   vessel,
   track,
   demoContext = null,
+  satellite_evidence,
 }: {
   vessel: LiveVesselFeature;
   track: LiveTrack | null;
@@ -36,6 +42,7 @@ export function VesselIntelligenceCard({
    * entirely unaffected when this is null (the default).
    */
   demoContext?: GeographicContext | null;
+  satellite_evidence?: SatelliteEvidence[];
 }) {
   const { t, lang } = useI18n();
   const isDemo = demoContext !== null;
@@ -203,6 +210,10 @@ export function VesselIntelligenceCard({
               port + distance, maritime area context. Unknown out of coverage. */}
           <GeographicContextSection gis={gis} />
 
+          {satellite_evidence && satellite_evidence.length > 0 ? (
+            <SatelliteEvidenceSection evidence={satellite_evidence} />
+          ) : null}
+
           <p className="intelligence-human-review">{t.intelligenceHumanReview}</p>
         </div>
       )}
@@ -312,6 +323,104 @@ function HistoricalValueRow({
         <ProvenanceTag provenance={field.provenance} />
       </dd>
     </>
+  );
+}
+
+function satelliteProvenance(
+  provenance: SatelliteEvidenceProvenance | undefined,
+): Provenanced<unknown>["provenance"] {
+  if (provenance === "Observed") return "observed";
+  if (provenance === "Derived") return "derived";
+  return "unknown";
+}
+
+function SatelliteEvidenceRow({
+  label,
+  value,
+  provenance,
+}: {
+  label: string;
+  value: SatelliteEvidenceValue | undefined;
+  provenance: Provenanced<unknown>["provenance"];
+}) {
+  const { t } = useI18n();
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>
+        <span className="intelligence-value">
+          {value === undefined || value === null ? t.valueUnknown : String(value)}
+        </span>{" "}
+        <ProvenanceTag provenance={value === undefined || value === null ? "unknown" : provenance} />
+      </dd>
+    </>
+  );
+}
+
+function SatelliteEvidenceSection({ evidence }: { evidence: SatelliteEvidence[] }) {
+  const { t } = useI18n();
+  const scenes = evidence.filter(
+    (scene) =>
+      scene.availability !== undefined ||
+      scene.provider !== undefined ||
+      scene.scene_id !== undefined ||
+      scene.platform !== undefined ||
+      scene.datetime !== undefined ||
+      scene.orbit !== undefined,
+  );
+
+  if (scenes.length === 0) return null;
+
+  return (
+    <section className="satellite-evidence" data-testid="satellite-evidence">
+      <h4 className="intelligence-group">{t.satelliteEvidenceTitle}</h4>
+      {scenes.map((scene, index) => (
+        <dl className="intelligence-fields satellite-scene" data-testid="satellite-scene" key={index}>
+          {scene.availability !== undefined ? (
+            <SatelliteEvidenceRow
+              label={t.satelliteAvailability}
+              value={scene.availability}
+              provenance={satelliteProvenance(scene.provenance?.availability)}
+            />
+          ) : null}
+          {scene.provider !== undefined ? (
+            <SatelliteEvidenceRow
+              label={t.satelliteProvider}
+              value={scene.provider}
+              provenance="unknown"
+            />
+          ) : null}
+          {scene.scene_id !== undefined ? (
+            <SatelliteEvidenceRow
+              label={t.satelliteSceneId}
+              value={scene.scene_id}
+              provenance={satelliteProvenance(scene.provenance?.scene_id)}
+            />
+          ) : null}
+          {scene.platform !== undefined ? (
+            <SatelliteEvidenceRow
+              label={t.satellitePlatform}
+              value={scene.platform}
+              provenance={satelliteProvenance(scene.provenance?.platform)}
+            />
+          ) : null}
+          {scene.datetime !== undefined ? (
+            <SatelliteEvidenceRow
+              label={t.satelliteObservedDatetime}
+              value={scene.datetime}
+              provenance={satelliteProvenance(scene.provenance?.datetime)}
+            />
+          ) : null}
+          {scene.orbit !== undefined ? (
+            <SatelliteEvidenceRow
+              label={t.satelliteOrbit}
+              value={scene.orbit}
+              provenance={satelliteProvenance(scene.provenance?.orbit)}
+            />
+          ) : null}
+        </dl>
+      ))}
+    </section>
   );
 }
 

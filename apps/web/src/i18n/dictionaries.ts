@@ -130,6 +130,15 @@ export interface Dict {
   historicalUnavailable: string;
   historicalGfwSource: string;
 
+  // Satellite evidence
+  satelliteEvidenceTitle: string;
+  satelliteAvailability: string;
+  satelliteProvider: string;
+  satelliteSceneId: string;
+  satellitePlatform: string;
+  satelliteObservedDatetime: string;
+  satelliteOrbit: string;
+
   // DEMO fixture (frontend-only, illustrative)
   demoIllustrativeLabel: string;
   demoViewVessel: string;
@@ -427,6 +436,13 @@ const zhHant: Dict = {
   historicalNotFound: "此船舶無可用的歷史基準。",
   historicalUnavailable: "歷史基準目前無法使用。",
   historicalGfwSource: "Global Fishing Watch 歷史船舶出現資料",
+  satelliteEvidenceTitle: "衛星證據",
+  satelliteAvailability: "可用狀態",
+  satelliteProvider: "供應者",
+  satelliteSceneId: "場景 ID",
+  satellitePlatform: "平台",
+  satelliteObservedDatetime: "觀測時間",
+  satelliteOrbit: "軌道",
   demoIllustrativeLabel: "示範 / 說明用資料（非即時 AIS）",
   demoViewVessel: "檢視示範船舶",
   demoPositionStatus: "示範 / 說明用途",
@@ -669,6 +685,13 @@ const en: Dict = {
   historicalNotFound: "Historical baseline not available for this vessel.",
   historicalUnavailable: "Historical baseline unavailable.",
   historicalGfwSource: "Global Fishing Watch historical presence",
+  satelliteEvidenceTitle: "Satellite Evidence",
+  satelliteAvailability: "Availability",
+  satelliteProvider: "Provider",
+  satelliteSceneId: "Scene ID",
+  satellitePlatform: "Platform",
+  satelliteObservedDatetime: "Observed datetime",
+  satelliteOrbit: "Orbit",
   demoIllustrativeLabel: "DEMO / illustrative data (not live AIS)",
   demoViewVessel: "View demo vessel",
   demoPositionStatus: "DEMO / Illustrative",

@@ -1,0 +1,1 @@
+"""Satellite observation evidence metadata."""

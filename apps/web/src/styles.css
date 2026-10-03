@@ -1238,18 +1238,25 @@ body {
 /* Route Deviation (route-deviation-1) + Maritime GIS Context (gis-context-1) */
 .route-deviation,
 .geographic-context,
-.historical-baseline {
+.historical-baseline,
+.satellite-evidence {
   margin-top: 0.6rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   padding-top: 0.4rem;
 }
 .route-deviation-fields,
 .geographic-context-fields,
-.historical-baseline-fields {
+.historical-baseline-fields,
+.satellite-scene {
   margin-top: 0.2rem;
 }
 .historical-baseline-status {
   margin: 0.2rem 0 0.35rem;
+}
+.satellite-scene + .satellite-scene {
+  margin-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 0.5rem;
 }
 .route-deviation-fields .intelligence-value[data-field="status"],
 .route-deviation-fields .intelligence-value[data-field="confidence"] {

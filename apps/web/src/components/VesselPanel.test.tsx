@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { I18nProvider } from "../i18n/I18nContext";
 import { DICTIONARIES } from "../i18n/dictionaries";
 import { VesselPanel } from "./VesselPanel";
@@ -7,6 +7,14 @@ import type { LiveVesselFeature, LiveTrack } from "../api/live";
 import { getDemoScenario } from "../features/intelligence/demoScenario";
 
 const zh = DICTIONARIES["zh-Hant"];
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})) as unknown as typeof fetch);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function feature(): LiveVesselFeature {
   return {
@@ -85,6 +93,26 @@ describe("VesselPanel non-regression with the intelligence card", () => {
     ).toBeInTheDocument();
     // Collapsed by default: the body is not rendered.
     expect(screen.queryByTestId("vessel-intelligence")).toBeNull();
+  });
+
+  it("passes optional satellite evidence through to Vessel Intelligence", () => {
+    render(
+      <I18nProvider>
+        <VesselPanel
+          vessel={feature()}
+          track={track()}
+          trackLoading={false}
+          demo={false}
+          satellite_evidence={[{ scene_id: "PANEL_SCENE_001" }]}
+          onClose={() => {}}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: new RegExp(zh.intelligenceTitle) }),
+    );
+    expect(screen.getByText("PANEL_SCENE_001")).toBeInTheDocument();
   });
 
   it("still shows the empty hint when no vessel is selected", () => {
