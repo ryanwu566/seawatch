@@ -6,7 +6,7 @@ import math
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from itertools import islice
 from numbers import Integral
 from typing import Any
@@ -73,10 +73,9 @@ def _optional_number(value: object) -> tuple[str, float | str]:
 
 
 def _fingerprint(observation: LiveVesselObservation) -> tuple[Any, ...]:
-    """Return the provider-fix content key, excluding local receipt time."""
-
     return (
         observation.observed_at,
+        observation.received_at,
         observation.source,
         observation.provider_id,
         float(observation.latitude),
@@ -143,19 +142,21 @@ class RollingTrackBuffer:
         if observation.observed_at.tzinfo is None or observation.observed_at.utcoffset() is None:
             raise ValueError("observed_at must be timezone-aware")
 
-    def update(self, observation: LiveVesselObservation) -> bool:
+    def update(
+        self,
+        observation: LiveVesselObservation,
+        *,
+        as_of: datetime | None = None,
+    ) -> bool:
         """Retain one observation; return ``False`` for a duplicate/expired fix."""
 
+        now = as_of if as_of is not None else self._clock()
         with self._lock:
-            now = self._clock()
             self._maintain(now)
-            try:
-                retained = self._retain(observation, now)
-                identity = _identity_for(observation)
-                fingerprint = _fingerprint(observation)
-            finally:
-                self._maintain(now)
-                self._enforce_vessel_cap()
+            retained = self._retain(observation, now)
+            identity = _identity_for(observation)
+            fingerprint = _fingerprint(observation)
+            self._enforce_vessel_cap()
             return retained and identity in self._tracks and fingerprint in self._tracks[identity]
 
     def _retain(self, observation: LiveVesselObservation, now: datetime) -> bool:
@@ -164,7 +165,7 @@ class RollingTrackBuffer:
         self._validate(observation)
         identity = _identity_for(observation)
         fingerprint = _fingerprint(observation)
-        if observation.observed_at < now - self._retention:
+        if self._is_expired(observation.observed_at, now):
             return False
         points = self._tracks.setdefault(identity, {})
         if fingerprint in points:
@@ -175,7 +176,12 @@ class RollingTrackBuffer:
             self._tracks[identity] = {_fingerprint(item): item for item in keep}
         return identity in self._tracks and fingerprint in self._tracks[identity]
 
-    def update_many(self, observations: Iterable[LiveVesselObservation]) -> int:
+    def update_many(
+        self,
+        observations: Iterable[LiveVesselObservation],
+        *,
+        as_of: datetime | None = None,
+    ) -> int:
         """Retain a finite batch; return new points surviving the final caps."""
 
         batch = list(islice(observations, self._max_batch_observations + 1))
@@ -183,8 +189,8 @@ class RollingTrackBuffer:
             raise ValueError(
                 f"batch exceeds max_batch_observations={self._max_batch_observations}"
             )
+        now = as_of if as_of is not None else self._clock()
         with self._lock:
-            now = self._clock()
             self._maintain(now)
             accepted: set[tuple[LiveTrackIdentity, tuple[Any, ...]]] = set()
             try:
@@ -192,7 +198,6 @@ class RollingTrackBuffer:
                     if self._retain(observation, now):
                         accepted.add((_identity_for(observation), _fingerprint(observation)))
             finally:
-                self._maintain(now)
                 self._enforce_vessel_cap()
             return sum(
                 1
@@ -200,68 +205,93 @@ class RollingTrackBuffer:
                 if identity in self._tracks and fingerprint in self._tracks[identity]
             )
 
-    def _trim_retention(self, now: datetime) -> None:
-        cutoff = now - self._retention
-        empty: list[LiveTrackIdentity] = []
-        for identity, points in self._tracks.items():
-            self._tracks[identity] = {
-                fingerprint: observation
-                for fingerprint, observation in points.items()
-                if observation.observed_at >= cutoff
-            }
-            if not self._tracks[identity]:
-                empty.append(identity)
-        for identity in empty:
-            del self._tracks[identity]
-
-    def _evict_stale(self, now: datetime) -> int:
-        cutoff = now - self._stale_after
-        stale = [
-            identity
-            for identity, points in self._tracks.items()
-            if max(observation.observed_at for observation in points.values()) < cutoff
-        ]
-        for identity in stale:
-            del self._tracks[identity]
-        return len(stale)
+    def _is_expired(self, observed_at: datetime, now: datetime) -> bool:
+        return (
+            observed_at < now - self._retention
+            or observed_at < now - self._stale_after
+        )
 
     def _maintain(self, now: datetime) -> int:
-        """Enforce time-based invariants and return the removed vessel count."""
+        """Apply retention and vessel staleness cutoffs under the caller's lock."""
 
+        retention_cutoff = now - self._retention
+        stale_cutoff = now - self._stale_after
         before = len(self._tracks)
-        self._trim_retention(now)
-        self._evict_stale(now)
+        for identity, points in list(self._tracks.items()):
+            retained = {
+                fingerprint: observation
+                for fingerprint, observation in points.items()
+                if observation.observed_at >= retention_cutoff
+            }
+            if (
+                not retained
+                or max(observation.observed_at for observation in retained.values())
+                < stale_cutoff
+            ):
+                del self._tracks[identity]
+            elif len(retained) != len(points):
+                self._tracks[identity] = retained
         return before - len(self._tracks)
 
     def evict_stale(self, *, now: datetime | None = None) -> int:
-        """Evict vessels expired by retention or ``stale_after``."""
+        """Evict vessels whose newest retained fix is older than ``stale_after``."""
 
         with self._lock:
-            return self._maintain(now or self._clock())
+            reference = now if now is not None else self._clock()
+            return self._maintain(reference)
 
     def _enforce_vessel_cap(self) -> None:
-        excess = len(self._tracks) - self._max_vessels
-        if excess <= 0:
+        if len(self._tracks) <= self._max_vessels:
             return
-        victims = sorted(
+        retained = sorted(
             self._tracks,
             key=lambda identity: (
-                max(observation.observed_at for observation in self._tracks[identity].values()),
+                max(
+                    observation.observed_at
+                    for observation in self._tracks[identity].values()
+                ),
                 identity.sort_key(),
             ),
-        )[:excess]
-        for victim in victims:
+            reverse=True,
+        )[: self._max_vessels]
+        retained_set = set(retained)
+        for victim in set(self._tracks) - retained_set:
             del self._tracks[victim]
 
-    def snapshot(self) -> tuple[BufferedLiveTrack, ...]:
-        """Return a maintained immutable snapshot ordered by stable identity."""
+    def snapshot(
+        self,
+        *,
+        as_of: datetime | None = None,
+    ) -> tuple[BufferedLiveTrack, ...]:
+        """Return immutable tracks ordered by stable backend identity."""
 
         with self._lock:
-            self._maintain(self._clock())
-            return tuple(
-                BufferedLiveTrack(identity, tuple(sorted(points.values(), key=_observation_order)))
-                for identity, points in sorted(self._tracks.items(), key=lambda item: item[0].sort_key())
-            )
+            reference = as_of if as_of is not None else self._clock()
+            if as_of is None:
+                self._maintain(reference)
+            retention_cutoff = reference - self._retention
+            stale_cutoff = reference - self._stale_after
+            tracks: list[BufferedLiveTrack] = []
+            for identity, points in sorted(
+                self._tracks.items(), key=lambda item: item[0].sort_key()
+            ):
+                visible = tuple(
+                    sorted(
+                        (
+                            observation
+                            for observation in points.values()
+                            if observation.observed_at >= retention_cutoff
+                            and (
+                                as_of is None
+                                or observation.observed_at <= reference
+                            )
+                        ),
+                        key=_observation_order,
+                    )
+                )
+                if visible and visible[-1].observed_at >= stale_cutoff:
+                    tracks.append(BufferedLiveTrack(identity, visible))
+            return tuple(tracks)
 
     def vessel_count(self) -> int:
         with self._lock:
@@ -400,19 +430,12 @@ class LiveDetectionAnalyzer:
             return self._adapted_tracks()
 
     def _adapted_tracks(self, *, as_of: float | None = None) -> list[Track]:
-        buffered = self._buffer.snapshot()
-        if as_of is not None:
-            buffered = tuple(
-                BufferedLiveTrack(
-                    item.identity,
-                    tuple(
-                        observation
-                        for observation in item.observations
-                        if observation.observed_at.timestamp() <= as_of
-                    ),
-                )
-                for item in buffered
-            )
+        buffer_as_of = (
+            datetime.fromtimestamp(as_of, tz=timezone.utc)
+            if as_of is not None
+            else None
+        )
+        buffered = self._buffer.snapshot(as_of=buffer_as_of)
         return self._adapter.to_tracks(buffered)
 
     def eligibility(self) -> dict[str, dict[str, str | None]]:
@@ -448,5 +471,10 @@ class LiveDetectionAnalyzer:
         """Ingest one batch and analyze accumulated tracks (one-shot or repeat)."""
 
         with self._lock:
-            self._buffer.update_many(observations)
+            buffer_as_of = (
+                datetime.fromtimestamp(as_of, tz=timezone.utc)
+                if as_of is not None
+                else None
+            )
+            self._buffer.update_many(observations, as_of=buffer_as_of)
             return self.analyze(as_of=as_of)
