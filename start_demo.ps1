@@ -45,13 +45,50 @@ $areaScanOperatorKey = [Environment]::GetEnvironmentVariable(
     "SEAWATCH_AREA_SCAN_OPERATOR_KEY",
     [EnvironmentVariableTarget]::Process
 )
-$areaScanConfigured = (
+$areaScanAutoauthSetting = [Environment]::GetEnvironmentVariable(
+    "SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK",
+    [EnvironmentVariableTarget]::Process
+)
+$areaScanAutoauthNormalized = if ([string]::IsNullOrWhiteSpace($areaScanAutoauthSetting)) {
+    ""
+}
+else {
+    $areaScanAutoauthSetting.Trim().ToLowerInvariant()
+}
+$areaScanAutoauthValid = (
+    $areaScanAutoauthNormalized -eq "" -or
+    @("1", "true", "yes", "on", "0", "false", "no", "off") -contains $areaScanAutoauthNormalized
+)
+$areaScanAutoauthLoopback = (
+    $areaScanAutoauthValid -and
+    @("1", "true", "yes", "on") -contains $areaScanAutoauthNormalized
+)
+$areaScanSigningConfigured = (
     -not [string]::IsNullOrWhiteSpace($areaScanSigningKey) -and
+    $areaScanSigningKey.Length -ge 32
+)
+$areaScanOperatorConfigured = (
     -not [string]::IsNullOrWhiteSpace($areaScanOperatorKey) -and
-    $areaScanSigningKey.Length -ge 32 -and
     $areaScanOperatorKey.Length -ge 32
 )
-if ($areaScanConfigured) {
+$areaScanConfigured = (
+    $areaScanAutoauthValid -and
+    $areaScanSigningConfigured -and
+    ($areaScanOperatorConfigured -or $areaScanAutoauthLoopback)
+)
+if (-not $areaScanAutoauthValid) {
+    Write-Host "Area Scan loopback auto-auth: invalid (session fails closed)"
+}
+elseif ($areaScanAutoauthLoopback) {
+    Write-Host "Area Scan loopback auto-auth: enabled"
+}
+else {
+    Write-Host "Area Scan loopback auto-auth: disabled"
+}
+if ($areaScanAutoauthLoopback -and $areaScanConfigured) {
+    Write-Host "Area Scan session: configured"
+}
+elseif ($areaScanConfigured) {
     Write-Host "Area Scan operator session: configured"
 }
 else {
@@ -66,7 +103,10 @@ $allowInsecureCookie = (
     -not [string]::IsNullOrWhiteSpace($insecureCookieSetting) -and
     @("1", "true", "yes", "on") -contains $insecureCookieSetting.Trim().ToLowerInvariant()
 )
-if ($allowInsecureCookie) {
+if ($areaScanAutoauthLoopback) {
+    Write-Host "Area Scan cookie: loopback HttpOnly session enabled"
+}
+elseif ($allowInsecureCookie) {
     Write-Host "Area Scan cookie: local HTTP opt-in enabled"
 }
 else {

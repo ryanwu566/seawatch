@@ -75,7 +75,7 @@ export function LayerControl({ layers, onChange }: LayerControlProps) {
                 onChange={toggle("publicAirspace")}
               />
               {t.layerPublicAirspace}
-              <span className="layer-note">（{t.illustrativeAirspace}）</span>
+              <span className="layer-note">({t.illustrativeAirspace})</span>
             </label>
           </fieldset>
 

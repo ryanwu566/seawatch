@@ -32,24 +32,15 @@ describe("offline map configuration", () => {
     expect(serialized).not.toMatch(/https?:|glyphs|sprite|remote|cdn/i);
   });
 
-  it("keeps Cloud Live on NLSC after online basemap failures", () => {
-    expect(selectOfflineBasemap("CLOUD_LIVE", "healthy")).toBe("nlsc");
-    expect(selectOfflineBasemap("CLOUD_LIVE", "nlsc_failed")).toBe("nlsc");
-    expect(selectOfflineBasemap("CLOUD_LIVE", "pmtiles_failed")).toBe("nlsc");
+  it("uses the online vector style before local and bundled fallbacks", () => {
+    expect(selectOfflineBasemap(true, "healthy")).toBe("online");
+    expect(selectOfflineBasemap(true, "online_failed")).toBe("pmtiles");
+    expect(selectOfflineBasemap(true, "pmtiles_failed")).toBe("emergency");
   });
 
-  it.each(["EDGE_LIVE", "EDGE_REPLAY", "NO_LIVE_SOURCE"] as const)(
-    "keeps %s on the PMTiles then emergency fallback chain",
-    (mode) => {
-      expect(selectOfflineBasemap(mode, "healthy")).toBe("pmtiles");
-      expect(selectOfflineBasemap(mode, "nlsc_failed")).toBe("pmtiles");
-      expect(selectOfflineBasemap(mode, "pmtiles_failed")).toBe("emergency");
-    },
-  );
-
-  it("preserves the existing NLSC then offline fallback chain for Offline Demo", () => {
-    expect(selectOfflineBasemap("OFFLINE_DEMO", "healthy")).toBe("nlsc");
-    expect(selectOfflineBasemap("OFFLINE_DEMO", "nlsc_failed")).toBe("pmtiles");
-    expect(selectOfflineBasemap("OFFLINE_DEMO", "pmtiles_failed")).toBe("emergency");
+  it("starts offline operation on PMTiles and retains the emergency fallback", () => {
+    expect(selectOfflineBasemap(false, "healthy")).toBe("pmtiles");
+    expect(selectOfflineBasemap(false, "online_failed")).toBe("pmtiles");
+    expect(selectOfflineBasemap(false, "pmtiles_failed")).toBe("emergency");
   });
 });

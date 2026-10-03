@@ -27,6 +27,7 @@ def _run_preflight(
     datalastic_key: str | None = None,
     area_scan_signing_key: str | None = None,
     area_scan_operator_key: str | None = None,
+    autoauth_loopback: str | None = None,
     allow_insecure_cookie: str | None = None,
     skip_web_build: bool = True,
 ):
@@ -72,6 +73,10 @@ def _run_preflight(
         environ.pop("SEAWATCH_AREA_SCAN_OPERATOR_KEY", None)
     else:
         environ["SEAWATCH_AREA_SCAN_OPERATOR_KEY"] = area_scan_operator_key
+    if autoauth_loopback is None:
+        environ.pop("SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK", None)
+    else:
+        environ["SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK"] = autoauth_loopback
     if allow_insecure_cookie is None:
         environ.pop("SEAWATCH_AREA_SCAN_ALLOW_INSECURE_COOKIE", None)
     else:
@@ -194,6 +199,39 @@ def test_demo_start_reports_area_scan_disabled_without_signing_key(
     assert "Area Scan cookie: HTTPS required (secure default)" in result.stdout
 
 
+def test_demo_start_accepts_explicit_loopback_autoauth_without_operator_key(
+    tmp_path: Path,
+) -> None:
+    result = _run_preflight(
+        tmp_path,
+        identity_key="stable-test-key",
+        live_ingest="false",
+        datalastic_key="provider-test-key-not-for-output",
+        area_scan_signing_key="signing-secret-not-for-output-32-bytes",
+        autoauth_loopback="true",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Area Scan loopback auto-auth: enabled" in result.stdout
+    assert "Area Scan session: configured" in result.stdout
+
+
+def test_demo_start_rejects_invalid_loopback_autoauth_setting(tmp_path: Path) -> None:
+    result = _run_preflight(
+        tmp_path,
+        identity_key="stable-test-key",
+        live_ingest="false",
+        datalastic_key="provider-test-key-not-for-output",
+        area_scan_signing_key="signing-secret-not-for-output-32-bytes",
+        area_scan_operator_key="operator-secret-not-for-output-32-bytes",
+        autoauth_loopback="sometimes",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Area Scan loopback auto-auth: invalid (session fails closed)" in result.stdout
+    assert "Area Scan operator session: not configured (endpoint fails closed)" in result.stdout
+
+
 def test_demo_start_requires_supplied_identity_key_without_generating_one(
     tmp_path: Path,
 ) -> None:
@@ -228,6 +266,9 @@ def test_demo_start_removes_backend_secrets_from_frontend_build_child(
     assert "SeaWatch demo preflight passed." in result.stdout
 
 
-def test_example_environment_contains_only_blank_datalastic_key() -> None:
+def test_example_environment_keeps_loopback_autoauth_disabled_by_default() -> None:
     lines = (ROOT / ".env.example").read_text(encoding="utf-8").splitlines()
-    assert lines == ["DATALASTIC_API_KEY="]
+    assert lines == [
+        "DATALASTIC_API_KEY=",
+        "SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK=false",
+    ]

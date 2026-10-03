@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { type LayerSpecification, type StyleSpecification } from "maplibre-gl";
+import maplibregl, {
+  type ExpressionSpecification,
+  type LayerSpecification,
+  type StyleSpecification,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { LiveVesselFeature, OperatingMode } from "../api/live";
 import type { LayerState } from "../lib/layerState";
@@ -7,7 +11,7 @@ import {
   TAIWAN_CENTER,
   TAIWAN_ZOOM,
   airspaceGeoJson,
-  nlscStyle,
+  onlineStyle,
   portsGeoJson,
 } from "../config/taiwanMap";
 import {
@@ -21,6 +25,8 @@ import {
 import { projectPosition, type MeasuredFix } from "../lib/interpolation";
 import { normalizeOrientation } from "../lib/orientation";
 import { makeShipIcon } from "../lib/shipIcon";
+import { VESSEL_CATEGORY_COLORS, categoryForVessel } from "../lib/vesselCategory";
+import { finalizePolygonPoints } from "../lib/areaGeometry";
 import type { AreaDrawMode } from "./AreaScanPanel";
 
 export interface Viewport {
@@ -51,10 +57,13 @@ interface MapCanvasProps {
   onUserInteract?: () => void;
   onBaseMapError?: (message: string | null) => void;
   operatingMode?: OperatingMode;
+  /** Whether remote vector tiles should precede the offline fallback chain. */
+  onlineBasemap?: boolean;
   areaDrawMode?: AreaDrawMode;
   areaGeometry?: GeoJSON.Polygon | null;
   areaVessels?: LiveVesselFeature[];
   onAreaGeometryChange?: (geometry: GeoJSON.Polygon) => void;
+  onAreaGeometryInvalid?: () => void;
   /**
    * Optional, generic GeoJSON overlay layer groups rendered ABOVE the built-in
    * overlays. This is a logistics-agnostic seam: the caller supplies named
@@ -75,7 +84,6 @@ export interface MapOverlays {
 
 const VESSEL_SOURCE = "live-vessels";
 const VESSEL_LAYER = "live-vessels-symbols";
-const VESSEL_DOT_LAYER = "live-vessels-dot";
 const HALO_LAYER = "live-vessels-halo";
 const TRACK_SOURCE = "selected-track";
 const TRACK_LAYER = "selected-track-line";
@@ -89,12 +97,16 @@ const SHIP_ICON = "ship-icon";
 const AREA_GEOMETRY_SOURCE = "area-scan-geometry";
 const AREA_FILL_LAYER = "area-scan-fill";
 const AREA_LINE_LAYER = "area-scan-line";
+const AREA_DRAFT_PATH_SOURCE = "area-scan-draft-path";
+const AREA_DRAFT_PATH_LAYER = "area-scan-draft-path";
+const AREA_DRAFT_VERTEX_SOURCE = "area-scan-draft-vertices";
+const AREA_DRAFT_VERTEX_LAYER = "area-scan-draft-vertices";
 const AREA_VESSEL_SOURCE = "area-scan-vessels";
-const AREA_VESSEL_LAYER = "area-scan-vessels-dot";
+const AREA_VESSEL_LAYER = "area-scan-vessels-symbols";
+const AREA_VESSEL_HALO_LAYER = "area-scan-vessels-halo";
+const POLYGON_CLOSE_TOLERANCE_PX = 12;
 
-// Both vessel layers are interactive; the dot always renders, the symbol may
-// not until the raster style is loaded.
-const VESSEL_INTERACTIVE_LAYERS = [VESSEL_LAYER, VESSEL_DOT_LAYER];
+const VESSEL_INTERACTIVE_LAYERS = [VESSEL_LAYER];
 const ALL_VESSEL_INTERACTIVE_LAYERS = [...VESSEL_INTERACTIVE_LAYERS, AREA_VESSEL_LAYER];
 
 const FOLLOW_ZOOM = 11;
@@ -121,10 +133,12 @@ export function MapCanvas({
   onUserInteract,
   onBaseMapError,
   operatingMode = "CLOUD_LIVE",
+  onlineBasemap,
   areaDrawMode = null,
   areaGeometry = null,
   areaVessels = [],
   onAreaGeometryChange,
+  onAreaGeometryInvalid,
   overlays = null,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -139,15 +153,20 @@ export function MapCanvas({
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const programmaticMoveRef = useRef(false);
   const failureRef = useRef<OnlineFailureState>("healthy");
-  const operatingModeRef = useRef(operatingMode);
+  const onlineBasemapRef = useRef(
+    onlineBasemap ?? operatingMode === "CLOUD_LIVE",
+  );
   const overlaysRef = useRef<MapOverlays | null>(overlays);
   const areaDrawModeRef = useRef<AreaDrawMode>(areaDrawMode);
   const areaGeometryRef = useRef<GeoJSON.Polygon | null>(areaGeometry);
   const areaVesselsRef = useRef<LiveVesselFeature[]>(areaVessels);
   const onAreaGeometryChangeRef = useRef(onAreaGeometryChange);
+  const onAreaGeometryInvalidRef = useRef(onAreaGeometryInvalid);
   const polygonDraftRef = useRef<Array<[number, number]>>([]);
   const rectangleStartRef = useRef<[number, number] | null>(null);
-  const initialStage = selectOfflineBasemap(operatingMode, "healthy");
+  const rectanglePointerIdRef = useRef<number | null>(null);
+  const prefersOnlineBasemap = onlineBasemap ?? operatingMode === "CLOUD_LIVE";
+  const initialStage = selectOfflineBasemap(prefersOnlineBasemap, "healthy");
   const stageRef = useRef<BasemapStage>(initialStage);
   const [basemapStage, setBasemapStage] = useState<BasemapStage>(initialStage);
 
@@ -156,12 +175,13 @@ export function MapCanvas({
   selectedIdRef.current = selectedId;
   selectedSourceRef.current = selectedSource;
   followRef.current = follow;
-  operatingModeRef.current = operatingMode;
+  onlineBasemapRef.current = prefersOnlineBasemap;
   overlaysRef.current = overlays;
   areaDrawModeRef.current = areaDrawMode;
   areaGeometryRef.current = areaGeometry;
   areaVesselsRef.current = areaVessels;
   onAreaGeometryChangeRef.current = onAreaGeometryChange;
+  onAreaGeometryInvalidRef.current = onAreaGeometryInvalid;
 
   // Initialize the map once.
   useEffect(() => {
@@ -183,12 +203,12 @@ export function MapCanvas({
       if (msg && stageRef.current !== "emergency" && basemapFailed) {
         onBaseMapError?.(msg);
         const nextFailure =
-          stageRef.current === "nlsc"
-            ? "nlsc_failed"
+          stageRef.current === "online"
+            ? "online_failed"
             : stageRef.current === "pmtiles"
               ? "pmtiles_failed"
               : failureRef.current;
-        const nextStage = selectOfflineBasemap(operatingModeRef.current, nextFailure);
+        const nextStage = selectOfflineBasemap(onlineBasemapRef.current, nextFailure);
         if (nextStage !== stageRef.current) {
           failureRef.current = nextFailure;
           stageRef.current = nextStage;
@@ -212,6 +232,32 @@ export function MapCanvas({
 
     map.on("load", () => {
       loadedRef.current = true;
+      if (onlineBasemapRef.current && failureRef.current === "pmtiles_failed") {
+        failureRef.current = "healthy";
+      }
+      const desiredStage = selectOfflineBasemap(
+        onlineBasemapRef.current,
+        failureRef.current,
+      );
+      if (desiredStage !== stageRef.current) {
+        stageRef.current = desiredStage;
+        setBasemapStage(desiredStage);
+        map.setStyle(styleForStage(desiredStage, layers.baseMap));
+        map.once("styledata", () =>
+          restoreOverlays(
+            map,
+            layers,
+            vesselsRef.current,
+            selectedIdRef.current,
+            selectedSourceRef.current,
+            areaGeometryRef.current,
+            areaVesselsRef.current,
+            overlaysRef.current,
+          ),
+        );
+        emitViewport(map, onViewportChange);
+        return;
+      }
       installOverlays(map, overlaysRef.current);
       applyVessels(
         map,
@@ -241,8 +287,7 @@ export function MapCanvas({
       if (!programmaticMoveRef.current) onUserInteract?.();
     });
 
-    // Click a vessel (symbol or dot) -> select it. The dot layer always renders;
-    // the symbol may not until the raster style is loaded, so both are targeted.
+    // Click a MapLibre ship symbol to open the existing vessel workflow.
     map.on("click", VESSEL_INTERACTIVE_LAYERS, (e) => {
       const feature = e.features?.[0];
       if (!feature) return;
@@ -258,12 +303,33 @@ export function MapCanvas({
 
     // Polygon drawing is local-only until the user explicitly presses Scan.
     // Coordinates are always GeoJSON longitude-latitude order.
+    const finalizePolygon = () => {
+      const geometry = finalizePolygonPoints(polygonDraftRef.current);
+      if (!geometry) {
+        onAreaGeometryInvalidRef.current?.();
+        return false;
+      }
+      polygonDraftRef.current = [];
+      areaDrawModeRef.current = null;
+      areaGeometryRef.current = geometry;
+      map.dragPan.enable();
+      map.doubleClickZoom.enable();
+      map.getCanvas().style.cursor = "";
+      applyPolygonDraft(map, []);
+      applyAreaGeometry(map, geometry);
+      onAreaGeometryChangeRef.current?.(geometry);
+      return true;
+    };
+
     map.on("click", (e) => {
       if (areaDrawModeRef.current === "polygon") {
-        polygonDraftRef.current.push([e.lngLat.lng, e.lngLat.lat]);
-        if (polygonDraftRef.current.length >= 3) {
-          applyAreaGeometry(map, polygonFromPoints(polygonDraftRef.current));
+        const first = polygonDraftRef.current[0];
+        if (first && isWithinPolygonCloseTolerance(map, e.point, first)) {
+          if (polygonDraftRef.current.length >= 3) finalizePolygon();
+          return;
         }
+        polygonDraftRef.current.push([e.lngLat.lng, e.lngLat.lat]);
+        applyPolygonDraft(map, polygonDraftRef.current);
         return;
       }
       if (areaDrawModeRef.current !== null) return;
@@ -276,51 +342,117 @@ export function MapCanvas({
     map.on("dblclick", (e) => {
       if (areaDrawModeRef.current !== "polygon") return;
       e.preventDefault?.();
-      if (polygonDraftRef.current.length < 3) return;
-      const geometry = polygonFromPoints(polygonDraftRef.current);
-      polygonDraftRef.current = [];
-      applyAreaGeometry(map, geometry);
-      onAreaGeometryChangeRef.current?.(geometry);
+      finalizePolygon();
     });
 
-    map.on("mousedown", (e) => {
-      if (areaDrawModeRef.current !== "rectangle") return;
-      rectangleStartRef.current = [e.lngLat.lng, e.lngLat.lat];
+    // Rectangle drawing owns one native canvas pointer from press through
+    // release. Pointer capture keeps moves/releases arriving when the cursor
+    // leaves the canvas, while preventing MapLibre's compatibility mouse drag
+    // from panning the map underneath the draft.
+    const canvas = map.getCanvas();
+    const rectangleCoordinate = (event: PointerEvent): [number, number] => {
+      const bounds = canvas.getBoundingClientRect();
+      const coordinate = map.unproject([
+        event.clientX - bounds.left,
+        event.clientY - bounds.top,
+      ]);
+      return [coordinate.lng, coordinate.lat];
+    };
+    const releaseRectanglePointer = () => {
+      const pointerId = rectanglePointerIdRef.current;
+      rectanglePointerIdRef.current = null;
+      if (pointerId === null) return;
+      try {
+        if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId);
+      } catch {
+        // The browser may already have released capture after cancellation.
+      }
+    };
+    const onRectanglePointerDown = (event: PointerEvent) => {
+      if (
+        areaDrawModeRef.current !== "rectangle" ||
+        rectanglePointerIdRef.current !== null ||
+        (event.pointerType === "mouse" && event.button !== 0)
+      ) return;
+      event.preventDefault();
+      event.stopPropagation();
+      rectangleStartRef.current = rectangleCoordinate(event);
+      rectanglePointerIdRef.current = event.pointerId;
       map.dragPan.disable();
-    });
-    map.on("mousemove", (e) => {
+      try {
+        canvas.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture can fail only if the pointer ended during dispatch;
+        // the matching pointerup/cancel path will still clear the draft.
+      }
+    };
+    const onRectanglePointerMove = (event: PointerEvent) => {
       const start = rectangleStartRef.current;
-      if (areaDrawModeRef.current !== "rectangle" || !start) return;
-      applyAreaGeometry(map, rectangleFromCorners(start, [e.lngLat.lng, e.lngLat.lat]));
-    });
-    map.on("mouseup", (e) => {
+      if (
+        areaDrawModeRef.current !== "rectangle" ||
+        !start ||
+        rectanglePointerIdRef.current !== event.pointerId
+      ) return;
+      event.preventDefault();
+      event.stopPropagation();
+      applyAreaGeometry(map, rectangleFromCorners(start, rectangleCoordinate(event)));
+    };
+    const onRectanglePointerUp = (event: PointerEvent) => {
       const start = rectangleStartRef.current;
-      if (areaDrawModeRef.current !== "rectangle" || !start) return;
-      const geometry = rectangleFromCorners(start, [e.lngLat.lng, e.lngLat.lat]);
+      if (
+        areaDrawModeRef.current !== "rectangle" ||
+        !start ||
+        rectanglePointerIdRef.current !== event.pointerId
+      ) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const geometry = rectangleFromCorners(start, rectangleCoordinate(event));
       rectangleStartRef.current = null;
+      releaseRectanglePointer();
+      if (!geometry) {
+        applyAreaGeometry(map, areaGeometryRef.current);
+        return;
+      }
+      areaDrawModeRef.current = null;
+      areaGeometryRef.current = geometry;
       map.dragPan.enable();
+      canvas.style.cursor = "";
       applyAreaGeometry(map, geometry);
       onAreaGeometryChangeRef.current?.(geometry);
-    });
+    };
+    const onRectanglePointerCancel = (event: PointerEvent) => {
+      if (rectanglePointerIdRef.current !== event.pointerId) return;
+      rectangleStartRef.current = null;
+      releaseRectanglePointer();
+      applyAreaGeometry(map, areaGeometryRef.current);
+    };
+    canvas.addEventListener("pointerdown", onRectanglePointerDown);
+    canvas.addEventListener("pointermove", onRectanglePointerMove);
+    canvas.addEventListener("pointerup", onRectanglePointerUp);
+    canvas.addEventListener("pointercancel", onRectanglePointerCancel);
 
     const cancelDrawing = () => {
       polygonDraftRef.current = [];
       rectangleStartRef.current = null;
+      releaseRectanglePointer();
+      areaDrawModeRef.current = null;
       map.dragPan.enable();
       map.doubleClickZoom.enable();
+      canvas.style.cursor = "";
+      applyPolygonDraft(map, []);
       applyAreaGeometry(map, areaGeometryRef.current);
     };
     const onEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") cancelDrawing();
     };
-    const onPointerUp = () => {
-      if (rectangleStartRef.current !== null) cancelDrawing();
-    };
     window.addEventListener("keydown", onEscape);
-    window.addEventListener("pointerup", onPointerUp);
 
     // Hover tooltip (desktop) — lightweight, does not open the panel.
     map.on("mousemove", ALL_VESSEL_INTERACTIVE_LAYERS, (e) => {
+      if (areaDrawModeRef.current === "rectangle") {
+        map.getCanvas().style.cursor = "crosshair";
+        return;
+      }
       map.getCanvas().style.cursor = "pointer";
       const feature = e.features?.[0];
       if (!feature) return;
@@ -332,7 +464,7 @@ export function MapCanvas({
       showHoverPopup(map, popupRef, match, e.lngLat);
     });
     map.on("mouseleave", ALL_VESSEL_INTERACTIVE_LAYERS, () => {
-      map.getCanvas().style.cursor = "";
+      map.getCanvas().style.cursor = areaDrawModeRef.current === "rectangle" ? "crosshair" : "";
       popupRef.current?.remove();
     });
 
@@ -344,7 +476,12 @@ export function MapCanvas({
       loadedRef.current = false;
       popupRef.current?.remove();
       window.removeEventListener("keydown", onEscape);
-      window.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointerdown", onRectanglePointerDown);
+      canvas.removeEventListener("pointermove", onRectanglePointerMove);
+      canvas.removeEventListener("pointerup", onRectanglePointerUp);
+      canvas.removeEventListener("pointercancel", onRectanglePointerCancel);
+      releaseRectanglePointer();
+      canvas.style.cursor = "";
       map.dragPan.enable();
       map.doubleClickZoom.enable();
       map.remove();
@@ -353,12 +490,19 @@ export function MapCanvas({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Edge/no-source operation starts locally and never retries a latched remote
-  // source. Cloud mode always selects NLSC and handles tile failures in place.
+  // Online operation starts on OpenFreeMap; offline operation starts locally.
+  // A latched failure advances through PMTiles to bundled emergency geography.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    const nextStage = selectOfflineBasemap(operatingMode, failureRef.current);
+    // A PMTiles failure says nothing about the remote style. During startup the
+    // dashboard may learn that online basemaps are preferred only after the
+    // local fallback has already failed, so give the still-untried online
+    // source its own chance instead of treating the PMTiles failure as final.
+    if (prefersOnlineBasemap && failureRef.current === "pmtiles_failed") {
+      failureRef.current = "healthy";
+    }
+    const nextStage = selectOfflineBasemap(prefersOnlineBasemap, failureRef.current);
     if (nextStage === stageRef.current) return;
     stageRef.current = nextStage;
     setBasemapStage(nextStage);
@@ -376,17 +520,17 @@ export function MapCanvas({
       ),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [operatingMode]);
+  }, [operatingMode, prefersOnlineBasemap]);
 
   // Switch base map when it changes.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
-    if (stageRef.current !== "nlsc") return;
+    if (stageRef.current !== "online") return;
     if (currentBaseRef.current === layers.baseMap) return;
     currentBaseRef.current = layers.baseMap;
     onBaseMapError?.(null);
-    map.setStyle(nlscStyle(layers.baseMap));
+    map.setStyle(onlineStyle(layers.baseMap));
     map.once("styledata", () => {
       installOverlays(map, overlaysRef.current);
       applyVessels(map, vesselsRef.current, selectedIdRef.current, selectedSourceRef.current);
@@ -425,10 +569,32 @@ export function MapCanvas({
     const map = mapRef.current;
     if (!map || !loadedRef.current) return;
     polygonDraftRef.current = [];
+    applyPolygonDraft(map, []);
     rectangleStartRef.current = null;
+    const canvas = map.getCanvas();
+    const activePointerId = rectanglePointerIdRef.current;
+    rectanglePointerIdRef.current = null;
+    if (activePointerId !== null) {
+      try {
+        if (canvas.hasPointerCapture(activePointerId)) {
+          canvas.releasePointerCapture(activePointerId);
+        }
+      } catch {
+        // Capture may already be gone after a pointer cancellation.
+      }
+    }
     if (areaDrawMode === "polygon") map.doubleClickZoom.disable();
     else map.doubleClickZoom.enable();
-    if (areaDrawMode !== "rectangle") map.dragPan.enable();
+    if (areaDrawMode === "rectangle") {
+      map.dragPan.disable();
+      canvas.style.cursor = "crosshair";
+    } else if (areaDrawMode === "polygon") {
+      map.dragPan.enable();
+      canvas.style.cursor = "crosshair";
+    } else {
+      map.dragPan.enable();
+      canvas.style.cursor = "";
+    }
   }, [areaDrawMode]);
 
   // Install/refresh generic caller overlays when they change. Null preserves
@@ -585,44 +751,6 @@ function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
       },
     });
   }
-  // Primary vessel marker: a CIRCLE layer. Unlike a symbol/icon layer, a circle
-  // layer commits to the render pipeline even when the raster basemap style has
-  // not reached isStyleLoaded() (NLSC tiles can stall / be CORS-blocked). This
-  // guarantees vessels are ALWAYS visible; the directional ship symbol is drawn
-  // on top of it when the sprite path is ready. Runtime diagnosis proved the
-  // symbol-only layer silently failed to render while circles on the same
-  // source rendered thousands of features.
-  if (!map.getLayer(VESSEL_DOT_LAYER)) {
-    map.addLayer({
-      id: VESSEL_DOT_LAYER,
-      type: "circle",
-      source: VESSEL_SOURCE,
-      paint: {
-        // Smaller at national overview (declutter), larger when closer. NOTE:
-        // MapLibre silently rejects a layer whose "circle-radius" nests an
-        // "interpolate" inside a "case" — keep this a PLAIN zoom interpolate.
-        // Selected-vessel emphasis is provided by the halo + larger ship symbol.
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 1.8, 8, 2.6, 11, 3.4],
-        "circle-color": [
-          "case",
-          ["boolean", ["feature-state", "selected"], false],
-          "#fde68a",
-          ["==", ["get", "displayState"], "stale"],
-          "#f59e0b",
-          ["==", ["get", "displayState"], "cached"],
-          "#67e8f9",
-          ["get", "isInterpolated"],
-          "#f59e0b",
-          "#38bdf8",
-        ],
-        // The directional ship symbol takes over at closer zoom; fade the dot
-        // out there. Plain zoom interpolate (no "case" wrapper — see above).
-        "circle-opacity": ["interpolate", ["linear"], ["zoom"], 8.5, 0.95, 10.5, 0.35],
-        "circle-stroke-color": "#04121f",
-        "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 5, 0.5, 10, 1],
-      },
-    });
-  }
   if (!map.getLayer(VESSEL_LAYER)) {
     map.addLayer({
       id: VESSEL_LAYER,
@@ -630,11 +758,7 @@ function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
       source: VESSEL_SOURCE,
       layout: {
         "icon-image": SHIP_ICON,
-        // Directional ship grows with zoom; kept modest so thousands of vessels
-        // never become giant icons. PLAIN zoom interpolate (do not nest inside a
-        // "case" — MapLibre silently drops such layers). Selected emphasis comes
-        // from the halo + the dot colour.
-        "icon-size": ["interpolate", ["linear"], ["zoom"], 6, 0.18, 9, 0.32, 12, 0.55],
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.22, 9, 0.34, 12, 0.5],
         "icon-rotate": ["get", "orientation"],
         "icon-rotation-alignment": "map",
         "icon-allow-overlap": true,
@@ -645,14 +769,16 @@ function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
           "case",
           ["boolean", ["feature-state", "selected"], false],
           "#fde68a",
-          ["get", "isInterpolated"],
-          "#f59e0b",
-          "#38bdf8",
+          categoryColorExpression(),
         ],
-        // Fade the directional icon in as we zoom past the overview level so the
-        // national view stays as light dots (declutter), ships appear closer in.
-        // PLAIN zoom interpolate (no "case" wrapper).
-        "icon-opacity": ["interpolate", ["linear"], ["zoom"], 7.5, 0, 9.5, 1],
+        "icon-opacity": [
+          "case",
+          ["==", ["get", "displayState"], "stale"],
+          0.48,
+          ["==", ["get", "freshnessState"], "unknown"],
+          0.68,
+          0.95,
+        ],
         "icon-halo-color": "#04121f",
         "icon-halo-width": 1,
       },
@@ -711,7 +837,7 @@ function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
       type: "symbol",
       source: PORT_SOURCE,
       layout: {
-        "text-field": ["get", "nameZh"],
+        "text-field": ["get", "nameEn"],
         "text-size": 11,
         "text-offset": [0, 1.2],
         "text-anchor": "top",
@@ -764,6 +890,49 @@ function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
       paint: { "line-color": "#fbbf24", "line-width": 2.5 },
     });
   }
+  if (!map.getSource(AREA_DRAFT_PATH_SOURCE)) {
+    map.addSource(AREA_DRAFT_PATH_SOURCE, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+  }
+  if (!map.getLayer(AREA_DRAFT_PATH_LAYER)) {
+    map.addLayer({
+      id: AREA_DRAFT_PATH_LAYER,
+      type: "line",
+      source: AREA_DRAFT_PATH_SOURCE,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": "#67e8f9",
+        "line-width": 2.5,
+        "line-dasharray": [2, 1.5],
+      },
+    });
+  }
+  if (!map.getSource(AREA_DRAFT_VERTEX_SOURCE)) {
+    map.addSource(AREA_DRAFT_VERTEX_SOURCE, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+  }
+  if (!map.getLayer(AREA_DRAFT_VERTEX_LAYER)) {
+    map.addLayer({
+      id: AREA_DRAFT_VERTEX_LAYER,
+      type: "circle",
+      source: AREA_DRAFT_VERTEX_SOURCE,
+      paint: {
+        "circle-radius": ["case", ["==", ["get", "role"], "start"], 7, 4.5],
+        "circle-color": [
+          "case",
+          ["==", ["get", "role"], "start"],
+          "#fbbf24",
+          "#e0f2fe",
+        ],
+        "circle-stroke-color": "#082f49",
+        "circle-stroke-width": 2,
+      },
+    });
+  }
   if (!map.getSource(AREA_VESSEL_SOURCE)) {
     map.addSource(AREA_VESSEL_SOURCE, {
       type: "geojson",
@@ -771,22 +940,55 @@ function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
       promoteId: "fid",
     });
   }
-  if (!map.getLayer(AREA_VESSEL_LAYER)) {
+  if (!map.getLayer(AREA_VESSEL_HALO_LAYER)) {
     map.addLayer({
-      id: AREA_VESSEL_LAYER,
+      id: AREA_VESSEL_HALO_LAYER,
       type: "circle",
       source: AREA_VESSEL_SOURCE,
       paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 5, 4.5, 10, 7],
-        "circle-color": [
+        "circle-radius": [
+          "case",
+          ["boolean", ["feature-state", "selected"], false],
+          16,
+          0,
+        ],
+        "circle-color": "#fbbf24",
+        "circle-opacity": 0.22,
+        "circle-stroke-color": "#fbbf24",
+        "circle-stroke-width": 2,
+      },
+    });
+  }
+  if (!map.getLayer(AREA_VESSEL_LAYER)) {
+    map.addLayer({
+      id: AREA_VESSEL_LAYER,
+      type: "symbol",
+      source: AREA_VESSEL_SOURCE,
+      layout: {
+        "icon-image": SHIP_ICON,
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 5, 0.24, 9, 0.38, 12, 0.54],
+        "icon-rotate": ["get", "orientation"],
+        "icon-rotation-alignment": "map",
+        "icon-allow-overlap": true,
+        "symbol-z-order": "source",
+      },
+      paint: {
+        "icon-color": [
           "case",
           ["boolean", ["feature-state", "selected"], false],
           "#fde68a",
-          "#f59e0b",
+          categoryColorExpression(),
         ],
-        "circle-opacity": 0.95,
-        "circle-stroke-color": "#fff7ed",
-        "circle-stroke-width": 2,
+        "icon-opacity": [
+          "case",
+          ["==", ["get", "freshnessState"], "stale"],
+          0.48,
+          ["==", ["get", "freshnessState"], "unknown"],
+          0.68,
+          0.98,
+        ],
+        "icon-halo-color": "#f59e0b",
+        "icon-halo-width": 1.5,
       },
     });
   }
@@ -815,10 +1017,13 @@ function installGenericOverlays(map: maplibregl.Map, overlays?: MapOverlays | nu
   }
 }
 
-function styleForStage(stage: BasemapStage, baseMap: LayerState["baseMap"]): StyleSpecification {
+function styleForStage(
+  stage: BasemapStage,
+  baseMap: LayerState["baseMap"],
+): StyleSpecification | string {
   if (stage === "pmtiles") return pmtilesStyle();
   if (stage === "emergency") return emergencyStyle();
-  return nlscStyle(baseMap);
+  return onlineStyle(baseMap);
 }
 
 function restoreOverlays(
@@ -850,30 +1055,7 @@ function applyVessels(
   const source = map.getSource(VESSEL_SOURCE) as maplibregl.GeoJSONSource | undefined;
   if (!source) return;
   const now = Date.now();
-  const features = vessels.map((v) => {
-    const course = normalizeOrientation(v.properties.heading_deg, v.properties.cog_deg);
-    const fix: MeasuredFix = {
-      lon: v.geometry.coordinates[0],
-      lat: v.geometry.coordinates[1],
-      sogKnots: v.properties.sog_knots,
-      courseDeg: course,
-      observedAtMs: Date.parse(v.properties.observed_at ?? ""),
-    };
-    const projected = projectPosition(fix, now);
-    const isInterpolated = projected.interpolated || v.properties.synthesized;
-    return {
-      type: "Feature" as const,
-      id: v.id,
-      geometry: { type: "Point" as const, coordinates: [projected.lon, projected.lat] },
-      properties: {
-        fid: v.id,
-        provider_id: v.properties.provider_id,
-        orientation: course ?? 0,
-        isInterpolated,
-        displayState: v.properties.display_state ?? "live",
-      },
-    };
-  });
+  const features = vessels.map((v) => mapVesselFeature(v, now, true));
   source.setData({ type: "FeatureCollection", features });
   applySelectedState(map, vessels, selectedId, [], selectedSource);
 }
@@ -888,6 +1070,29 @@ function applyAreaGeometry(map: maplibregl.Map, geometry: GeoJSON.Polygon | null
   );
 }
 
+function applyPolygonDraft(map: maplibregl.Map, points: Array<[number, number]>) {
+  const pathSource = map.getSource(AREA_DRAFT_PATH_SOURCE) as maplibregl.GeoJSONSource | undefined;
+  const vertexSource = map.getSource(AREA_DRAFT_VERTEX_SOURCE) as maplibregl.GeoJSONSource | undefined;
+  pathSource?.setData(points.length >= 2
+    ? {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: points },
+          properties: {},
+        }],
+      }
+    : { type: "FeatureCollection", features: [] });
+  vertexSource?.setData({
+    type: "FeatureCollection",
+    features: points.map((coordinates, index) => ({
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates },
+      properties: { role: index === 0 ? "start" : "vertex" },
+    })),
+  });
+}
+
 function applyAreaVessels(
   map: maplibregl.Map,
   vessels: LiveVesselFeature[],
@@ -898,12 +1103,64 @@ function applyAreaVessels(
   if (!source) return;
   source.setData({
     type: "FeatureCollection",
-    features: vessels.map((v) => ({
-      ...v,
-      properties: { ...v.properties, fid: v.id },
-    })),
+    features: vessels.map((v) => mapVesselFeature(v, Date.now(), false)),
   });
   applySelectedState(map, [], selectedId, vessels, selectedSource);
+}
+
+function mapVesselFeature(vessel: LiveVesselFeature, now: number, interpolate: boolean) {
+  const orientation = normalizeOrientation(
+    vessel.properties.heading_deg,
+    vessel.properties.cog_deg,
+  );
+  const fix: MeasuredFix = {
+    lon: vessel.geometry.coordinates[0],
+    lat: vessel.geometry.coordinates[1],
+    sogKnots: vessel.properties.sog_knots,
+    courseDeg: orientation,
+    observedAtMs: Date.parse(vessel.properties.observed_at ?? ""),
+  };
+  const projected = interpolate
+    ? projectPosition(fix, now)
+    : { lon: fix.lon, lat: fix.lat, interpolated: false };
+  return {
+    type: "Feature" as const,
+    id: vessel.id,
+    geometry: {
+      type: "Point" as const,
+      coordinates: [projected.lon, projected.lat],
+    },
+    properties: {
+      fid: vessel.id,
+      publicId: vessel.id,
+      orientation: orientation ?? 0,
+      category: categoryForVessel(vessel),
+      isInterpolated: projected.interpolated || vessel.properties.synthesized,
+      displayState:
+        vessel.properties.display_state ??
+        (vessel.properties.freshness_state === "stale" ? "stale" : "live"),
+      freshnessState: vessel.properties.freshness_state ?? "fresh",
+      source: vessel.properties.source,
+    },
+  };
+}
+
+function categoryColorExpression(): ExpressionSpecification {
+  return [
+    "match",
+    ["get", "category"],
+    "Cargo", VESSEL_CATEGORY_COLORS.Cargo,
+    "Tanker", VESSEL_CATEGORY_COLORS.Tanker,
+    "Fishing", VESSEL_CATEGORY_COLORS.Fishing,
+    "Passenger", VESSEL_CATEGORY_COLORS.Passenger,
+    "Tug / Service", VESSEL_CATEGORY_COLORS["Tug / Service"],
+    "Research / Survey", VESSEL_CATEGORY_COLORS["Research / Survey"],
+    "Government / Law Enforcement", VESSEL_CATEGORY_COLORS["Government / Law Enforcement"],
+    "Pleasure / Sailing", VESSEL_CATEGORY_COLORS["Pleasure / Sailing"],
+    "Other", VESSEL_CATEGORY_COLORS.Other,
+    "Unknown", VESSEL_CATEGORY_COLORS.Unknown,
+    VESSEL_CATEGORY_COLORS.Unknown,
+  ];
 }
 
 /** Set the "selected" feature-state on the active vessel, clearing others. */
@@ -939,22 +1196,33 @@ function applySelectedState(
   }
 }
 
-function polygonFromPoints(points: Array<[number, number]>): GeoJSON.Polygon {
-  return { type: "Polygon", coordinates: [[...points, points[0]]] };
+function isWithinPolygonCloseTolerance(
+  map: maplibregl.Map,
+  point: { x: number; y: number },
+  first: [number, number],
+): boolean {
+  const projectedFirst = map.project(first);
+  return Math.hypot(point.x - projectedFirst.x, point.y - projectedFirst.y) <=
+    POLYGON_CLOSE_TOLERANCE_PX;
 }
 
 function rectangleFromCorners(
   start: [number, number],
   end: [number, number],
-): GeoJSON.Polygon {
+): GeoJSON.Polygon | null {
+  const minLon = Math.min(start[0], end[0]);
+  const minLat = Math.min(start[1], end[1]);
+  const maxLon = Math.max(start[0], end[0]);
+  const maxLat = Math.max(start[1], end[1]);
+  if (minLon === maxLon || minLat === maxLat) return null;
   return {
     type: "Polygon",
     coordinates: [[
-      [start[0], start[1]],
-      [end[0], start[1]],
-      [end[0], end[1]],
-      [start[0], end[1]],
-      [start[0], start[1]],
+      [minLon, minLat],
+      [maxLon, minLat],
+      [maxLon, maxLat],
+      [minLon, maxLat],
+      [minLon, minLat],
     ]],
   };
 }
@@ -1030,7 +1298,6 @@ function escapeHtml(s: string): string {
 
 function applyLayerVisibility(map: maplibregl.Map, layers: LayerState, selectedId: string | null) {
   setVisible(map, VESSEL_LAYER, layers.liveVessels);
-  setVisible(map, VESSEL_DOT_LAYER, layers.liveVessels);
   setVisible(map, HALO_LAYER, layers.liveVessels);
   // Trails are off by default, but the selected vessel's trail is always shown.
   setVisible(map, TRACK_LAYER, layers.vesselTracks || selectedId !== null);

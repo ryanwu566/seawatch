@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   nlscStyle,
+  OPENFREEMAP_LIBERTY_STYLE_URL,
   NLSC_ATTRIBUTION,
   COMMERCIAL_PORTS,
   portsGeoJson,
@@ -9,6 +10,12 @@ import {
 } from "./taiwanMap";
 
 describe("Taiwan NLSC basemap config", () => {
+  it("uses OpenFreeMap Liberty as the primary online vector basemap", () => {
+    expect(OPENFREEMAP_LIBERTY_STYLE_URL).toBe(
+      "https://tiles.openfreemap.org/styles/liberty",
+    );
+  });
+
   it("builds an e-Map raster style with NLSC attribution", () => {
     const style = nlscStyle("nlsc-emap");
     expect(style.version).toBe(8);

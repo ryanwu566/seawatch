@@ -52,6 +52,27 @@ describe("getBaseUrl", () => {
     expect(resolveApiBaseUrl("   ", true)).toBe("http://localhost:8000");
     expect(resolveApiBaseUrl("   ", false)).toBe("");
   });
+
+  it("keeps the development API on the page's exact loopback hostname", () => {
+    expect(
+      resolveApiBaseUrl(undefined, true, "127.0.0.1"),
+    ).toBe("http://127.0.0.1:8000");
+    expect(
+      resolveApiBaseUrl(undefined, true, "localhost"),
+    ).toBe("http://localhost:8000");
+  });
+
+  it("normalizes a loopback override to the page hostname for strict cookies", () => {
+    expect(
+      resolveApiBaseUrl("http://localhost:8000", false, "127.0.0.1"),
+    ).toBe("http://127.0.0.1:8000");
+    expect(
+      resolveApiBaseUrl("http://127.0.0.1:8000", false, "localhost"),
+    ).toBe("http://localhost:8000");
+    expect(
+      resolveApiBaseUrl("https://seawatch-bgsi.onrender.com", false, "127.0.0.1"),
+    ).toBe("https://seawatch-bgsi.onrender.com");
+  });
 });
 
 describe("api client", () => {

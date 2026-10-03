@@ -6,7 +6,7 @@ import { VesselIntelligenceCard } from "./VesselIntelligenceCard";
 import type { LiveVesselFeature, LiveTrack } from "../../api/live";
 import type { SatelliteEvidence, SatelliteEvidenceValue } from "./satelliteEvidence";
 
-const zh = DICTIONARIES["zh-Hant"];
+const zh = DICTIONARIES.en;
 const PROHIBITED = ["dangerous", "suspicious", "threat", "abnormal", "hostile"];
 
 const SUFFICIENT_BASELINE = {

@@ -6,6 +6,8 @@ import { DICTIONARIES } from "../i18n/dictionaries";
 // --- Mock the live API --------------------------------------------------- //
 let currentVessels: LiveVesselFeature[] = [];
 let currentScanVessels: LiveVesselFeature[] = [];
+let currentHealth: Record<string, unknown>;
+let currentResilience: Record<string, unknown>;
 
 function vessel(id: string, name: string): LiveVesselFeature {
   return {
@@ -38,26 +40,8 @@ vi.mock("../api/live", () => ({
     vessel_count: currentVessels.length,
     features: currentVessels,
   })),
-  fetchLiveHealth: vi.fn(async () => ({
-    status: "online",
-    provider: "open_waters",
-    connected: true,
-    subscribed: true,
-    last_message_at: "2026-10-01T00:00:00Z",
-    message_age_seconds: 5,
-    vessel_count: currentVessels.length,
-    reconnect_attempts: 0,
-    last_error: null,
-  })),
-  fetchResilienceStatus: vi.fn(async () => ({
-    mode: "CLOUD_LIVE",
-    coverage: "taiwan_wide_network_feed",
-    simulated: false,
-    internet_available: true,
-    power_mode: "external",
-    cloud: { source: "open_waters", fresh: true, message_age_seconds: 5, vessel_count: currentVessels.length, connected: true, input_kind: null },
-    edge: { source: "edge_ais", fresh: false, message_age_seconds: null, vessel_count: 0, connected: false, input_kind: "disabled" },
-  })),
+  fetchLiveHealth: vi.fn(async () => currentHealth),
+  fetchResilienceStatus: vi.fn(async () => currentResilience),
   fetchLiveTrack: vi.fn(async (id: string) => ({
     type: "Feature",
     id,
@@ -67,6 +51,14 @@ vi.mock("../api/live", () => ({
   authenticateAreaScan: vi.fn(async () => ({
     authenticated: true,
     expires_in_seconds: 900,
+  })),
+  establishAreaScanSession: vi.fn(),
+  planLiveArea: vi.fn(async () => ({
+    area_square_km: 123.45,
+    provider_queries: 2,
+    max_provider_queries: 16,
+    can_scan: true,
+    reason: null,
   })),
   scanLiveArea: vi.fn(async () => ({
     source: "datalastic",
@@ -100,6 +92,7 @@ vi.mock("../components/MapCanvas", () => {
           <div data-testid="follow">{String(props.follow)}</div>
           <div data-testid="fit-bounds">{props.fitBounds ? props.fitBounds.join(",") : ""}</div>
           <div data-testid="fit-nonce">{String(props.fitBoundsNonce ?? 0)}</div>
+          <div data-testid="online-basemap">{String(props.onlineBasemap)}</div>
           {props.vessels.map((v: LiveVesselFeature) => (
             <button key={v.id} data-testid={`sel-${v.id}`} onClick={() => props.onSelectVessel(v)}>
               {v.id}
@@ -140,7 +133,12 @@ vi.mock("../components/MapCanvas", () => {
 import {
   AreaScanApiError,
   authenticateAreaScan,
+  establishAreaScanSession,
+  fetchLiveHealth,
+  fetchResilienceStatus,
+  fetchLiveVessels,
   fetchLiveTrack,
+  planLiveArea,
   scanLiveArea,
   type AreaScanResponse,
 } from "../api/live";
@@ -156,8 +154,8 @@ function renderDash({ vesselDemo = false }: { vesselDemo?: boolean } = {}) {
 }
 
 async function authenticateAreaScanUi() {
-  const t = DICTIONARIES["zh-Hant"];
-  fireEvent.change(screen.getByLabelText(t.areaScanOperatorCredential), {
+  const t = DICTIONARIES.en;
+  fireEvent.change(await screen.findByLabelText(t.areaScanOperatorCredential), {
     target: { value: "temporary-operator-credential" },
   });
   fireEvent.click(screen.getByRole("button", { name: t.areaScanAuthenticate }));
@@ -169,6 +167,14 @@ async function authenticateAreaScanUi() {
   expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
 }
 
+async function finalizeArea(t = DICTIONARIES.en, mode: "polygon" | "rectangle" = "polygon") {
+  fireEvent.click(screen.getByRole("button", {
+    name: mode === "polygon" ? t.areaScanPolygon : t.areaScanRectangle,
+  }));
+  fireEvent.click(screen.getByTestId("finish-area"));
+  await waitFor(() => expect(screen.getByRole("button", { name: t.scanArea })).toBeEnabled());
+}
+
 describe("LiveDashboard interaction", () => {
   beforeEach(() => {
     currentVessels = [vessel("v1", "ALPHA"), vessel("v2", "BRAVO")];
@@ -178,11 +184,42 @@ describe("LiveDashboard interaction", () => {
         properties: { ...vessel("scan-1", "DATALASTIC SHIP").properties, source: "datalastic" },
       },
     ];
+    currentHealth = {
+      status: "online",
+      provider: "open_waters",
+      connected: true,
+      subscribed: true,
+      last_message_at: "2026-10-01T00:00:00Z",
+      message_age_seconds: 5,
+      vessel_count: currentVessels.length,
+      reconnect_attempts: 0,
+      last_error: null,
+      live_ingest_enabled: true,
+    };
+    currentResilience = {
+      mode: "CLOUD_LIVE",
+      coverage: "taiwan_wide_network_feed",
+      simulated: false,
+      internet_available: true,
+      power_mode: "external",
+      cloud: { source: "open_waters", fresh: true, message_age_seconds: 5, vessel_count: currentVessels.length, connected: true, input_kind: null },
+      edge: { source: "edge_ais", fresh: false, message_age_seconds: null, vessel_count: 0, connected: false, input_kind: "disabled" },
+    };
     window.localStorage.clear();
     vi.clearAllMocks();
     vi.mocked(authenticateAreaScan).mockResolvedValue({
       authenticated: true,
       expires_in_seconds: 900,
+    });
+    vi.mocked(establishAreaScanSession).mockRejectedValue(
+      new AreaScanApiError(401, "Area Scan operator authentication required", null),
+    );
+    vi.mocked(planLiveArea).mockResolvedValue({
+      area_square_km: 123.45,
+      provider_queries: 2,
+      max_provider_queries: 16,
+      can_scan: true,
+      reason: null,
     });
     vi.mocked(scanLiveArea).mockImplementation(async () => ({
       source: "datalastic",
@@ -192,6 +229,119 @@ describe("LiveDashboard interaction", () => {
       total: currentScanVessels.length,
       vessels: currentScanVessels,
     }));
+  });
+
+  it("auto-establishes a loopback session without showing an operator password", async () => {
+    vi.mocked(establishAreaScanSession).mockResolvedValueOnce({
+      authenticated: true,
+      expires_in_seconds: 900,
+    });
+    renderDash();
+    await screen.findByTestId("sel-v1");
+    const t = DICTIONARIES.en;
+
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    expect(screen.queryByLabelText(t.areaScanOperatorCredential)).toBeNull();
+    expect(screen.getByRole("button", { name: t.areaScanPolygon })).toBeEnabled();
+    expect(screen.getByRole("button", { name: t.areaScanRectangle })).toBeEnabled();
+    expect(vi.mocked(scanLiveArea)).not.toHaveBeenCalled();
+  });
+
+  it("presents Datalastic Area Scan cleanly when continuous ingest is disabled", async () => {
+    currentVessels = [];
+    currentHealth = {
+      status: "online",
+      provider: "datalastic",
+      connected: true,
+      subscribed: false,
+      last_message_at: null,
+      message_age_seconds: null,
+      vessel_count: 0,
+      reconnect_attempts: 0,
+      last_error: null,
+      live_ingest_enabled: false,
+      provider_status: {
+        provider: "datalastic",
+        configured: true,
+        reachable: true,
+        key_status: "valid",
+        addons: true,
+        requests_remaining: 100,
+        rate_limit_remaining: 10,
+        last_success_at: "2026-10-03T10:00:00Z",
+        last_error_category: null,
+      },
+    };
+    currentResilience = {
+      mode: "NO_LIVE_SOURCE",
+      coverage: "none",
+      simulated: false,
+      internet_available: false,
+      power_mode: "external",
+      cloud: { source: "open_waters", fresh: false, message_age_seconds: null, vessel_count: 0, connected: false, input_kind: null },
+      edge: { source: "edge_ais", fresh: false, message_age_seconds: null, vessel_count: 0, connected: false, input_kind: "disabled" },
+    };
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    const source = await screen.findByTestId("datalastic-primary-status");
+    expect(source).toHaveTextContent("Datalastic Area Scan");
+    expect(source).toHaveTextContent(t.datalasticPrimaryReady);
+    expect(screen.queryByText(t.reconnectingAis)).toBeNull();
+    expect(screen.queryByText(t.modeNoSource)).toBeNull();
+    expect(screen.queryByText(t.corsNote)).toBeNull();
+  });
+
+  it("keeps the Datalastic-primary presentation when legacy vessel polling fails", async () => {
+    currentVessels = [];
+    currentHealth = {
+      status: "online",
+      provider: "datalastic",
+      connected: true,
+      subscribed: false,
+      last_message_at: null,
+      message_age_seconds: null,
+      vessel_count: 0,
+      reconnect_attempts: 0,
+      last_error: null,
+      live_ingest_enabled: false,
+      provider_status: {
+        provider: "datalastic",
+        configured: true,
+        reachable: true,
+        key_status: "valid",
+        addons: true,
+        requests_remaining: 100,
+        rate_limit_remaining: 10,
+        last_success_at: "2026-10-03T10:00:00Z",
+        last_error_category: null,
+      },
+    };
+    vi.mocked(fetchLiveVessels).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    expect(screen.queryByText(t.reconnectingAis)).toBeNull();
+    expect(await screen.findByTestId("datalastic-primary-status")).toHaveTextContent(
+      t.datalasticPrimaryReady,
+    );
+    expect(screen.queryByText(t.reconnectingAis)).toBeNull();
+    expect(screen.queryByText(new RegExp(t.errorLoadingVessels))).toBeNull();
+    expect(vi.mocked(fetchLiveHealth)).toHaveBeenCalled();
+  });
+
+  it("does not contact the online basemap before operating mode is known", () => {
+    vi.mocked(fetchLiveVessels).mockImplementationOnce(() => new Promise(() => {}));
+    vi.mocked(fetchLiveHealth).mockImplementationOnce(() => new Promise(() => {}));
+    vi.mocked(fetchResilienceStatus).mockImplementationOnce(() => new Promise(() => {}));
+
+    renderDash();
+
+    expect(screen.getByTestId("online-basemap")).toHaveTextContent("false");
+    expect(screen.queryByText(DICTIONARIES.en.reconnectingAis)).toBeNull();
   });
 
   it("selects a vessel on click and opens the panel", async () => {
@@ -256,23 +406,21 @@ describe("LiveDashboard interaction", () => {
     fireEvent.click(screen.getByTestId("user-interact"));
     expect(screen.getByTestId("follow").textContent).toBe("false");
     // Resume control appears.
-    expect(screen.getByText("繼續追蹤")).toBeInTheDocument();
+    expect(screen.getByText(DICTIONARIES.en.resumeFollow)).toBeInTheDocument();
   });
 
-  it("shows the compact header in Traditional Chinese by default and toggles to English", async () => {
+  it("shows the compact header in English by default and toggles to Traditional Chinese", async () => {
     renderDash();
     await screen.findByTestId("sel-v1");
-    const zh = DICTIONARIES["zh-Hant"];
-    const enDict = DICTIONARIES["en"];
-    expect(screen.getByText(zh.productTagline)).toBeInTheDocument();
-    expect(screen.getAllByText(zh.modeCloud).length).toBeGreaterThanOrEqual(1);
+    const enDict = DICTIONARIES.en;
+    expect(screen.getByText(enDict.productTagline)).toBeInTheDocument();
+    expect(screen.getAllByText(enDict.modeCloud).length).toBeGreaterThanOrEqual(1);
     const operatingStatus = screen.getByTestId("operating-status-panel");
     expect(operatingStatus).toHaveAttribute("data-mode", "CLOUD_LIVE");
     expect(operatingStatus.textContent).toContain("open_waters");
-    expect(operatingStatus.textContent).toContain(zh.provenanceCloud);
+    expect(operatingStatus.textContent).toContain(enDict.provenanceCloud);
     fireEvent.click(screen.getByLabelText("Toggle language"));
-    expect(screen.getByText(enDict.productTagline)).toBeInTheDocument();
-    expect(screen.getAllByText(enDict.modeCloud).length).toBeGreaterThan(0);
+    expect(screen.getByText(DICTIONARIES["zh-Hant"].productTagline)).toBeInTheDocument();
   });
 
   it("searches a loaded vessel and selects it from the search box", async () => {
@@ -291,7 +439,7 @@ describe("LiveDashboard interaction", () => {
     await screen.findByTestId("sel-v1");
     const before = screen.getByTestId("fit-nonce").textContent;
     const presets = Array.from(document.querySelectorAll(".preset-btn")) as HTMLButtonElement[];
-    const kao = presets.find((b) => b.textContent === DICTIONARIES["zh-Hant"].presetKaohsiung);
+    const kao = presets.find((b) => b.textContent === DICTIONARIES.en.presetKaohsiung);
     expect(kao).toBeTruthy();
     fireEvent.click(kao!);
     const after = screen.getByTestId("fit-nonce").textContent;
@@ -308,7 +456,7 @@ describe("LiveDashboard interaction", () => {
       if (!el) throw new Error("no empty-viewport yet");
       return el as HTMLElement;
     });
-    expect(box.textContent).toContain(DICTIONARIES["zh-Hant"].emptyViewport);
+    expect(box.textContent).toContain(DICTIONARIES.en.emptyViewport);
     const before = screen.getByTestId("fit-nonce").textContent;
     const action = box.querySelector("button") as HTMLButtonElement;
     fireEvent.click(action);
@@ -319,10 +467,10 @@ describe("LiveDashboard interaction", () => {
     renderDash({ vesselDemo: true });
 
     expect(await screen.findByTestId("vessel-demo-mode")).toHaveTextContent(
-      DICTIONARIES["zh-Hant"].demoIllustrativeLabel,
+      DICTIONARIES.en.demoIllustrativeLabel,
     );
     expect(screen.getByTestId("demo-banner")).toHaveTextContent(
-      DICTIONARIES["zh-Hant"].demoIllustrativeLabel,
+      DICTIONARIES.en.demoIllustrativeLabel,
     );
   });
 
@@ -339,12 +487,12 @@ describe("LiveDashboard interaction", () => {
     renderDash();
     await screen.findByTestId("sel-v1");
 
-    fireEvent.click(screen.getByRole("button", { name: "區域掃描" }));
+    const t = DICTIONARIES.en;
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
     await authenticateAreaScanUi();
-    fireEvent.click(screen.getByRole("button", { name: "多邊形" }));
-    fireEvent.click(screen.getByTestId("finish-area"));
+    await finalizeArea(t);
     expect(vi.mocked(scanLiveArea)).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "掃描區域" }));
+    fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
 
     expect(await screen.findByTestId("scan-sel-scan-1")).toBeInTheDocument();
     expect(vi.mocked(scanLiveArea)).toHaveBeenCalledTimes(1);
@@ -356,42 +504,41 @@ describe("LiveDashboard interaction", () => {
   it("opens the existing vessel workflow for an Area Scan result and clears it", async () => {
     renderDash();
     await screen.findByTestId("sel-v1");
-    fireEvent.click(screen.getByRole("button", { name: "區域掃描" }));
+    const t = DICTIONARIES.en;
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
     await authenticateAreaScanUi();
-    fireEvent.click(screen.getByRole("button", { name: "矩形" }));
-    fireEvent.click(screen.getByTestId("finish-area"));
-    fireEvent.click(screen.getByRole("button", { name: "掃描區域" }));
+    await finalizeArea(t, "rectangle");
+    fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
     const scanVessel = await screen.findByTestId("scan-sel-scan-1");
     fireEvent.click(scanVessel);
     expect(await screen.findByText("DATALASTIC SHIP")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "清除" }));
+    fireEvent.click(screen.getByRole("button", { name: t.clearAreaScan }));
     expect(screen.queryByTestId("scan-sel-scan-1")).toBeNull();
   });
 
-  it("keeps the later Area Scan result when A resolves after B", async () => {
+  it("prevents a repeated paid request while a scan is pending", async () => {
     const makeDeferred = () => {
       let resolve!: (value: AreaScanResponse) => void;
       const promise = new Promise<AreaScanResponse>((done) => { resolve = done; });
       return { promise, resolve };
     };
     const first = makeDeferred();
-    const second = makeDeferred();
-    vi.mocked(scanLiveArea)
-      .mockImplementationOnce(() => first.promise)
-      .mockImplementationOnce(() => second.promise);
+    vi.mocked(scanLiveArea).mockImplementationOnce(() => first.promise);
     renderDash();
     await screen.findByTestId("sel-v1");
-    const t = DICTIONARIES["zh-Hant"];
+    const t = DICTIONARIES.en;
     fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
     await authenticateAreaScanUi();
-    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
-    fireEvent.click(screen.getByTestId("finish-area"));
+    await finalizeArea(t);
     fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
-    fireEvent.click(screen.getByRole("button", { name: t.areaScanning }));
+    const pending = screen.getByRole("button", { name: t.areaScanning });
+    expect(pending).toBeDisabled();
+    fireEvent.click(pending);
+    expect(vi.mocked(scanLiveArea)).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      second.resolve({
+      first.resolve({
         source: "datalastic",
         scanned_at: "2026-10-03T02:01:00Z",
         cached: false,
@@ -401,19 +548,6 @@ describe("LiveDashboard interaction", () => {
       });
     });
     expect(await screen.findByTestId("scan-sel-scan-b")).toBeInTheDocument();
-
-    await act(async () => {
-      first.resolve({
-        source: "datalastic",
-        scanned_at: "2026-10-03T02:00:00Z",
-        cached: false,
-        scan: { geometry_type: "Polygon", provider_queries: 1 },
-        total: 1,
-        vessels: [{ ...vessel("scan-a", "FIRST"), properties: { ...vessel("scan-a", "FIRST").properties, source: "datalastic" } }],
-      });
-    });
-    expect(screen.getByTestId("scan-sel-scan-b")).toBeInTheDocument();
-    expect(screen.queryByTestId("scan-sel-scan-a")).toBeNull();
   });
 
   it("clear aborts a pending scan and ignores its eventual completion", async () => {
@@ -423,11 +557,10 @@ describe("LiveDashboard interaction", () => {
     );
     renderDash();
     await screen.findByTestId("sel-v1");
-    const t = DICTIONARIES["zh-Hant"];
+    const t = DICTIONARIES.en;
     fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
     await authenticateAreaScanUi();
-    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
-    fireEvent.click(screen.getByTestId("finish-area"));
+    await finalizeArea(t);
     fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
     fireEvent.click(screen.getByRole("button", { name: t.clearAreaScan }));
 
@@ -444,17 +577,67 @@ describe("LiveDashboard interaction", () => {
     expect(screen.queryByTestId("scan-sel-scan-1")).toBeNull();
   });
 
+  it("disables Scan Area when the local plan says the geometry is too large", async () => {
+    vi.mocked(planLiveArea).mockResolvedValueOnce({
+      area_square_km: 250000,
+      provider_queries: null,
+      max_provider_queries: 16,
+      can_scan: false,
+      reason: "too_large",
+    });
+    renderDash();
+    await screen.findByTestId("sel-v1");
+    const t = DICTIONARIES.en;
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    await authenticateAreaScanUi();
+    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
+    fireEvent.click(screen.getByTestId("finish-area"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(t.areaScanTooLargeShort);
+    expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
+    expect(vi.mocked(scanLiveArea)).not.toHaveBeenCalled();
+  });
+
+  it("maps admission exhaustion to a friendly message without rendering raw detail", async () => {
+    const raw = "Area Scan request budget exhausted internal_limiter_name";
+    vi.mocked(scanLiveArea).mockRejectedValueOnce(new AreaScanApiError(429, raw, 2));
+    renderDash();
+    await screen.findByTestId("sel-v1");
+    const t = DICTIONARIES.en;
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    await authenticateAreaScanUi();
+    await finalizeArea(t);
+    fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(t.areaScanLimitReached);
+    expect(document.body).not.toHaveTextContent(raw);
+  });
+
+  it("maps provider quota exhaustion to a friendly message", async () => {
+    vi.mocked(scanLiveArea).mockRejectedValueOnce(
+      new AreaScanApiError(503, "Datalastic quota exhausted", null),
+    );
+    renderDash();
+    await screen.findByTestId("sel-v1");
+    const t = DICTIONARIES.en;
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    await authenticateAreaScanUi();
+    await finalizeArea(t);
+    fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(t.areaScanQuotaUnavailable);
+  });
+
   it("returns to operator authentication when the capability expires", async () => {
     vi.mocked(scanLiveArea).mockRejectedValueOnce(
       new AreaScanApiError(403, "Area Scan authorization invalid or expired", null),
     );
     renderDash();
     await screen.findByTestId("sel-v1");
-    const t = DICTIONARIES["zh-Hant"];
+    const t = DICTIONARIES.en;
     fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
     await authenticateAreaScanUi();
-    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
-    fireEvent.click(screen.getByTestId("finish-area"));
+    await finalizeArea(t);
     fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -464,6 +647,30 @@ describe("LiveDashboard interaction", () => {
     expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
   });
 
+  it("re-establishes an expired loopback auto-auth session without repeating the scan", async () => {
+    vi.mocked(establishAreaScanSession).mockResolvedValue({
+      authenticated: true,
+      expires_in_seconds: 900,
+    });
+    vi.mocked(scanLiveArea).mockRejectedValueOnce(
+      new AreaScanApiError(403, "Area Scan authorization invalid or expired", null),
+    );
+    renderDash();
+    await screen.findByTestId("sel-v1");
+    const t = DICTIONARIES.en;
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    await finalizeArea(t);
+    fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
+
+    await waitFor(() => {
+      expect(vi.mocked(establishAreaScanSession)).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.queryByLabelText(t.areaScanOperatorCredential)).toBeNull();
+    expect(screen.getByRole("button", { name: t.scanArea })).toBeEnabled();
+    expect(vi.mocked(scanLiveArea)).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps same-public-ID scan selection and track provenance separate from live", async () => {
     currentVessels = [vessel("v-shared", "LIVE SHIP")];
     currentScanVessels = [
@@ -471,11 +678,10 @@ describe("LiveDashboard interaction", () => {
     ];
     renderDash();
     await screen.findByTestId("sel-v-shared");
-    const t = DICTIONARIES["zh-Hant"];
+    const t = DICTIONARIES.en;
     fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
     await authenticateAreaScanUi();
-    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
-    fireEvent.click(screen.getByTestId("finish-area"));
+    await finalizeArea(t);
     fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
     fireEvent.click(await screen.findByTestId("scan-sel-v-shared"));
 
@@ -504,11 +710,10 @@ describe("LiveDashboard interaction", () => {
     ];
     renderDash();
     await screen.findByTestId("sel-v1");
-    const t = DICTIONARIES["zh-Hant"];
+    const t = DICTIONARIES.en;
     fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
     await authenticateAreaScanUi();
-    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
-    fireEvent.click(screen.getByTestId("finish-area"));
+    await finalizeArea(t);
     fireEvent.click(screen.getByRole("button", { name: t.scanArea }));
     fireEvent.click(await screen.findByTestId("scan-sel-scan-fresh"));
 

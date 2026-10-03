@@ -48,6 +48,10 @@ export interface LiveVesselFeature {
     heading_deg: number | null;
     nav_status: number | null;
     vessel_type: number | null;
+    /** Original Datalastic coarse type, when the provider supplied one. */
+    provider_vessel_type?: string | null;
+    /** Original Datalastic specific type, when the provider supplied one. */
+    provider_vessel_type_specific?: string | null;
     name: string | null;
     destination: string | null;
     /** Upstream AIS report time (ISO-8601 UTC). */
@@ -94,6 +98,9 @@ export interface LiveHealth {
   cloud?: SourceStatus;
   edge?: SourceStatus;
   provider_status?: DatalasticProviderStatus;
+  /** Safe server state; never contains provider credentials. */
+  live_ingest_enabled?: boolean;
+  area_scan_autoauth_loopback_enabled?: boolean;
 }
 
 export interface DatalasticProviderStatus {
@@ -185,6 +192,14 @@ export interface AreaScanResponse {
   vessels: LiveVesselFeature[];
 }
 
+export interface AreaScanPlan {
+  area_square_km: number;
+  provider_queries: number | null;
+  max_provider_queries: number;
+  can_scan: boolean;
+  reason: "too_large" | null;
+}
+
 export class AreaScanApiError extends Error {
   readonly status: number;
   readonly retryAfterSeconds: number | null;
@@ -206,11 +221,24 @@ export async function authenticateAreaScan(
   operatorCredential: string,
   signal?: AbortSignal,
 ): Promise<AreaScanSessionResponse> {
+  return postAreaScanSession({ operator_credential: operatorCredential }, signal);
+}
+
+export async function establishAreaScanSession(
+  signal?: AbortSignal,
+): Promise<AreaScanSessionResponse> {
+  return postAreaScanSession({}, signal);
+}
+
+async function postAreaScanSession(
+  body: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<AreaScanSessionResponse> {
   const response = await fetch(`${getBaseUrl()}/live/area-scan/session`, {
     method: "POST",
     credentials: "include",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ operator_credential: operatorCredential }),
+    body: JSON.stringify(body),
     signal,
   });
   if (!response.ok) throw await areaScanError(response);
@@ -234,6 +262,25 @@ export async function scanLiveArea(
   });
   if (!response.ok) throw await areaScanError(response);
   return (await response.json()) as AreaScanResponse;
+}
+
+export async function planLiveArea(
+  geometry: GeoJSON.Polygon,
+  signal?: AbortSignal,
+): Promise<AreaScanPlan> {
+  const response = await fetch(`${getBaseUrl()}/live/area-scan/plan`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-SeaWatch-Area-Scan": "1",
+    },
+    body: JSON.stringify({ geometry }),
+    signal,
+  });
+  if (!response.ok) throw await areaScanError(response);
+  return (await response.json()) as AreaScanPlan;
 }
 
 async function areaScanError(response: Response): Promise<AreaScanApiError> {

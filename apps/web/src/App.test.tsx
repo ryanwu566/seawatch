@@ -22,6 +22,7 @@ vi.mock("./features/logistics/LogisticsView", () => ({
 }));
 
 import App, { isResilienceDemo, isVesselDemo } from "./App";
+import { DICTIONARIES } from "./i18n/dictionaries";
 
 afterEach(() => window.history.replaceState({}, "", "/"));
 
@@ -103,5 +104,18 @@ describe("vessel demo entry", () => {
       "data-vessel-demo",
       "false",
     );
+  });
+});
+
+describe("primary navigation", () => {
+  it("renders English navigation labels by default", () => {
+    window.localStorage.clear();
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: DICTIONARIES.en.logistics.navLiveMap }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("button", { name: DICTIONARIES.en.logistics.navLogistics }))
+      .toBeInTheDocument();
+    expect(document.querySelector(".app-nav")?.textContent).not.toMatch(/[\u3400-\u9fff]/u);
   });
 });

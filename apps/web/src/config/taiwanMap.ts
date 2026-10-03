@@ -7,6 +7,8 @@ import type { StyleSpecification } from "maplibre-gl";
 export const TAIWAN_CENTER: [number, number] = [120.9, 23.6];
 export const TAIWAN_ZOOM = 6.6;
 export const TAIWAN_BBOX = { minLat: 21.5, minLon: 118.0, maxLat: 26.5, maxLon: 123.5 };
+export const OPENFREEMAP_LIBERTY_STYLE_URL =
+  "https://tiles.openfreemap.org/styles/liberty";
 
 // Quick-navigation presets. Bounds are intentionally centered on WATER (ports
 // are approached from their seaward side) so a preset never centers inland.
@@ -64,6 +66,11 @@ export function nlscStyle(base: BaseMapId): StyleSpecification {
       },
     ],
   };
+}
+
+/** Primary online vector style; the existing orthophoto remains selectable. */
+export function onlineStyle(base: BaseMapId): StyleSpecification | string {
+  return base === "nlsc-photo" ? nlscStyle(base) : OPENFREEMAP_LIBERTY_STYLE_URL;
 }
 
 // --- Public commercial ports (civilian) ------------------------------------ //

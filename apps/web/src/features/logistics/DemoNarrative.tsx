@@ -6,9 +6,9 @@ const stages = [
 
 export function DemoNarrative() {
   return (
-    <aside className="demo-narrative" aria-label="Illustrative workflow / 演示流程">
+    <aside className="demo-narrative" aria-label="Illustrative workflow">
       <div className="demo-narrative-heading">
-        <strong>Illustrative workflow / 演示流程</strong>
+        <strong>Illustrative workflow</strong>
         <span>
           This guided sequence is not an actual network failure, not an automatic
           failover, and not a real-time transition.

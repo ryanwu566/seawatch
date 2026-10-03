@@ -1,11 +1,11 @@
-// Bilingual (Traditional Chinese default, English secondary) dictionary for the
+// Bilingual dictionary with English as the hackathon/demo default.
 // Taiwan Maritime Awareness Platform. Keys are stable identifiers; values are
 // per-language strings. Components reference keys via the useI18n() hook so no
 // JSX is duplicated per language.
 
 export type Lang = "zh-Hant" | "en";
 
-export const DEFAULT_LANG: Lang = "zh-Hant";
+export const DEFAULT_LANG: Lang = "en";
 
 export interface Dict {
   // Product identity
@@ -157,6 +157,7 @@ export interface Dict {
   areaScanAuthenticating: string;
   areaScanAuthenticated: string;
   areaScanAuthFailed: string;
+  areaScanSessionFailed: string;
   areaScanSessionExpired: string;
   scanArea: string;
   clearAreaScan: string;
@@ -165,8 +166,24 @@ export interface Dict {
   areaScanTime: string;
   areaScanQueries: string;
   areaScanCached: string;
+  areaScanAgain: string;
+  areaScanSelectedArea: string;
+  areaScanEstimatedQueries: string;
+  areaScanMaximumAllowed: string;
+  areaScanPlanning: string;
+  areaScanTooLargeShort: string;
+  areaScanTooLarge: string;
+  areaScanInvalidPolygon: string;
+  areaScanLimitReached: string;
+  areaScanQuotaUnavailable: string;
   datalasticLiveAis: string;
   datalasticUnavailable: string;
+  datalasticPrimaryTitle: string;
+  datalasticAreaScan: string;
+  datalasticAreaCoverage: string;
+  datalasticPrimaryReady: string;
+  datalasticPrimaryHint: string;
+  vesselTypeLegend: string;
 
   // Layers
   layers: string;
@@ -368,7 +385,7 @@ const zhHant: Dict = {
   maritime: "海事圖層",
   airspace: "空域圖層",
   analysis: "分析",
-  layerTaiwanEmap: "臺灣通用電子地圖",
+  layerTaiwanEmap: "OpenFreeMap Liberty",
   layerOrthophoto: "正射影像",
   layerLiveVessels: "即時船舶",
   layerVesselTracks: "船舶航跡",
@@ -481,6 +498,7 @@ const zhHant: Dict = {
   areaScanAuthenticating: "驗證中…",
   areaScanAuthenticated: "區域掃描工作階段已啟用",
   areaScanAuthFailed: "區域掃描操作驗證失敗",
+  areaScanSessionFailed: "無法啟用區域掃描工作階段",
   areaScanSessionExpired: "區域掃描工作階段已失效，請重新驗證",
   scanArea: "掃描區域",
   clearAreaScan: "清除",
@@ -489,8 +507,24 @@ const zhHant: Dict = {
   areaScanTime: "掃描時間",
   areaScanQueries: "供應商查詢",
   areaScanCached: "快取結果",
+  areaScanAgain: "再次掃描",
+  areaScanSelectedArea: "選取面積",
+  areaScanEstimatedQueries: "預估供應商查詢",
+  areaScanMaximumAllowed: "允許上限",
+  areaScanPlanning: "計算掃描範圍中…",
+  areaScanTooLargeShort: "選取區域過大。",
+  areaScanTooLarge: "選取區域過大，請縮小範圍。",
+  areaScanInvalidPolygon: "多邊形無效，請調整形狀後再試一次。",
+  areaScanLimitReached: "已達掃描限制，請稍候再試。",
+  areaScanQuotaUnavailable: "Datalastic 配額目前無法使用。",
   datalasticLiveAis: "Datalastic Live AIS",
   datalasticUnavailable: "Datalastic Live AIS 目前無法使用",
+  datalasticPrimaryTitle: "即時資料來源",
+  datalasticAreaScan: "Datalastic Area Scan",
+  datalasticAreaCoverage: "使用者選取區域",
+  datalasticPrimaryReady: "就緒",
+  datalasticPrimaryHint: "請使用多邊形或矩形選取區域，再按下掃描區域。",
+  vesselTypeLegend: "船舶類型",
   illustrativeAirspace: "示意空域",
 
   loading: "載入中…",
@@ -580,13 +614,13 @@ const zhHant: Dict = {
 const en: Dict = {
   productName: "SeaWatch",
   productTagline: "Taiwan Maritime Awareness Platform",
-  productSubtitle: "臺灣海域智慧態勢平台",
+  productSubtitle: "Maritime Awareness and Resilience",
 
   live: "LIVE",
   reconnecting: "Reconnecting",
   staleData: "Stale Data",
   liveSourceLabel: "Live AIS",
-  langToggleZh: "中文",
+  langToggleZh: "ZH",
   langToggleEn: "EN",
   dataFreshness: "Data freshness",
   vesselsNow: "Vessels Now",
@@ -638,7 +672,7 @@ const en: Dict = {
   maritime: "Maritime Layers",
   airspace: "Airspace Layers",
   analysis: "Analysis",
-  layerTaiwanEmap: "Taiwan e-Map",
+  layerTaiwanEmap: "OpenFreeMap Liberty",
   layerOrthophoto: "Orthophoto",
   layerLiveVessels: "Live Vessels",
   layerVesselTracks: "Vessel Tracks",
@@ -749,18 +783,35 @@ const en: Dict = {
   areaScanOperatorCredentialHint: "Enter the server-configured operator credential",
   areaScanAuthenticate: "Enable Area Scan",
   areaScanAuthenticating: "Authenticating…",
-  areaScanAuthenticated: "Area Scan session enabled",
+  areaScanAuthenticated: "Area Scan session active",
   areaScanAuthFailed: "Area Scan operator authentication failed",
-  areaScanSessionExpired: "Area Scan session expired; authenticate again",
+  areaScanSessionFailed: "Unable to establish the Area Scan session",
+  areaScanSessionExpired: "Area Scan session expired. Reconnecting…",
   scanArea: "Scan Area",
   clearAreaScan: "Clear",
   areaScanning: "Scanning…",
-  areaScanResults: "Vessels found",
-  areaScanTime: "Scan time",
-  areaScanQueries: "Provider queries",
+  areaScanResults: "Vessels",
+  areaScanTime: "Observed",
+  areaScanQueries: "Provider Queries",
   areaScanCached: "Cached result",
+  areaScanAgain: "Scan Again",
+  areaScanSelectedArea: "Selected Area",
+  areaScanEstimatedQueries: "Estimated Provider Queries",
+  areaScanMaximumAllowed: "Maximum Allowed",
+  areaScanPlanning: "Calculating scan size…",
+  areaScanTooLargeShort: "Selected area is too large.",
+  areaScanTooLarge: "Selected area is too large. Draw a smaller area.",
+  areaScanInvalidPolygon: "Invalid polygon. Adjust the shape and try again.",
+  areaScanLimitReached: "Scan limit reached. Please wait before scanning again.",
+  areaScanQuotaUnavailable: "Datalastic quota is currently unavailable.",
   datalasticLiveAis: "Datalastic Live AIS",
-  datalasticUnavailable: "Datalastic Live AIS currently unavailable",
+  datalasticUnavailable: "Live vessel data is temporarily unavailable.",
+  datalasticPrimaryTitle: "Live Data Source",
+  datalasticAreaScan: "Datalastic Area Scan",
+  datalasticAreaCoverage: "Operator-selected area",
+  datalasticPrimaryReady: "Ready",
+  datalasticPrimaryHint: "Draw a polygon or rectangle, then select Scan Area.",
+  vesselTypeLegend: "Vessel Type",
   illustrativeAirspace: "Illustrative Airspace",
 
   loading: "Loading…",
@@ -832,7 +883,7 @@ const en: Dict = {
     distanceKm: "km",
     capacityUnits: "units/day",
     truthBadgeTitle: "Data provenance",
-    schematicConnector: "SCHEMATIC CONNECTOR / 示意連線",
+    schematicConnector: "SCHEMATIC CONNECTOR",
     assumptions: "Assumptions",
     loadError: "Failed to load logistics scenario data.",
     commodityMedical: "Medical",

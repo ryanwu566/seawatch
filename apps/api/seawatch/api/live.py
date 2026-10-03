@@ -20,7 +20,7 @@ from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Request, Re
 from pydantic import BaseModel, Field, ValidationError
 
 from ..live import BoundingBox, get_live_runtime, get_resilience_status
-from ..live.area_scan import AreaScanRequest, ScanValidationError
+from ..live.area_scan import AreaScanRequest, ScanValidationError, plan_scan_geometry
 from ..live.area_scan_access import (
     AREA_SCAN_CAPABILITY_COOKIE,
     DEFAULT_CAPABILITY_TTL_SECONDS,
@@ -37,10 +37,15 @@ router = APIRouter(prefix="/live", tags=["live"])
 _PUBLIC_VESSEL_ID = re.compile(r"^v_[A-Za-z0-9_-]{16,64}$")
 _MAX_OPERATOR_SESSION_BODY_BYTES = 8_192
 _AREA_SCAN_CSRF_HEADER = "x-seawatch-area-scan"
+_AREA_SCAN_AUTOAUTH_HOSTS = {"localhost", "127.0.0.1"}
 
 
 class AreaScanSessionRequest(BaseModel):
-    operator_credential: str = Field(min_length=1, max_length=4_096)
+    operator_credential: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=4_096,
+    )
 
 
 @router.post("/area-scan/session", summary="Create a short-lived Area Scan session")
@@ -52,7 +57,7 @@ async def create_area_scan_session(
 
     runtime = get_live_runtime()
     access = runtime.area_scan_access
-    if not access.operator_configured:
+    if not access.configured:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Area Scan access is not configured",
@@ -70,11 +75,24 @@ async def create_area_scan_session(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Invalid Area Scan session request",
         ) from None
-    if not verify_operator_credential(payload.operator_credential, access):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Area Scan operator authentication failed",
-        )
+    loopback_request = _is_loopback_request(request)
+    loopback_autoauth = access.autoauth_loopback and loopback_request
+    if not loopback_autoauth:
+        if not access.operator_configured:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Area Scan access is not configured",
+            )
+        if payload.operator_credential is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Area Scan operator authentication required",
+            )
+        if not verify_operator_credential(payload.operator_credential, access):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Area Scan operator authentication failed",
+            )
     capability = mint_area_scan_capability(
         access,
         ttl_seconds=DEFAULT_CAPABILITY_TTL_SECONDS,
@@ -84,7 +102,7 @@ async def create_area_scan_session(
         value=capability,
         max_age=DEFAULT_CAPABILITY_TTL_SECONDS,
         httponly=True,
-        secure=access.secure_cookie or not _is_loopback_request(request),
+        secure=(access.secure_cookie and not loopback_autoauth) or not loopback_request,
         samesite="strict",
         path="/live/area-scan",
     )
@@ -93,6 +111,41 @@ async def create_area_scan_session(
         "authenticated": True,
         "expires_in_seconds": DEFAULT_CAPABILITY_TTL_SECONDS,
     }
+
+
+@router.post("/area-scan/plan", summary="Plan an Area Scan without provider requests")
+async def plan_live_area_scan(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    capability_cookie: str | None = Cookie(
+        default=None,
+        alias=AREA_SCAN_CAPABILITY_COOKIE,
+    ),
+) -> dict:
+    """Validate geometry and calculate its local provider-query plan."""
+
+    runtime = get_live_runtime()
+    _authorize_area_scan_request(
+        request,
+        runtime.area_scan_access,
+        authorization,
+        capability_cookie,
+    )
+    _require_json_content_type(request)
+    body = await _read_bounded_body(
+        request,
+        max_bytes=runtime.area_scan_access.max_body_bytes,
+        too_large_detail="Area Scan request body is too large",
+    )
+    try:
+        scan_request = AreaScanRequest.model_validate_json(body)
+        plan = plan_scan_geometry(scan_request)
+    except (ValidationError, ValueError, ScanValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid Area Scan geometry",
+        ) from None
+    return plan.to_public_dict()
 
 
 @router.post("/area-scan", summary="Explicit Datalastic polygon area scan")
@@ -107,34 +160,12 @@ async def live_area_scan(
     """Scan one validated polygon only after an explicit client action."""
 
     runtime = get_live_runtime()
-    if not runtime.area_scan_access.configured:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Area Scan access is not configured",
-        )
-    bearer_capability = None
-    if authorization is not None and authorization.startswith("Bearer "):
-        bearer_capability = authorization.removeprefix("Bearer ").strip()
-    capability = bearer_capability or capability_cookie
-    if not capability:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Area Scan authorization required",
-        )
-    if not verify_area_scan_capability(capability, runtime.area_scan_access):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Area Scan authorization invalid or expired",
-        )
-    if (
-        bearer_capability is None
-        and capability_cookie is not None
-        and request.headers.get(_AREA_SCAN_CSRF_HEADER) != "1"
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Area Scan request confirmation required",
-        )
+    _authorize_area_scan_request(
+        request,
+        runtime.area_scan_access,
+        authorization,
+        capability_cookie,
+    )
     _require_json_content_type(request)
     body = await _read_bounded_body(
         request,
@@ -183,6 +214,42 @@ async def live_area_scan(
     return result.to_public_dict()
 
 
+def _authorize_area_scan_request(
+    request: Request,
+    access,
+    authorization: str | None,
+    capability_cookie: str | None,
+) -> None:
+    if not access.configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Area Scan access is not configured",
+        )
+    bearer_capability = None
+    if authorization is not None and authorization.startswith("Bearer "):
+        bearer_capability = authorization.removeprefix("Bearer ").strip()
+    capability = bearer_capability or capability_cookie
+    if not capability:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Area Scan authorization required",
+        )
+    if not verify_area_scan_capability(capability, access):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Area Scan authorization invalid or expired",
+        )
+    if (
+        bearer_capability is None
+        and capability_cookie is not None
+        and request.headers.get(_AREA_SCAN_CSRF_HEADER) != "1"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Area Scan request confirmation required",
+        )
+
+
 def _require_json_content_type(request: Request) -> None:
     """Reject browser-simple content types before parsing sensitive requests."""
 
@@ -194,10 +261,7 @@ def _require_json_content_type(request: Request) -> None:
         )
 
 
-def _is_loopback_request(request: Request) -> bool:
-    """Allow the insecure-cookie opt-in only for an actual loopback Host."""
-
-    hostname = request.url.hostname
+def _is_loopback_host(hostname: str | None) -> bool:
     if hostname is None:
         return False
     if hostname.casefold() == "localhost":
@@ -206,6 +270,18 @@ def _is_loopback_request(request: Request) -> bool:
         return ipaddress.ip_address(hostname).is_loopback
     except ValueError:
         return False
+
+
+def _is_loopback_request(request: Request) -> bool:
+    """Require both the requested host and direct socket peer to be loopback."""
+
+    client = request.client
+    return (
+        client is not None
+        and request.url.hostname is not None
+        and request.url.hostname.casefold() in _AREA_SCAN_AUTOAUTH_HOSTS
+        and _is_loopback_host(client.host)
+    )
 
 
 async def _read_bounded_body(
@@ -318,6 +394,10 @@ def live_health() -> dict:
         cloud=_source_payload(resilience.cloud),
         edge=_source_payload(resilience.edge),
         provider_status=provider_status.to_public_dict(),
+        live_ingest_enabled=runtime.config.live_ingest_enabled,
+        area_scan_autoauth_loopback_enabled=(
+            runtime.area_scan_access.autoauth_loopback
+        ),
     )
     return result
 

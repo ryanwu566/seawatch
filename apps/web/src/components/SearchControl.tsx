@@ -37,7 +37,7 @@ const MAX_RESULTS = 8;
  * search endpoint is used; this searches the in-memory viewport feed only.
  */
 export function SearchControl({ vessels, onSelectVessel, onFitBounds }: SearchControlProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
 
@@ -65,13 +65,13 @@ export function SearchControl({ vessels, onSelectVessel, onFitBounds }: SearchCo
       .map((p) => ({
         kind: "port" as const,
         id: p.id,
-        label: `${p.nameZh} / ${p.nameEn}`,
+        label: lang === "zh-Hant" ? p.nameZh : p.nameEn,
         sub: t.searchPorts,
         // A small sea-facing box around the port.
         bounds: [p.lon - 0.25, p.lat - 0.2, p.lon + 0.25, p.lat + 0.2],
       }));
     return [...vesselHits, ...portHits].slice(0, MAX_RESULTS);
-  }, [query, vessels, t]);
+  }, [query, vessels, t, lang]);
 
   const choose = (r: Result) => {
     if (r.kind === "vessel") {

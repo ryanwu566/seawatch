@@ -5,9 +5,12 @@ import {
   fetchLiveTrack,
   fetchLiveVessels,
   authenticateAreaScan,
+  establishAreaScanSession,
+  planLiveArea,
   scanLiveArea,
   AreaScanApiError,
   type AreaScanResponse,
+  type AreaScanPlan,
   type Bbox,
   type LiveHealth,
   type LiveTrack,
@@ -21,6 +24,7 @@ import { ResilienceBanner } from "../components/ResilienceBanner";
 import { OperatingStatusPanel } from "../components/OperatingStatusPanel";
 import { StatusCards } from "../components/StatusCards";
 import { LayerControl } from "../components/LayerControl";
+import { VesselTypeLegend } from "../components/VesselTypeLegend";
 import { SearchControl } from "../components/SearchControl";
 import { VesselPanel } from "../components/VesselPanel";
 import { MapCanvas, type Viewport } from "../components/MapCanvas";
@@ -31,6 +35,7 @@ import { modePresentation } from "../lib/resilience";
 import { friendlySource } from "../lib/display";
 import { LOCATION_PRESETS } from "../config/taiwanMap";
 import { getDemoScenario } from "../features/intelligence/demoScenario";
+import { classifyAreaScanError, type AreaScanErrorKind } from "../lib/areaScanError";
 
 const POLL_MS = 8000;
 const VIEWPORT_DEBOUNCE_MS = 400;
@@ -63,10 +68,15 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   const [areaDrawMode, setAreaDrawMode] = useState<AreaDrawMode>(null);
   const [areaGeometry, setAreaGeometry] = useState<GeoJSON.Polygon | null>(null);
   const [areaResult, setAreaResult] = useState<AreaScanResponse | null>(null);
+  const [areaPlan, setAreaPlan] = useState<AreaScanPlan | null>(null);
+  const [areaPlanning, setAreaPlanning] = useState(false);
   const [areaLoading, setAreaLoading] = useState(false);
   const [areaError, setAreaError] = useState<string | null>(null);
   const [areaAuthenticated, setAreaAuthenticated] = useState(false);
   const [areaAuthenticating, setAreaAuthenticating] = useState(false);
+  const [areaOperatorAuthenticationRequired, setAreaOperatorAuthenticationRequired] =
+    useState(false);
+  const [areaAutoAuthenticated, setAreaAutoAuthenticated] = useState(false);
 
   // DEMO fixture (frontend-only, illustrative). The demo vessel is NEVER added
   // to the live `vessels` array; it is held entirely separately and opens only
@@ -85,20 +95,25 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   const debounceRef = useRef<number | null>(null);
   const areaScanGenerationRef = useRef(0);
   const areaScanAbortRef = useRef<AbortController | null>(null);
+  const areaPlanAbortRef = useRef<AbortController | null>(null);
+  const areaScanPendingRef = useRef(false);
 
   const loadVessels = useCallback(async () => {
-    try {
-      const [collection, h, resilient] = await Promise.all([
-        fetchLiveVessels(viewportRef.current ?? undefined),
-        fetchLiveHealth().catch(() => null),
-        fetchResilienceStatus().catch(() => null),
-      ]);
-      setVessels(collection.features);
-      if (h) setHealth(h);
-      if (resilient) setResilience(resilient);
+    const [collectionResult, healthResult, resilienceResult] = await Promise.allSettled([
+      fetchLiveVessels(viewportRef.current ?? undefined),
+      fetchLiveHealth(),
+      fetchResilienceStatus(),
+    ]);
+
+    if (healthResult.status === "fulfilled") setHealth(healthResult.value);
+    if (resilienceResult.status === "fulfilled") setResilience(resilienceResult.value);
+
+    if (collectionResult.status === "fulfilled") {
+      setVessels(collectionResult.value.features);
       setError(null);
       setLoadedOnce(true);
-    } catch (err) {
+    } else {
+      const err = collectionResult.reason;
       setError(err instanceof Error ? err.message : t.errorLoadingVessels);
     }
   }, [t]);
@@ -228,7 +243,12 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
     areaScanGenerationRef.current += 1;
     areaScanAbortRef.current?.abort();
     areaScanAbortRef.current = null;
+    areaPlanAbortRef.current?.abort();
+    areaPlanAbortRef.current = null;
+    areaScanPendingRef.current = false;
     setAreaLoading(false);
+    setAreaPlanning(false);
+    setAreaPlan(null);
     setAreaDrawMode(mode);
     setAreaGeometry(null);
     setAreaResult(null);
@@ -239,12 +259,43 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
     areaScanGenerationRef.current += 1;
     areaScanAbortRef.current?.abort();
     areaScanAbortRef.current = null;
+    areaPlanAbortRef.current?.abort();
+    areaPlanAbortRef.current = null;
+    areaScanPendingRef.current = false;
     setAreaLoading(false);
+    setAreaPlanning(false);
+    setAreaPlan(null);
     setAreaGeometry(geometry);
     setAreaDrawMode(null);
     setAreaResult(null);
     setAreaError(null);
   }, []);
+
+  const establishAutomaticAreaSession = useCallback(async () => {
+    setAreaAuthenticating(true);
+    setAreaOperatorAuthenticationRequired(false);
+    setAreaError(null);
+    try {
+      await establishAreaScanSession();
+      setAreaAuthenticated(true);
+      setAreaAutoAuthenticated(true);
+    } catch (err) {
+      setAreaAuthenticated(false);
+      setAreaAutoAuthenticated(false);
+      if (err instanceof AreaScanApiError && (err.status === 401 || err.status === 422)) {
+        setAreaOperatorAuthenticationRequired(true);
+      } else {
+        setAreaError(t.areaScanSessionFailed);
+      }
+    } finally {
+      setAreaAuthenticating(false);
+    }
+  }, [t]);
+
+  const handleAreaPanelOpen = useCallback(async () => {
+    if (areaAuthenticated || areaAuthenticating) return;
+    await establishAutomaticAreaSession();
+  }, [areaAuthenticated, areaAuthenticating, establishAutomaticAreaSession]);
 
   const handleAreaAuthenticate = useCallback(async (operatorCredential: string) => {
     setAreaAuthenticating(true);
@@ -252,16 +303,76 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
     try {
       await authenticateAreaScan(operatorCredential);
       setAreaAuthenticated(true);
+      setAreaAutoAuthenticated(false);
+      setAreaOperatorAuthenticationRequired(false);
     } catch {
       setAreaAuthenticated(false);
+      setAreaOperatorAuthenticationRequired(true);
       setAreaError(t.areaScanAuthFailed);
     } finally {
       setAreaAuthenticating(false);
     }
   }, [t]);
 
+  const areaErrorMessage = useCallback((kind: AreaScanErrorKind) => {
+    switch (kind) {
+      case "too_large": return t.areaScanTooLarge;
+      case "invalid_geometry": return t.areaScanInvalidPolygon;
+      case "limit_reached": return t.areaScanLimitReached;
+      case "quota_unavailable": return t.areaScanQuotaUnavailable;
+      case "session_expired": return t.areaScanSessionExpired;
+      default: return t.datalasticUnavailable;
+    }
+  }, [t]);
+
+  useEffect(() => {
+    areaPlanAbortRef.current?.abort();
+    areaPlanAbortRef.current = null;
+    if (!areaGeometry || !areaAuthenticated) {
+      setAreaPlanning(false);
+      setAreaPlan(null);
+      return;
+    }
+    const controller = new AbortController();
+    areaPlanAbortRef.current = controller;
+    setAreaPlanning(true);
+    setAreaPlan(null);
+    planLiveArea(areaGeometry, controller.signal)
+      .then((plan) => {
+        if (!controller.signal.aborted) setAreaPlan(plan);
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        const kind = classifyAreaScanError(err);
+        if (kind === "session_expired") {
+          setAreaAuthenticated(false);
+          setAreaOperatorAuthenticationRequired(!areaAutoAuthenticated);
+          setAreaAutoAuthenticated(false);
+        }
+        setAreaError(areaErrorMessage(kind));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setAreaPlanning(false);
+          areaPlanAbortRef.current = null;
+        }
+      });
+    return () => controller.abort();
+  }, [areaAuthenticated, areaAutoAuthenticated, areaErrorMessage, areaGeometry]);
+
+  const handleAreaGeometryInvalid = useCallback(() => {
+    setAreaError(t.areaScanInvalidPolygon);
+  }, [t]);
+
   const handleAreaScan = useCallback(async () => {
-    if (!areaGeometry || !areaAuthenticated) return;
+    if (
+      !areaGeometry ||
+      !areaAuthenticated ||
+      !areaPlan?.can_scan ||
+      areaLoading ||
+      areaScanPendingRef.current
+    ) return;
+    areaScanPendingRef.current = true;
     const generation = areaScanGenerationRef.current + 1;
     areaScanGenerationRef.current = generation;
     areaScanAbortRef.current?.abort();
@@ -274,27 +385,46 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
       if (areaScanGenerationRef.current === generation) setAreaResult(result);
     } catch (err) {
       if (areaScanGenerationRef.current === generation && !controller.signal.aborted) {
-        if (err instanceof AreaScanApiError && (err.status === 401 || err.status === 403)) {
+        const kind = classifyAreaScanError(err);
+        if (kind === "session_expired") {
           setAreaAuthenticated(false);
+          setAreaOperatorAuthenticationRequired(!areaAutoAuthenticated);
+          setAreaAutoAuthenticated(false);
           setAreaError(t.areaScanSessionExpired);
+          if (areaAutoAuthenticated) await establishAutomaticAreaSession();
         } else {
-          setAreaError(err instanceof AreaScanApiError ? err.message : t.datalasticUnavailable);
+          setAreaError(areaErrorMessage(kind));
         }
       }
     } finally {
       if (areaScanGenerationRef.current === generation) {
         setAreaLoading(false);
         areaScanAbortRef.current = null;
+        areaScanPendingRef.current = false;
       }
     }
-  }, [areaAuthenticated, areaGeometry, t]);
+  }, [
+    areaAuthenticated,
+    areaAutoAuthenticated,
+    areaGeometry,
+    areaLoading,
+    areaPlan,
+    areaErrorMessage,
+    establishAutomaticAreaSession,
+    t,
+  ]);
 
   const handleAreaClear = useCallback(() => {
     areaScanGenerationRef.current += 1;
     areaScanAbortRef.current?.abort();
     areaScanAbortRef.current = null;
+    areaPlanAbortRef.current?.abort();
+    areaPlanAbortRef.current = null;
+    areaScanPendingRef.current = false;
     const selectedWasArea = selectedSource === "datalastic";
     setAreaLoading(false);
+    setAreaPlanning(false);
+    setAreaPlan(null);
     setAreaDrawMode(null);
     setAreaGeometry(null);
     setAreaResult(null);
@@ -302,7 +432,10 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
     if (selectedWasArea) handleDeselect();
   }, [selectedSource, handleDeselect]);
 
-  useEffect(() => () => areaScanAbortRef.current?.abort(), []);
+  useEffect(() => () => {
+    areaScanAbortRef.current?.abort();
+    areaPlanAbortRef.current?.abort();
+  }, []);
 
   const freshestAge = vessels.reduce<number | null>((minimum, vessel) => {
     const age = vessel.properties.data_age_seconds;
@@ -336,7 +469,20 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
         input_kind: "disabled",
       },
     } satisfies ResilienceStatus);
-  const presentation = modePresentation(effectiveResilience, t);
+  const datalasticPrimary =
+    health?.live_ingest_enabled === false &&
+    health.provider_status?.configured === true;
+  const initialStatusLoading =
+    health === null && resilience === null && !loadedOnce && error === null;
+  const defaultPresentation = modePresentation(effectiveResilience, t);
+  const presentation = datalasticPrimary
+    ? {
+        ...defaultPresentation,
+        label: t.datalasticAreaScan,
+        coverageLabel: t.datalasticAreaCoverage,
+        detail: t.datalasticPrimaryHint,
+      }
+    : defaultPresentation;
   const previousModeRef = useRef<OperatingMode | null>(null);
   const previousMode = previousModeRef.current;
   useEffect(() => {
@@ -352,7 +498,11 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
 
   // Empty-viewport state: loaded, live (not reconnecting), but no vessels here.
   const showEmptyState =
-    loadedOnce && vessels.length === 0 && areaVessels.length === 0 && status !== "reconnecting";
+    !datalasticPrimary &&
+    loadedOnce &&
+    vessels.length === 0 &&
+    areaVessels.length === 0 &&
+    status !== "reconnecting";
   const taiwanPreset = LOCATION_PRESETS[0];
 
   return (
@@ -370,13 +520,15 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
         </div>
       )}
       {effectiveResilience.mode === "OFFLINE_DEMO" && <div className="offline-banner">{t.offlineDemoNote}</div>}
-      {status === "reconnecting" && <div className="warn-banner">{t.reconnectingAis}</div>}
-      {error && (
+      {!initialStatusLoading && !datalasticPrimary && status === "reconnecting" && (
+        <div className="warn-banner">{t.reconnectingAis}</div>
+      )}
+      {!datalasticPrimary && error && (
         <div className="error-banner">
           {t.errorLoadingVessels}: {error}
         </div>
       )}
-      {baseMapError && <div className="warn-banner">{t.corsNote}</div>}
+      {!datalasticPrimary && baseMapError && <div className="warn-banner">{t.corsNote}</div>}
 
       <div className="map-shell">
         <MapCanvas
@@ -394,23 +546,46 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
           onUserInteract={handleUserInteract}
           onBaseMapError={setBaseMapError}
           operatingMode={effectiveResilience.mode}
+          onlineBasemap={datalasticPrimary || effectiveResilience.internet_available}
           areaDrawMode={areaDrawMode}
           areaGeometry={areaGeometry}
           areaVessels={areaVessels}
           onAreaGeometryChange={handleAreaGeometryChange}
+          onAreaGeometryInvalid={handleAreaGeometryInvalid}
         />
 
         <div className="map-overlay-top-left">
-          <OperatingStatusPanel status={effectiveResilience} />
+          {datalasticPrimary ? (
+            <aside
+              className="datalastic-primary-status"
+              data-testid="datalastic-primary-status"
+              aria-label={t.datalasticPrimaryTitle}
+            >
+              <span>{t.datalasticPrimaryTitle}</span>
+              <strong>{t.datalasticAreaScan}</strong>
+              <span className="datalastic-primary-ready">
+                {health?.provider_status?.reachable === false
+                  ? t.datalasticUnavailable
+                  : t.datalasticPrimaryReady}
+              </span>
+              <p>{t.datalasticPrimaryHint}</p>
+            </aside>
+          ) : (
+            <OperatingStatusPanel status={effectiveResilience} />
+          )}
           <AreaScanPanel
             drawMode={areaDrawMode}
             geometry={areaGeometry}
             loading={areaLoading}
+            planning={areaPlanning}
+            plan={areaPlan}
             result={areaResult}
             error={areaError}
             authenticated={areaAuthenticated}
             authenticating={areaAuthenticating}
+            operatorAuthenticationRequired={areaOperatorAuthenticationRequired}
             onDrawMode={handleAreaDrawMode}
+            onOpen={handleAreaPanelOpen}
             onAuthenticate={handleAreaAuthenticate}
             onScan={handleAreaScan}
             onClear={handleAreaClear}
@@ -440,6 +615,7 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
 
         <div className="map-overlay-right">
           <LayerControl layers={layers} onChange={setLayers} />
+          <VesselTypeLegend />
         </div>
 
         {showEmptyState && (

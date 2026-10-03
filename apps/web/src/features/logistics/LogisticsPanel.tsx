@@ -28,6 +28,8 @@ export function LogisticsPanel({
   if (!brief) return null;
 
   const summary = lang === "zh-Hant" ? brief.summary_zh : brief.summary_en;
+  const returnedText = (value: string) =>
+    lang === "zh-Hant" ? value : englishOnlyText(value);
   const routedTotal = brief.recommended_allocations.reduce(
     (total, allocation) => total + allocation.satisfied_units,
     0,
@@ -67,12 +69,14 @@ export function LogisticsPanel({
         <div className="decision-tradeoffs">
           <h3>{L.tradeOffs}</h3>
           <ul className="logistics-tradeoffs">
-            {brief.trade_offs.map((item, idx) => <li key={idx}>{item}</li>)}
+            {brief.trade_offs.map(returnedText).filter(Boolean).map((item, idx) => (
+              <li key={idx}>{item}</li>
+            ))}
           </ul>
         </div>
         <TruthBadge
           provenanceSummary={brief.provenance_summary}
-          provenanceNote={brief.provenance_note}
+          provenanceNote={returnedText(brief.provenance_note)}
         />
       </section>
 
@@ -95,9 +99,9 @@ export function LogisticsPanel({
             {brief.alternatives.map((row) => (
               <tr key={row.port_id} data-port={row.port_id}>
                 <td>
-                  {row.port_label}
+                  {lang === "zh-Hant" ? row.port_label : englishPortLabel(row.port_label, row.port_id)}
                   {row.schematic && row.schematic_label ? (
-                    <span className="schematic-flag"> · {row.schematic_label}</span>
+                    <span className="schematic-flag"> · {L.schematicConnector}</span>
                   ) : null}
                 </td>
                 <td>
@@ -152,7 +156,7 @@ export function LogisticsPanel({
       <section className="logistics-brief" aria-label={L.decisionBrief}>
         <h3>{L.assumptions}</h3>
         <ul className="logistics-assumptions">
-          {brief.assumptions.map((item, idx) => (
+          {brief.assumptions.map(returnedText).filter(Boolean).map((item, idx) => (
             <li key={idx}>{item}</li>
           ))}
         </ul>
@@ -199,4 +203,16 @@ function demandLabel(demandId: string, L: LogisticsStrings): string {
   if (demandId.startsWith("food")) return L.commodityFood;
   if (demandId.startsWith("fuel")) return L.commodityFuel;
   return demandId;
+}
+
+function englishPortLabel(label: string, fallbackId: string): string {
+  const englishSuffix = label.match(/[A-Za-z][A-Za-z .'-]*$/u)?.[0].trim();
+  return englishSuffix || fallbackId;
+}
+
+function englishOnlyText(value: string): string {
+  return value
+    .replace(/[\u3000-\u303f\u3400-\u9fff\uff00-\uffef]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }

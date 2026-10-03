@@ -20,29 +20,32 @@ describe("i18n", () => {
     window.localStorage?.clear();
   });
 
-  it("defaults to Traditional Chinese", () => {
-    expect(DEFAULT_LANG).toBe("zh-Hant");
+  it("defaults to English", () => {
+    expect(DEFAULT_LANG).toBe("en");
     render(
       <I18nProvider>
         <Probe />
       </I18nProvider>,
     );
-    expect(screen.getByTestId("lang").textContent).toBe("zh-Hant");
-    // Traditional Chinese label for "Vessels Now".
-    expect(screen.getByTestId("vessels-now").textContent).toBe("目前船舶");
-    expect(screen.getByTestId("review").textContent).toBe("關注程度");
+    expect(screen.getByTestId("lang").textContent).toBe("en");
+    expect(screen.getByTestId("vessels-now").textContent).toBe("Vessels Now");
+    expect(screen.getByTestId("review").textContent).toBe("Review Priority");
   });
 
-  it("toggles to English instantly without reload", () => {
+  it("toggles to Traditional Chinese instantly without reload", () => {
     render(
       <I18nProvider>
         <Probe />
       </I18nProvider>,
     );
     fireEvent.click(screen.getByText("toggle"));
-    expect(screen.getByTestId("lang").textContent).toBe("en");
-    expect(screen.getByTestId("vessels-now").textContent).toBe("Vessels Now");
-    expect(screen.getByTestId("review").textContent).toBe("Review Priority");
+    expect(screen.getByTestId("lang").textContent).toBe("zh-Hant");
+    expect(screen.getByTestId("vessels-now").textContent).toBe(
+      DICTIONARIES["zh-Hant"].vesselsNow,
+    );
+    expect(screen.getByTestId("review").textContent).toBe(
+      DICTIONARIES["zh-Hant"].reviewPriority,
+    );
   });
 
   it("persists the chosen language", () => {
@@ -52,7 +55,7 @@ describe("i18n", () => {
       </I18nProvider>,
     );
     fireEvent.click(screen.getByText("toggle"));
-    expect(window.localStorage.getItem("seawatch.lang")).toBe("en");
+    expect(window.localStorage.getItem("seawatch.lang")).toBe("zh-Hant");
   });
 
   it("ships exact bilingual resilience labels without replacement characters", () => {
@@ -63,5 +66,9 @@ describe("i18n", () => {
       "Shows only vessels receivable by the local antenna.",
     );
     expect(JSON.stringify(DICTIONARIES)).not.toContain("�");
+  });
+
+  it("keeps the default English dictionary free of Chinese interface labels", () => {
+    expect(JSON.stringify(DICTIONARIES.en)).not.toMatch(/[\u3400-\u9fff]/u);
   });
 });

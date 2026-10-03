@@ -2,14 +2,17 @@
 
 SeaWatch uses a latched basemap hierarchy:
 
-1. Cloud operation begins with the public NLSC map.
-2. Edge/no-source operation begins with a local PMTiles archive.
+1. Online operation begins with the OpenFreeMap Liberty vector style in the
+   existing MapLibre map. The NLSC orthophoto remains an alternate layer.
+2. If the online style fails, or operation is explicitly offline, SeaWatch uses
+   the local PMTiles archive.
 3. Missing or failed PMTiles falls back to bundled emergency Taiwan/Penghu
    geography.
 
 A failed source is not retried during the page session. Reload only after the
-operator has corrected the source. Vessel, selected-track, commercial-port, and
-public-context overlays are reinstalled after a style transition.
+operator has corrected the source. Vessel, Area Scan geometry/results,
+selected-track, commercial-port, and generic future overlays are reinstalled
+after every style transition.
 
 ## Install an archive
 

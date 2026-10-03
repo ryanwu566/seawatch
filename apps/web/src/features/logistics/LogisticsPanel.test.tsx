@@ -112,7 +112,7 @@ describe("LogisticsPanel", () => {
     expect(within(hero).getByText(/split across taichung, keelung/)).toBeInTheDocument();
     expect(within(hero).getByTestId("truth-badge")).toBeInTheDocument();
 
-    const allocation = screen.getByLabelText(DICTIONARIES["zh-Hant"].logistics.recommendedAllocation);
+    const allocation = screen.getByLabelText(DICTIONARIES.en.logistics.recommendedAllocation);
     expect(hero.compareDocumentPosition(allocation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -131,8 +131,8 @@ describe("LogisticsPanel", () => {
 
   it("renders the alternatives table with all metric columns", () => {
     renderPanel(brief());
-    const alt = screen.getByLabelText("替代港口"); // zh-Hant default
-    const taichung = within(alt).getByText(/臺中港 Taichung/);
+    const alt = screen.getByLabelText(DICTIONARIES.en.logistics.alternatives);
+    const taichung = within(alt).getByText("Taichung");
     const row = taichung.closest("tr")!;
     expect(within(row).getByText(/9.5/)).toBeInTheDocument(); // ETA
     expect(within(row).getByText(/185.8/)).toBeInTheDocument(); // distance
@@ -151,7 +151,7 @@ describe("LogisticsPanel", () => {
 
   it("renders the decision brief summary and trade-offs", () => {
     renderPanel(brief());
-    expect(screen.getByText(/供人工審查的規劃估計值/)).toBeInTheDocument();
+    expect(screen.getAllByText(/planning estimates for human review/).length).toBeGreaterThan(0);
     expect(screen.getByText(/split across taichung, keelung/)).toBeInTheDocument();
   });
 
@@ -168,7 +168,7 @@ describe("LogisticsPanel", () => {
 
   it("shows the no-unmet message when all demand satisfied", () => {
     renderPanel(brief());
-    expect(screen.getByText(/所有需求皆可滿足/)).toBeInTheDocument();
+    expect(screen.getByText(DICTIONARIES.en.logistics.noUnmetDemand)).toBeInTheDocument();
   });
 
   it("ALWAYS renders the TruthBadge with any result", () => {
@@ -196,6 +196,7 @@ describe("LogisticsPanel", () => {
 
   it("flags schematic connectors in the alternatives table", () => {
     renderPanel(brief());
-    expect(screen.getAllByText(/SCHEMATIC CONNECTOR \/ 示意連線/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/SCHEMATIC CONNECTOR/).length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toMatch(/[\u3400-\u9fff]/u);
   });
 });

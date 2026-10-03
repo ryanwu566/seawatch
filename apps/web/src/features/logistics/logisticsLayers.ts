@@ -11,7 +11,7 @@ import type { LayerSpecification } from "maplibre-gl";
 import type { MapOverlays } from "../../components/MapCanvas";
 import type { Allocation, ScenarioContext } from "./logisticsTypes";
 
-export const LOGISTICS_SCHEMATIC_LABEL = "SCHEMATIC CONNECTOR / 示意連線";
+export const LOGISTICS_SCHEMATIC_LABEL = "SCHEMATIC CONNECTOR";
 
 export const SOURCE_DISRUPTED = "logistics-disrupted-ports";
 export const SOURCE_ALTERNATIVES = "logistics-alternative-ports";
@@ -62,7 +62,7 @@ export function buildDisruptedPorts(context: ScenarioContext | null): GeoJSON.Fe
     features: context.scenario.disrupted_ports
       .filter((id) => PORT_COORDS[id])
       .map((id) =>
-        pointFeature(PORT_COORDS[id], { port_id: id, status: "disrupted", label: "中斷 / Disrupted" }),
+        pointFeature(PORT_COORDS[id], { port_id: id, status: "disrupted", label: "Disrupted" }),
       ),
   };
 }
@@ -100,7 +100,7 @@ export function buildDemandNodes(context: ScenarioContext | null): GeoJSON.Featu
 /**
  * Selected-solution routes colored by commodity. Routes without authoritative
  * geometry are drawn as straight port→node connectors and flagged schematic so
- * the UI/label can show SCHEMATIC CONNECTOR / 示意連線 — never presented as a
+ * the UI/label can show SCHEMATIC CONNECTOR — never presented as a
  * measured road or shipping route.
  */
 export function buildSelectedRoutes(
