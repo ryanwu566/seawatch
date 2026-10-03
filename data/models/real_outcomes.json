@@ -1,0 +1,64 @@
+{
+ "vessels": 1589,
+ "vessel_days": 1589,
+ "alerts": 96,
+ "alerts_per_100_vessel_days": 6.0,
+ "high_alerts": 9,
+ "labelled": [
+  {
+   "mmsi": "352001906",
+   "name": "ANAYA",
+   "imo": "9326885",
+   "labels": [
+    "sanctions:IRAN-EO13902"
+   ],
+   "fixes": 231,
+   "max_risk": 0.0,
+   "alert_kinds": []
+  },
+  {
+   "mmsi": "352003222",
+   "name": "NEVE",
+   "imo": "9224465",
+   "labels": [
+    "sanctions:UKRAINE-EO13662] [RUSSIA-EO14024"
+   ],
+   "fixes": 495,
+   "max_risk": 0.0,
+   "alert_kinds": []
+  },
+  {
+   "mmsi": "626278000",
+   "name": "YI MENG SHAN",
+   "imo": "9436941",
+   "labels": [
+    "sanctions:UKRAINE-EO13662] [RUSSIA-EO14024"
+   ],
+   "fixes": 495,
+   "max_risk": 0.0,
+   "alert_kinds": []
+  }
+ ],
+ "watchlist": {
+  "present": 3,
+  "flagged": 0,
+  "base_rate_flagged": 0.091,
+  "auc": 0.4546027742749054,
+  "note": "A watch-list entry is a legal designation of the vessel, not evidence of behaviour on these days."
+ },
+ "incidents": [
+  {
+   "category": "cable_damage_suspected",
+   "names": [
+    "YI PENG 3"
+   ],
+   "source": "https://en.wikipedia.org/wiki/2024_Baltic_Sea_submarine_cable_disruptions",
+   "confidence": "reported",
+   "window": [
+    1731807000.0,
+    1731895200.0
+   ],
+   "present_in_data": false
+  }
+ ]
+}

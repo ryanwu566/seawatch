@@ -60,3 +60,7 @@ tmp/
 temp/
 .swtmp/
 .swtmp*
+data/labels/ofac_sdn.csv
+data/labels/uk_conlist.csv
+data/labels/eu_fsf.csv
+data/raw/dma/

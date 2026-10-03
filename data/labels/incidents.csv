@@ -1,0 +1,4 @@
+# Publicly reported incidents used as REAL-OUTCOME labels. These are *suspected* events under investigation, not findings.
+# Times are UTC and approximate (taken from public reports); verify against the cited source before relying on them.
+id,names,imo,mmsi,category,t_start_utc,t_end_utc,source,note,confidence
+YP3-2024-11,YI PENG 3,9224984,414270000,cable_damage_suspected,2024-11-17T01:30:00Z,2024-11-18T02:00:00Z,https://en.wikipedia.org/wiki/2024_Baltic_Sea_submarine_cable_disruptions,"BCS East-West Interlink and C-Lion1 cut 17-18 Nov 2024 near Gotland/Oland while this ship passed. Reported AIS-off for ~7.5 h after Gotland until 22:41 UTC on 17 Nov. Not conclusively attributed; US intelligence reportedly assessed not deliberate.",reported
