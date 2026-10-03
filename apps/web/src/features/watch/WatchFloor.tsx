@@ -32,11 +32,24 @@ export function WatchFloor() {
     setLoadingDetail(!!w.selectedId && !w.detail);
   }, [w.selectedId, w.detail]);
 
+  useEffect(() => {
+    if (w.source === "live") {
+      setLab(false);
+      setInsight(false);
+      setShowTruth(false);
+    }
+  }, [w.source]);
+
   const counts = useMemo(() => {
     const c = { HIGH: 0, MEDIUM: 0, LOW: 0 };
     w.alerts.forEach((a) => (c[a.level] += 1));
     return c;
   }, [w.alerts]);
+
+  const liveStatus = (w.scenario?.detection_status ?? "waiting_for_scan")
+    .replace(/_/g, " ")
+    .replace(/^./, (letter) => letter.toUpperCase());
+  const analysisTime = w.scenario?.analysis_at ? Date.parse(w.scenario.analysis_at) / 1000 : null;
 
   if (w.error && !w.ready) {
     return (
@@ -86,7 +99,16 @@ export function WatchFloor() {
         </div>
 
         <div className="wf-top-right">
-          {w.regions.filter((r) => r.available).length > 1 && (
+          <select
+            className="wf-region"
+            value={w.source}
+            onChange={(e) => w.switchSource(e.target.value as "scenario" | "live")}
+            aria-label="Detection source"
+          >
+            <option value="scenario">Scenario replay</option>
+            <option value="live">Live Area Scan</option>
+          </select>
+          {w.source === "scenario" && w.regions.filter((r) => r.available).length > 1 && (
             <select className="wf-region" value={w.region} onChange={(e) => void w.switchRegion(e.target.value)} aria-label="Monitored region">
               {w.regions.filter((r) => r.available).map((r) => (
                 <option key={r.id} value={r.id}>
@@ -95,22 +117,36 @@ export function WatchFloor() {
               ))}
             </select>
           )}
-          <span className="wf-sim" title={w.scenario.note}>
-            {w.scenario.data_kind === "simulated" ? "SIMULATED DATA" : w.scenario.data_kind === "real" ? "REAL AIS" : "REAL AIS + INJECTED EVENTS"}
-          </span>
-          <span className="wf-clock">{fmtClock(w.clock)}</span>
-          <button className={`wf-lab-btn ${insight ? "on" : ""}`} onClick={() => setInsight((v) => !v)} aria-pressed={insight}>
-            ◎ Rules &amp; accuracy
-          </button>
-          <button className={`wf-lab-btn ${lab ? "on" : ""}`} onClick={() => setLab((v) => !v)} aria-pressed={lab}>
-            ⚙ Tuning lab
-          </button>
+          {w.source === "live" ? (
+            <span className="wf-sim" title={w.scenario.note}>Live detection · {liveStatus}</span>
+          ) : (
+            <span className="wf-sim" title={w.scenario.note}>
+              {w.scenario.data_kind === "simulated" ? "SIMULATED DATA" : w.scenario.data_kind === "real" ? "REAL AIS" : "REAL AIS + INJECTED EVENTS"}
+            </span>
+          )}
+          {w.source === "live" ? (
+            <span className="wf-clock" aria-label="Analysis time" title={w.scenario.analysis_at ?? undefined}>
+              {analysisTime !== null && Number.isFinite(analysisTime) ? `Analysed ${fmtClock(analysisTime)}` : "Not analysed"}
+            </span>
+          ) : (
+            <span className="wf-clock">{fmtClock(w.clock)}</span>
+          )}
+          {w.source === "scenario" && (
+            <>
+              <button className={`wf-lab-btn ${insight ? "on" : ""}`} onClick={() => setInsight((v) => !v)} aria-pressed={insight}>
+                ◎ Rules &amp; accuracy
+              </button>
+              <button className={`wf-lab-btn ${lab ? "on" : ""}`} onClick={() => setLab((v) => !v)} aria-pressed={lab}>
+                ⚙ Tuning lab
+              </button>
+            </>
+          )}
         </div>
       </header>
 
-      {insight && <Insight onClose={() => setInsight(false)} />}
+      {w.source === "scenario" && insight && <Insight onClose={() => setInsight(false)} />}
       <main className="wf-main">
-        <AlertQueue alerts={w.alerts} dismissed={w.dismissed} selectedId={w.selectedId} clock={w.clock} onSelect={w.select} />
+        <AlertQueue source={w.source} alerts={w.alerts} dismissed={w.dismissed} selectedId={w.selectedId} clock={w.clock} onSelect={w.select} />
 
         <WatchMap
           scenario={w.scenario}
@@ -124,7 +160,7 @@ export function WatchFloor() {
           onSelect={w.select}
         />
 
-        {lab ? (
+        {w.source === "scenario" && lab ? (
           <TuningLab
             config={w.config}
             evaluation={w.evaluation}
@@ -139,6 +175,7 @@ export function WatchFloor() {
           />
         ) : (
           <AlertPanel
+            source={w.source}
             detail={w.detail}
             loading={loadingDetail}
             busy={w.busy}
@@ -149,18 +186,20 @@ export function WatchFloor() {
         )}
       </main>
 
-      <ReplayBar
-        scenario={w.scenario}
-        clock={w.clock}
-        playing={w.playing}
-        speed={w.speed}
-        alerts={w.endAlerts}
-        selectedId={w.selectedId}
-        onClock={w.setClock}
-        onPlay={w.setPlaying}
-        onSpeed={w.setSpeed}
-        onSelect={w.select}
-      />
+      {w.source === "scenario" && (
+        <ReplayBar
+          scenario={w.scenario}
+          clock={w.clock}
+          playing={w.playing}
+          speed={w.speed}
+          alerts={w.endAlerts}
+          selectedId={w.selectedId}
+          onClock={w.setClock}
+          onPlay={w.setPlaying}
+          onSpeed={w.setSpeed}
+          onSelect={w.select}
+        />
+      )}
     </div>
   );
 }

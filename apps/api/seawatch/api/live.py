@@ -251,7 +251,9 @@ async def live_area_scan(
             detail="Area Scan request budget exhausted",
             headers={"Retry-After": str(exc.retry_after_seconds)},
         ) from None
-    return result.to_public_dict()
+    payload = result.to_public_dict()
+    payload["detection"] = runtime.live_detection.snapshot().to_public_dict()
+    return payload
 
 
 def _authorize_area_scan_request(

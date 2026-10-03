@@ -1,11 +1,12 @@
 import { PathReviews } from "./PathReviews";
 import { FactorCards } from "./Insight";
 import { useState } from "react";
-import type { AlertDetail, ReviewStatus } from "./api";
+import type { AlertDetail, DetectionSource, ReviewStatus } from "./api";
 import { ConfidenceMeter, RiskGauge } from "./Gauge";
 import { FLAG_NAME, KIND_META, LEVEL_COLOR, STATUS_LABEL, fmtClock, fmtDur, fmtHM, fmtPos, kindMeta } from "./lib";
 
 interface Props {
+  source: DetectionSource;
   detail: AlertDetail | null;
   loading: boolean;
   busy: boolean;
@@ -14,7 +15,7 @@ interface Props {
   onClose: () => void;
 }
 
-export function AlertPanel({ detail, loading, busy, onStatus, onNote, onClose }: Props) {
+export function AlertPanel({ source, detail, loading, busy, onStatus, onNote, onClose }: Props) {
   const [note, setNote] = useState("");
   const [dismissing, setDismissing] = useState(false);
   const [reason, setReason] = useState("");
@@ -73,7 +74,7 @@ export function AlertPanel({ detail, loading, busy, onStatus, onNote, onClose }:
               <li key={v.mmsi}>
                 <b>{v.name}</b>
                 <span>
-                  {v.type} · {FLAG_NAME[v.flag] ?? v.flag} · MMSI {v.mmsi}
+                  {v.type} · {FLAG_NAME[v.flag] ?? v.flag} · {source === "live" ? `Vessel ID ${v.public_id ?? v.mmsi}` : `MMSI ${v.mmsi}`}
                 </span>
               </li>
             ))}

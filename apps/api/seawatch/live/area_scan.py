@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
+import logging
 import math
 import threading
 import time
@@ -49,6 +51,7 @@ _SINGLE_CIRCLE_RELATIVE_MARGIN = 0.0025
 _SINGLE_CIRCLE_ROUNDING_NM = 0.1
 _MAX_BOUNDARY_SAMPLE_STEP_DEGREES = 0.01
 _TOO_LARGE = "Selected area is too large. Draw a smaller region."
+_LOGGER = logging.getLogger("seawatch.live.area_scan")
 
 
 class ScanValidationError(ValueError):
@@ -160,6 +163,7 @@ class AreaScanService:
         max_track_vessels: int = MAX_TRACK_VESSELS,
         max_track_points: int = MAX_TRACK_POINTS,
         track_ttl_seconds: float = TRACK_TTL_SECONDS,
+        observation_sink=None,
     ) -> None:
         if min(
             max_cache_entries,
@@ -179,6 +183,7 @@ class AreaScanService:
         self._max_track_vessels = max_track_vessels
         self._max_track_points = max_track_points
         self._track_ttl_seconds = track_ttl_seconds
+        self._observation_sink = observation_sink
         self._cache: OrderedDict[str, _CacheEntry] = OrderedDict()
         self._inflight: dict[str, asyncio.Task[_CacheEntry]] = {}
         self._cache_lock = asyncio.Lock()
@@ -276,6 +281,7 @@ class AreaScanService:
         )
         if len(observations) > self._max_scan_vessels:
             raise ProviderError(ProviderErrorCategory.UPSTREAM)
+        await self._deliver_observations(observations, received_at)
         features: list[dict] = []
         for normalized in observations:
             observation = normalized.observation
@@ -338,6 +344,27 @@ class AreaScanService:
             result=result,
             expires_at=self._monotonic() + SCAN_CACHE_TTL_SECONDS,
         )
+
+    async def _deliver_observations(
+        self,
+        observations: tuple[_NormalizedAreaScanObservation, ...],
+        scanned_at: datetime,
+    ) -> None:
+        """Send one real-timestamped batch to Detection without coupling failures."""
+
+        if self._observation_sink is None:
+            return
+        detection_batch = tuple(
+            normalized.observation
+            for normalized in observations
+            if normalized.provider_observed_at is not None
+        )
+        try:
+            outcome = self._observation_sink(detection_batch, scanned_at)
+            if inspect.isawaitable(outcome):
+                await outcome
+        except Exception:  # noqa: BLE001 - a paid provider result remains usable
+            _LOGGER.warning("Live Detection update failed")
 
     def _normalize_candidates(
         self,

@@ -4,9 +4,11 @@ import { getBaseUrl } from "../../api/client";
 
 export type Level = "HIGH" | "MEDIUM" | "LOW";
 export type ReviewStatus = "new" | "under_review" | "confirmed" | "escalated" | "false_alarm";
+export type DetectionSource = "scenario" | "live";
 
 export interface VesselRef {
   mmsi: string;
+  public_id?: string;
   name: string;
   type: string;
   flag: string;
@@ -19,6 +21,7 @@ export interface AlertSummary {
   level: Level;
   confidence: number;
   mmsis: string[];
+  public_ids?: string[];
   vessels: VesselRef[];
   t_start: number;
   t_end: number;
@@ -31,6 +34,8 @@ export interface AlertSummary {
   n_notes: number;
   suppressed_by_feedback: string | null;
   top_reason: string;
+  source?: DetectionSource;
+  analysis_at?: string | null;
 }
 
 export interface DetectionEvent {
@@ -118,10 +123,18 @@ export interface Scenario {
   simulated: boolean;
   zones: Zone[];
   receivers: { id: string; lat: number; lon: number; range_nm: number }[];
+  source?: DetectionSource;
+  detection_status?: string;
+  analysis_at?: string | null;
+  scanned_at?: string | null;
+  context_quality?: string;
+  context_source?: string;
+  ml_available?: boolean;
 }
 
 export interface TrackDto {
   mmsi: string;
+  public_id?: string;
   name: string;
   type: string;
   flag: string;
@@ -247,21 +260,31 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = <T,>(path: string, body: unknown) => request<T>(path, { method: "POST", body: JSON.stringify(body) });
 
+function withSource(path: string, source: DetectionSource): string {
+  if (source === "scenario") return path;
+  return `${path}${path.includes("?") ? "&" : "?"}source=${source}`;
+}
+
 export const watchApi = {
   regions: () => request<{ active: string; regions: RegionInfo[] }>("/detection/regions"),
   selectRegion: (id: string) => post<{ active: string }>("/detection/region", { id }),
-  scenario: () => request<Scenario>("/detection/scenario"),
-  tracks: () => request<{ tracks: TrackDto[] }>("/detection/tracks").then((r) => r.tracks),
-  alerts: (asOf?: number) =>
-    request<{ alerts: AlertSummary[] }>(`/detection/alerts${asOf ? `?as_of=${asOf}` : ""}${""}`).then((r) => r.alerts),
-  dismissed: () =>
-    request<{ alerts: AlertSummary[] }>("/detection/alerts?include_dismissed=true").then((r) =>
+  scenario: (source: DetectionSource = "scenario") => request<Scenario>(withSource("/detection/scenario", source)),
+  tracks: (source: DetectionSource = "scenario") =>
+    request<{ tracks: TrackDto[] }>(withSource("/detection/tracks", source)).then((r) => r.tracks),
+  alerts: (asOf?: number, source: DetectionSource = "scenario") => {
+    const path = source === "live" || asOf === undefined ? "/detection/alerts" : `/detection/alerts?as_of=${asOf}`;
+    return request<{ alerts: AlertSummary[] }>(withSource(path, source)).then((r) => r.alerts);
+  },
+  dismissed: (source: DetectionSource = "scenario") =>
+    request<{ alerts: AlertSummary[] }>(withSource("/detection/alerts?include_dismissed=true", source)).then((r) =>
       r.alerts.filter((a) => a.status === "false_alarm"),
     ),
-  alert: (id: string) => request<AlertDetail>(`/detection/alerts/${encodeURIComponent(id)}`),
-  setStatus: (id: string, status: ReviewStatus, note?: string) =>
-    post<AlertDetail>(`/detection/alerts/${encodeURIComponent(id)}/status`, { status, note }),
-  addNote: (id: string, text: string) => post<AlertDetail>(`/detection/alerts/${encodeURIComponent(id)}/notes`, { text }),
+  alert: (id: string, source: DetectionSource = "scenario") =>
+    request<AlertDetail>(withSource(`/detection/alerts/${encodeURIComponent(id)}`, source)),
+  setStatus: (id: string, status: ReviewStatus, note?: string, source: DetectionSource = "scenario") =>
+    post<AlertDetail>(withSource(`/detection/alerts/${encodeURIComponent(id)}/status`, source), { status, note }),
+  addNote: (id: string, text: string, source: DetectionSource = "scenario") =>
+    post<AlertDetail>(withSource(`/detection/alerts/${encodeURIComponent(id)}/notes`, source), { text }),
   config: () => request<ConfigPayload>("/detection/config"),
   setConfig: (values: Record<string, number>) => request<ConfigPayload>("/detection/config", { method: "PUT", body: JSON.stringify(values) }),
   resetConfig: () => post<ConfigPayload>("/detection/config/reset", {}),
