@@ -1,0 +1,4 @@
+# Script-specific dependencies for build_taiwan_maritime_reference.py.
+shapely==2.1.2
+pyproj==3.8.0
+pyshp==2.4.2
