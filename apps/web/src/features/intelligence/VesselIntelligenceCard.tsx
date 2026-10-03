@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../../i18n/I18nContext";
+import { ApiError } from "../../api/client";
+import {
+  fetchHistoricalBaseline,
+  type HistoricalBaselineState,
+} from "../../api/historical";
 import type { LiveVesselFeature, LiveTrack } from "../../api/live";
 import { vesselTypeLabel } from "../../lib/display";
 import { ProvenanceTag } from "./ProvenanceTag";
@@ -55,6 +60,7 @@ export function VesselIntelligenceCard({
   // (treated as unknown) on error or while loading; the backend returns a
   // fully-unknown result for positions outside reference coverage.
   const [liveGis, setLiveGis] = useState<GeographicContext | null>(null);
+  const [historical, setHistorical] = useState<HistoricalBaselineState>({ status: "idle" });
   const [lon, lat] = vessel.geometry.coordinates;
   useEffect(() => {
     if (isDemo) return; // demo context is injected; never touch the live endpoint
@@ -69,6 +75,35 @@ export function VesselIntelligenceCard({
       .catch(() => setLiveGis(null));
     return () => controller.abort();
   }, [isDemo, open, lon, lat]);
+
+  useEffect(() => {
+    if (isDemo || !open) return;
+
+    const controller = new AbortController();
+    let active = true;
+    setHistorical({ status: "loading" });
+    fetchHistoricalBaseline(vessel.id, controller.signal)
+      .then((baseline) => {
+        if (!active) return;
+        setHistorical({
+          status: baseline.sufficient ? "sufficient" : "insufficient",
+          baseline,
+        });
+      })
+      .catch((error: unknown) => {
+        if (!active || controller.signal.aborted) return;
+        setHistorical(
+          error instanceof ApiError && error.status === 404
+            ? { status: "not-found" }
+            : { status: "unavailable" },
+        );
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [isDemo, open, vessel.id]);
 
   const gis = isDemo ? demoContext : liveGis;
 
@@ -135,6 +170,10 @@ export function VesselIntelligenceCard({
             />
           </dl>
 
+          <HistoricalBaselineSection
+            state={isDemo ? { status: "unavailable" } : historical}
+          />
+
           {/* Review notes — evidence-backed only */}
           <h4 className="intelligence-group">{t.intelligenceReviewNotes}</h4>
           {evidenceBacked ? (
@@ -156,14 +195,6 @@ export function VesselIntelligenceCard({
             <p className="muted collecting">{t.intelligenceNoReasons}</p>
           )}
 
-          {/* Route-baseline-unavailable is always shown explicitly (unknown). */}
-          <p className="intelligence-baseline" data-reason="route_baseline_unavailable">
-            <span className="reason-mark" aria-hidden="true">
-              ⓘ
-            </span>{" "}
-            {t.intelligenceNoBaseline} <ProvenanceTag provenance="unknown" />
-          </p>
-
           {/* Route Deviation (route-deviation-1) — always renders the five
               fields; Unknown when no evidence is available. */}
           <RouteDeviationSection view={routeDeviation} />
@@ -176,6 +207,111 @@ export function VesselIntelligenceCard({
         </div>
       )}
     </section>
+  );
+}
+
+function HistoricalBaselineSection({ state }: { state: HistoricalBaselineState }) {
+  const { t } = useI18n();
+  const confidenceLabel = useConfidenceLabel();
+
+  if (state.status === "idle" || state.status === "loading") {
+    return (
+      <section className="historical-baseline" data-testid="historical-baseline">
+        <h4 className="intelligence-group">{t.historicalBaselineTitle}</h4>
+        <p className="muted">{t.loading}</p>
+      </section>
+    );
+  }
+
+  if (state.status === "not-found" || state.status === "unavailable") {
+    return (
+      <section className="historical-baseline" data-testid="historical-baseline">
+        <h4 className="intelligence-group">{t.historicalBaselineTitle}</h4>
+        <p className="muted historical-baseline-status">
+          {state.status === "not-found" ? t.historicalNotFound : t.historicalUnavailable}{" "}
+          <ProvenanceTag provenance="unknown" />
+        </p>
+      </section>
+    );
+  }
+
+  const baseline = state.baseline;
+  const corridorAvailable =
+    state.status === "sufficient" && baseline.typical_routes.length > 0;
+  const sourceAvailable = baseline.data_source === "gfw_presence";
+
+  return (
+    <section className="historical-baseline" data-testid="historical-baseline">
+      <h4 className="intelligence-group">{t.historicalBaselineTitle}</h4>
+      <p className="historical-baseline-status">
+        {state.status === "sufficient"
+          ? t.historicalBaselineAvailable
+          : t.historicalInsufficient}{" "}
+        <ProvenanceTag provenance="derived" />
+      </p>
+      <dl className="intelligence-fields historical-baseline-fields">
+        <HistoricalValueRow
+          label={t.historicalObservedDays}
+          field={baseline.history_summary.observed_day_count}
+        />
+        <HistoricalValueRow
+          label={t.historicalObservations}
+          field={baseline.history_summary.total_observations}
+        />
+        <HistoricalValueRow
+          label={t.historicalTracks}
+          field={{ value: baseline.historical_track_count, provenance: "derived" }}
+        />
+        <HistoricalValueRow
+          label={t.historicalMovementCorridor}
+          field={{
+            value: corridorAvailable ? t.historicalCorridorAvailable : null,
+            provenance: corridorAvailable ? "derived" : "unknown",
+          }}
+        />
+        <HistoricalValueRow
+          label={t.routeDeviationConfidence}
+          field={{
+            ...baseline.confidence,
+            value:
+              baseline.confidence.value === null
+                ? null
+                : confidenceLabel(baseline.confidence.value),
+          }}
+        />
+        <HistoricalValueRow
+          label={t.routeDeviationSource}
+          field={{
+            value: sourceAvailable ? t.historicalGfwSource : null,
+            provenance: sourceAvailable ? "observed" : "unknown",
+          }}
+        />
+      </dl>
+    </section>
+  );
+}
+
+function HistoricalValueRow({
+  label,
+  field,
+}: {
+  label: string;
+  field: {
+    value: number | string | null;
+    provenance: Provenanced<unknown>["provenance"];
+  };
+}) {
+  const { t } = useI18n();
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>
+        <span className="intelligence-value">
+          {field.value === null ? t.valueUnknown : String(field.value)}
+        </span>{" "}
+        <ProvenanceTag provenance={field.provenance} />
+      </dd>
+    </>
   );
 }
 

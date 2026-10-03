@@ -117,6 +117,19 @@ export interface Dict {
   gisNotWithinArea: string;
   gisOutsideCoverage: string;
 
+  // Historical GFW baseline
+  historicalBaselineTitle: string;
+  historicalObservedDays: string;
+  historicalObservations: string;
+  historicalTracks: string;
+  historicalMovementCorridor: string;
+  historicalBaselineAvailable: string;
+  historicalCorridorAvailable: string;
+  historicalInsufficient: string;
+  historicalNotFound: string;
+  historicalUnavailable: string;
+  historicalGfwSource: string;
+
   // DEMO fixture (frontend-only, illustrative)
   demoIllustrativeLabel: string;
   demoViewVessel: string;
@@ -403,6 +416,17 @@ const zhHant: Dict = {
   gisMaritimeArea: "所在海域",
   gisNotWithinArea: "不在任何命名區域內",
   gisOutsideCoverage: "超出參考範圍",
+  historicalBaselineTitle: "歷史基準",
+  historicalObservedDays: "歷史觀測天數",
+  historicalObservations: "歷史觀測筆數",
+  historicalTracks: "歷史軌跡數",
+  historicalMovementCorridor: "歷史移動航廊",
+  historicalBaselineAvailable: "歷史基準可用",
+  historicalCorridorAvailable: "歷史移動航廊可用",
+  historicalInsufficient: "歷史資料不足",
+  historicalNotFound: "此船舶無可用的歷史基準。",
+  historicalUnavailable: "歷史基準目前無法使用。",
+  historicalGfwSource: "Global Fishing Watch 歷史船舶出現資料",
   demoIllustrativeLabel: "示範 / 說明用資料（非即時 AIS）",
   demoViewVessel: "檢視示範船舶",
   demoPositionStatus: "示範 / 說明用途",
@@ -634,6 +658,17 @@ const en: Dict = {
   gisMaritimeArea: "Within area(s)",
   gisNotWithinArea: "Not within a named area",
   gisOutsideCoverage: "Outside reference coverage",
+  historicalBaselineTitle: "Historical Baseline",
+  historicalObservedDays: "Observed Days",
+  historicalObservations: "Historical Observations",
+  historicalTracks: "Historical Tracks",
+  historicalMovementCorridor: "Historical Movement Corridor",
+  historicalBaselineAvailable: "Baseline Available",
+  historicalCorridorAvailable: "Historical movement corridor available",
+  historicalInsufficient: "Insufficient historical data",
+  historicalNotFound: "Historical baseline not available for this vessel.",
+  historicalUnavailable: "Historical baseline unavailable.",
+  historicalGfwSource: "Global Fishing Watch historical presence",
   demoIllustrativeLabel: "DEMO / illustrative data (not live AIS)",
   demoViewVessel: "View demo vessel",
   demoPositionStatus: "DEMO / Illustrative",
