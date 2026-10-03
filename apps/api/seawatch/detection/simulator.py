@@ -523,6 +523,70 @@ class _World:
         self.add(self.report(m, "cargo", mmsi, name, flag))
         self.label("hove_to", [mmsi], t_a, t_b, "Cargo ship stops ~105 min in heavy weather (benign, but looks like loitering)", True)
 
+    # research / survey vessels (the mentor's threat model) ---------------------------------------------------------
+    def _research_vessel(self, name: str, flag: str = "CN"):
+        mmsi, _, flag = self.identity("other", flag)
+        return mmsi, name, flag
+
+    def _lawnmower(self, m: Mover, lat0: float, lon0: float, legs: int, leg_nm: float, step_nm: float, speed: float):
+        dlon = leg_nm / 60.0 / math.cos(math.radians(lat0))
+        dlat = step_nm / 60.0
+        for i in range(legs):
+            lat = lat0 + i * dlat
+            a, b = (lon0, lon0 + dlon) if i % 2 == 0 else (lon0 + dlon, lon0)
+            m.go_to(lat, a, speed)
+            m.go_to(lat, b, speed)
+
+    def ev_research_tow(self):
+        """Foreign research ship tows an array in Taiwan's EEZ east of the island: slow lawnmower, restricted manoeuvre, destination says towing."""
+
+        tev = self._tev(8, 14)
+        mmsi, name, flag = self._research_vessel("DONG HAI KEYAN 2")
+        m = Mover(self.rng, 22.3, 124.4, tev - 2 * 3600)
+        m.go_to(22.9, 122.2, 11.0)
+        t_a = m.t
+        self._lawnmower(m, 22.9, 122.2, 5, 11.0, 1.6, 3.8)
+        t_b = m.t
+        m.go_to(22.4, 124.4, 11.0)
+        tr = self.report(m, "other", mmsi, name, flag, force_dense=True)
+        slow = (tr.t >= t_a) & (tr.t <= t_b)
+        tr.status = np.where(slow, 3, 0)
+        tr.extra = {"destination": "TOWING KEEP 3NM CPA", "subtype": "Research", "tow_t": tr.t[slow][::4]}
+        self.add(tr)
+        self.label("survey_threat", [mmsi], t_a, t_b, "Foreign research ship tows an array in the economic zone east of Taiwan (lawnmower, restricted manoeuvre, towing destination)")
+
+    def ev_research_incursion(self):
+        """Declared research ship runs survey lines about 20 nm off Keelung, inside the contiguous zone."""
+
+        tev = self._tev(10, 16)
+        mmsi, name, flag = self._research_vessel("HAI YANG KE XUE 9")
+        m = Mover(self.rng, 26.2, 123.0, tev - 2 * 3600)
+        m.go_to(25.45, 121.95, 10.0)
+        t_a = m.t
+        self._lawnmower(m, 25.45, 121.95, 4, 6.0, 1.2, 4.5)
+        t_b = m.t
+        m.go_to(26.3, 122.9, 10.0)
+        tr = self.report(m, "other", mmsi, name, flag, force_dense=True)
+        slow = (tr.t >= t_a) & (tr.t <= t_b)
+        tr.status = np.where(slow, 3, 0)
+        tr.extra = {"destination": "SURVEY", "subtype": "Research"}
+        self.add(tr)
+        self.label("survey_threat", [mmsi], t_a, t_b, "Declared research ship sails survey lines inside Taiwan's contiguous zone off Keelung")
+
+    def benign_research_transit(self):
+        """A declared research ship steams through the Strait at 11 kn in a straight line: classified, but not a threat."""
+
+        tev = self._tev(8, 16)
+        mmsi, name, flag = self._research_vessel("XIANG YANG HONG 77")
+        m = Mover(self.rng, 25.6, 120.7, tev)
+        m.go_to(24.2, 119.9, 11.0)
+        m.go_to(22.6, 119.9, 11.0)
+        tr = self.report(m, "other", mmsi, name, flag, force_dense=True)
+        tr.status = np.zeros(len(tr), int)
+        tr.extra = {"destination": "SINGAPORE", "subtype": "Research"}
+        self.add(tr)
+        self.label("research_transit", [mmsi], tev, m.t, "Declared research ship steaming through the Strait in a straight line (benign look-alike)", True)
+
 
 # plans ----------------------------------------------------------------------- #
 EVENT_KINDS = {
@@ -555,6 +619,11 @@ def build_scenario(seed: int = 7, plan: list[str] | None = None, n_normal: int =
         w.benign_anchored(4)
         w.benign_sat_gap()
         w.benign_hove_to()
+    if plan is None:  # drawn last so the random sequence of every older behaviour is unchanged
+        w.ev_research_tow()
+        w.ev_research_incursion()
+        if benign:
+            w.benign_research_transit()
     return Scenario(name or f"taiwan-demo-{seed}", w.t0, w.t1, w.tracks, w.zones, w.receivers, w.truth, seed)
 
 

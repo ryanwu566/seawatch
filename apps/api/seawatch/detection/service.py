@@ -168,7 +168,12 @@ class DetectionService:
         if self._base_ctx is not None:
             self._base_ctx.allowlist = set(self.store.allowlist)
             return self._base_ctx
-        return DetectionContext(self.scenario.zones, self.scenario.receivers, self.baseline, set(self.store.allowlist))
+        ctx = DetectionContext(self.scenario.zones, self.scenario.receivers, self.baseline, set(self.store.allowlist))
+        if self.region == "taiwan":
+            from .territory import Territory
+
+            ctx.territory = Territory.default()
+        return ctx
 
     def events(self) -> list[Event]:
         with self.lock:

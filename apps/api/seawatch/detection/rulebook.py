@@ -119,7 +119,7 @@ def _threat(c: DetectionConfig, hourly: bool) -> dict[str, Any]:
             dict(id="R4", name="Declared survey vessel working at survey speed in the EEZ", severity="62", needs=f"A + V (>= 60% of fixes) + {c.threat_min_eez_fixes} EEZ fixes",
                  meaning="Declared and slow for a long time in the EEZ, without a clear pattern."),
             dict(id="R7", name="Towing a survey array / slow manoeuvring survey work", severity="92 in 24 nm, 80 in EEZ, 60 elsewhere (-8 if only restricted-manoeuvre status, +10 with a pattern)", needs="D (towing text) or N (restricted manoeuvre >= 20%) with A",
-                 meaning="The vessel announces towing / cable work, or manoeuvres slowly in restricted status. Towing in the EEZ is raised to at least MEDIUM; inside 24 nm to HIGH."),
+                 meaning="The vessel announces towing / cable work, or manoeuvres slowly in restricted status. Towing announced anywhere in the EEZ or inside 24 nm is raised to HIGH."),
             dict(id="R6", name="Foreign state vessel in the territorial sea", severity="70 (+6 survey speed)", needs=">= 2 clear TS fixes + state-vessel name",
                  meaning="Coast guard, maritime safety or fisheries enforcement ship of another state inside the 12 nm. Not survey, but a sovereignty matter."),
             dict(id="R0", name="Taiwan-registered survey vessel", severity="30 (not raised)", needs="MMSI 416xxxxxx",

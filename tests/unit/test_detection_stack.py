@@ -22,6 +22,14 @@ def world():
     return s, base
 
 
+def _ctx(s, base):
+    from apps.api.seawatch.detection.territory import Territory
+
+    ctx = DetectionContext(s.zones, s.receivers, base)
+    ctx.territory = Territory.default()  # the research-vessel scenarios need Taiwan's maritime zones
+    return ctx
+
+
 def test_simulator_is_deterministic():
     a, b = build_scenario(3), build_scenario(3)
     assert [t.mmsi for t in a.tracks] == [t.mmsi for t in b.tracks]
@@ -32,7 +40,7 @@ def test_simulator_is_deterministic():
 def test_every_injected_behaviour_is_detected_and_explained(world):
     s, base = world
     cfg = DetectionConfig()
-    events = run_all(s.tracks, s.t0, s.t1, DetectionContext(s.zones, s.receivers, base), cfg)
+    events = run_all(s.tracks, s.t0, s.t1, _ctx(s, base), cfg)
     alerts = build_alerts(events, s.tracks, cfg)
     r = evaluate_alerts(alerts, s)
     assert r["missed"] == []
@@ -45,14 +53,14 @@ def test_every_injected_behaviour_is_detected_and_explained(world):
 def test_benign_lookalikes_do_not_alert(world):
     s, base = world
     cfg = DetectionConfig()
-    events = run_all(s.tracks, s.t0, s.t1, DetectionContext(s.zones, s.receivers, base), cfg)
+    events = run_all(s.tracks, s.t0, s.t1, _ctx(s, base), cfg)
     quiet = {m for t in s.truth if t.benign and t.kind in ("fishing_ops", "anchored", "coverage_gap") for m in t.mmsis}
     assert not [e for e in events if set(e.mmsis) <= quiet]
 
 
 def test_raising_gap_threshold_removes_gap_alert(world):
     s, base = world
-    ctx = DetectionContext(s.zones, s.receivers, base)
+    ctx = _ctx(s, base)
     n_default = sum(e.kind == "ais_gap" for e in run_all(s.tracks, s.t0, s.t1, ctx, DetectionConfig()))
     n_strict = sum(e.kind == "ais_gap" for e in run_all(s.tracks, s.t0, s.t1, ctx, DetectionConfig(gap_min_minutes=400)))
     assert n_default >= 1 and n_strict == 0

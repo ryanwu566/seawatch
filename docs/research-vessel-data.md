@@ -59,7 +59,7 @@ Four more signals are now part of the model, all from the supplied data:
   share of a stretch within 10 nm of a cable is part of the evidence. TAN SUO ER HAO's towing in the EEZ lay on the Asia Direct Cable.
 
 Result on the research fortnight (`taiwan-research` region, nothing injected): 4 alerts. TAN SUO ER HAO towing in Taiwan's EEZ
-(MEDIUM, 70), KE XUE slow manoeuvring in the EEZ, HAIYANGDIZHI BAHAO towing outside Taiwan's waters, and JIA GENG at transit speed
+(HIGH), KE XUE slow manoeuvring in the EEZ, HAIYANGDIZHI BAHAO towing outside Taiwan's waters, and JIA GENG at transit speed
 near Kinmen. Chinese research ships working far from Taiwan (seismic and cable-route work near Japan and the Ryukyus) are
 classified but stay below the alert line, because they are not in Taiwan's waters.
 

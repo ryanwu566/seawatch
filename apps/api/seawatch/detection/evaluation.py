@@ -20,6 +20,7 @@ ACCEPT = {
     "route_deviation": {"route_deviation"},
     "cluster": {"cluster", "rendezvous"},
     "survey_pattern": {"survey_pattern", "survey_threat"},
+    "survey_threat": {"survey_threat", "survey_pattern"},
 }
 TOL_S = 3600.0
 

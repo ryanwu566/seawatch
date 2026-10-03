@@ -53,8 +53,8 @@ class DetectionConfig:
     survey_min_leg_nm: float = 3.0
     survey_window_h: float = 24.0
     # --- Suspected unauthorised survey (mentor model: territory / velocity / AIS declaration + pattern) ---
-    threat_speed_lo_kn: float = 5.0
-    threat_speed_hi_kn: float = 10.0
+    threat_speed_lo_kn: float = 2.0
+    threat_speed_hi_kn: float = 6.0
     threat_edge_nm: float = 0.5
     threat_min_eez_fixes: int = 30
     # --- Alerting ----------------------------------------------------------
@@ -77,7 +77,7 @@ class DetectionConfig:
             grid_s=3600.0, bracket_s=5400.0, window_s=43200.0, step_s=21600.0,
             learn_cell_deg=0.1, learn_max_dt_s=5400.0, learn_min_slow_s=7200.0, learn_min_stop_vessels=5,
             densify_max_dt_s=7200.0, stationary_nm=12.0, edge_margin_nm=12.0, alert_link_hours=24.0,
-            threat_edge_nm=3.0, threat_min_eez_fixes=6,
+            threat_edge_nm=3.0, threat_min_eez_fixes=6, threat_speed_lo_kn=5.0, threat_speed_hi_kn=10.0,
             survey_min_legs=4, survey_min_leg_nm=14.0, survey_window_h=96.0, alert_min_risk=55.0, medium_risk=70.0, high_risk=82.0,
         )
 
