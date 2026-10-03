@@ -73,9 +73,10 @@ def _optional_number(value: object) -> tuple[str, float | str]:
 
 
 def _fingerprint(observation: LiveVesselObservation) -> tuple[Any, ...]:
+    """Return the provider-fix content key, excluding local receipt time."""
+
     return (
         observation.observed_at,
-        observation.received_at,
         observation.source,
         observation.provider_id,
         float(observation.latitude),
@@ -150,13 +151,16 @@ class RollingTrackBuffer:
     ) -> bool:
         """Retain one observation; return ``False`` for a duplicate/expired fix."""
 
-        now = as_of if as_of is not None else self._clock()
         with self._lock:
+            now = as_of if as_of is not None else self._clock()
             self._maintain(now)
-            retained = self._retain(observation, now)
-            identity = _identity_for(observation)
-            fingerprint = _fingerprint(observation)
-            self._enforce_vessel_cap()
+            try:
+                retained = self._retain(observation, now)
+                identity = _identity_for(observation)
+                fingerprint = _fingerprint(observation)
+            finally:
+                self._maintain(now)
+                self._enforce_vessel_cap()
             return retained and identity in self._tracks and fingerprint in self._tracks[identity]
 
     def _retain(self, observation: LiveVesselObservation, now: datetime) -> bool:
@@ -165,7 +169,7 @@ class RollingTrackBuffer:
         self._validate(observation)
         identity = _identity_for(observation)
         fingerprint = _fingerprint(observation)
-        if self._is_expired(observation.observed_at, now):
+        if self._outside_retention(observation.observed_at, now):
             return False
         points = self._tracks.setdefault(identity, {})
         if fingerprint in points:
@@ -189,8 +193,8 @@ class RollingTrackBuffer:
             raise ValueError(
                 f"batch exceeds max_batch_observations={self._max_batch_observations}"
             )
-        now = as_of if as_of is not None else self._clock()
         with self._lock:
+            now = as_of if as_of is not None else self._clock()
             self._maintain(now)
             accepted: set[tuple[LiveTrackIdentity, tuple[Any, ...]]] = set()
             try:
@@ -198,6 +202,7 @@ class RollingTrackBuffer:
                     if self._retain(observation, now):
                         accepted.add((_identity_for(observation), _fingerprint(observation)))
             finally:
+                self._maintain(now)
                 self._enforce_vessel_cap()
             return sum(
                 1
@@ -205,11 +210,8 @@ class RollingTrackBuffer:
                 if identity in self._tracks and fingerprint in self._tracks[identity]
             )
 
-    def _is_expired(self, observed_at: datetime, now: datetime) -> bool:
-        return (
-            observed_at < now - self._retention
-            or observed_at < now - self._stale_after
-        )
+    def _outside_retention(self, observed_at: datetime, now: datetime) -> bool:
+        return observed_at < now - self._retention
 
     def _maintain(self, now: datetime) -> int:
         """Apply retention and vessel staleness cutoffs under the caller's lock."""
