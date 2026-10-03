@@ -124,6 +124,44 @@ def test_buffer_suppresses_exact_duplicate_observation() -> None:
     assert buffer.point_count() == 1
 
 
+def test_buffer_suppresses_repolled_fix_with_only_new_received_at() -> None:
+    buffer = _buffer_type()(clock=_Clock())
+    observation = _obs()
+    repolled = _obs(received_at=BASE + timedelta(minutes=5))
+
+    assert buffer.update(observation) is True
+    assert buffer.update(repolled) is False
+    assert buffer.vessel_count() == 1
+    assert buffer.point_count() == 1
+
+
+def test_received_at_only_repolls_do_not_displace_trajectory_history() -> None:
+    buffer = _buffer_type()(max_points_per_vessel=4, clock=_Clock(BASE + timedelta(minutes=10)))
+    distinct = [
+        _obs(point * 60, latitude=23.5 + point * 0.01, longitude=121.0 + point * 0.01)
+        for point in range(4)
+    ]
+
+    assert buffer.update_many(distinct) == 4
+    for receipt_minute in range(5, 9):
+        assert buffer.update(
+            _obs(
+                180,
+                latitude=23.53,
+                longitude=121.03,
+                received_at=BASE + timedelta(minutes=receipt_minute),
+            )
+        ) is False
+
+    retained = buffer.snapshot()[0].observations
+    assert [item.observed_at for item in retained] == [
+        BASE,
+        BASE + timedelta(seconds=60),
+        BASE + timedelta(seconds=120),
+        BASE + timedelta(seconds=180),
+    ]
+
+
 def test_four_distinct_provider_polls_preserve_the_exact_trajectory() -> None:
     buffer = _buffer_type()(clock=_Clock(BASE + timedelta(minutes=10)))
     observations = [
@@ -152,6 +190,19 @@ def test_same_coordinates_at_different_timestamps_remain_distinct() -> None:
         BASE,
         BASE + timedelta(seconds=60),
         BASE + timedelta(seconds=120),
+    ]
+
+
+def test_changed_coordinates_at_the_same_timestamp_remain_distinct() -> None:
+    buffer = _buffer_type()(clock=_Clock(BASE + timedelta(minutes=10)))
+
+    assert buffer.update(_obs(latitude=23.50, longitude=121.00)) is True
+    assert buffer.update(_obs(latitude=23.51, longitude=121.01)) is True
+
+    retained = buffer.snapshot()[0].observations
+    assert [(item.latitude, item.longitude) for item in retained] == [
+        (23.50, 121.00),
+        (23.51, 121.01),
     ]
 
 
@@ -257,6 +308,23 @@ def test_retention_cutoff_is_inclusive_and_only_older_observations_are_rejected(
 
     assert buffer.update(_obs(0, mmsi=416000001)) is True
     assert buffer.update(_obs(-1, mmsi=416000002, provider_id="older")) is False
+
+
+def test_fresh_vessel_accepts_delayed_point_inside_retention() -> None:
+    buffer = _buffer_type()(
+        retention=timedelta(hours=1),
+        stale_after=timedelta(minutes=10),
+        clock=_Clock(BASE + timedelta(minutes=20)),
+    )
+
+    assert buffer.update(_obs(20 * 60)) is True
+    assert buffer.update(_obs(5 * 60)) is True
+
+    retained = buffer.snapshot()[0].observations
+    assert [item.observed_at for item in retained] == [
+        BASE + timedelta(minutes=5),
+        BASE + timedelta(minutes=20),
+    ]
 
 
 def test_stale_cutoff_is_inclusive_and_only_older_observations_are_rejected() -> None:

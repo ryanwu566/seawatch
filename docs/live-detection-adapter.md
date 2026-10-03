@@ -38,14 +38,29 @@ vessels, points per vessel, input batch size, retention time, and stale-vessel
 age. Oversized iterables are read only through the configured limit plus one
 and rejected before mutation. The clock is injectable for deterministic tests.
 
-An observation is rejected when its `observed_at` is strictly older than
-either the retention cutoff or the stale cutoff; equality with either cutoff
-remains valid. The same centralized maintenance runs under the buffer lock on
-mutations and public reads, so an idle expired vessel disappears from
-snapshots, counts, adaptation, and analysis without waiting for another ingest.
-Eviction removes the identity and all observation-derived metadata and
-provenance. Replaying an expired fix cannot recreate it, while a genuinely
-fresh fix can establish a new track for that identity.
+Duplicate identity is based on provider-fix content: provider timestamp,
+position, source/provider identity, movement and static fields, MMSI, and the
+other normalized provider values. Server-local `received_at` is deliberately
+excluded, so polling the same fix again does not consume point capacity or
+displace genuine trajectory history. The same coordinates at a different
+`observed_at`, or changed coordinates at the same timestamp, remain distinct.
+
+Retention is a point-level rule: an observation is rejected only when its
+`observed_at` is strictly older than the retention cutoff, and equality remains
+valid. `stale_after` is a vessel-level freshness rule applied to the newest
+retained observation. A delayed point older than the stale cutoff may therefore
+join a vessel that already has a newer fresh point, provided the delayed point
+is still inside retention. A vessel whose newest point is strictly older than
+the stale cutoff is removed; equality remains valid. This post-ingest
+maintenance also means an initial stale-only point does not leave retained
+state.
+
+The same centralized maintenance runs under the buffer lock on mutations and
+live public reads, so an idle expired vessel disappears from snapshots, counts,
+adaptation, and analysis without waiting for another ingest. Eviction removes
+the identity and all observation-derived metadata and provenance. Replaying an
+expired fix cannot recreate it, while a genuinely fresh fix can establish a
+new track for that identity.
 
 A valid nine-digit integer MMSI groups the same vessel across sources. Missing,
 invalid, or fractional MMSI values are never truncated or fabricated. Such
