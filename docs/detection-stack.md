@@ -12,7 +12,7 @@ python scripts/train_region_ml.py       # optional, ~2 min: ML second opinion fo
 .\scripts\run_demo.ps1                  # API :8000 + web :5173
 ```
 
-Real Taiwan data (Global Fishing Watch presence, Sept 2026): point `SEAWATCH_DATA_ROOT` at the drive that holds `SeaWatchis\historical\processed\daily`
+Real Taiwan data (Global Fishing Watch presence, Sept 2026): point `SEAWATCH_DATA_ROOT` at the drive that holds `SeaWatch\ais\historical\processed\daily`
 (default `D:\SeaWatch`); the app then starts in the `taiwan-gfw` region. The first start builds the scenario and runs detection (about 2-3 minutes,
 done in the background while the UI loads); `python scripts/train_tw_ml.py` adds the ML second opinion (~7 minutes).
 
