@@ -71,3 +71,5 @@ seeds and reports per-behaviour recall, alerts on the benign regatta look-alike,
 Current (6 seeds): cluster 6/6, rendezvous 6/6, dark transfer 6/6, dark gap 24/24, jump 24/24, zone entry 12/12,
 MMSI clone 18/24, loitering 14/24; ~12 unverified alerts per scenario on real traffic (mostly tugs/ferries/ships waiting).
 Loitering misses are mostly pleasure craft near marinas and vessels whose own history shows they dwell there routinely.
+
+See also `docs/real-outcomes.md` for the real-label evaluation (sanctions list, documented incidents) and what it showed.

@@ -2,3 +2,6 @@
 # Times are UTC and approximate (taken from public reports); verify against the cited source before relying on them.
 id,names,imo,mmsi,category,t_start_utc,t_end_utc,source,note,confidence
 YP3-2024-11,YI PENG 3,9224984,414270000,cable_damage_suspected,2024-11-17T01:30:00Z,2024-11-18T02:00:00Z,https://en.wikipedia.org/wiki/2024_Baltic_Sea_submarine_cable_disruptions,"BCS East-West Interlink and C-Lion1 cut 17-18 Nov 2024 near Gotland/Oland while this ship passed. Reported AIS-off for ~7.5 h after Gotland until 22:41 UTC on 17 Nov. Not conclusively attributed; US intelligence reportedly assessed not deliberate.",reported
+# TEMPLATE rows to fill ONLY after verifying identifiers and times from primary reporting (do not guess):
+#   Shunxin-39 - suspected cable damage near Keelung, 3 Jan 2025 (reported by Taiwan CGA; reporting says it used 3 different identities)
+#   Hong Tai 58 - suspected damage to the Penghu-Taiwan TPKM-3 cable, ~25 Feb 2025 (AIS name "Hongtai 58", hull name "Hongtai 168")
