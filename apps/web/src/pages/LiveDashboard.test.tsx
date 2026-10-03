@@ -95,10 +95,10 @@ vi.mock("../components/MapCanvas", () => {
 import { LiveDashboard } from "./LiveDashboard";
 import { I18nProvider } from "../i18n/I18nContext";
 
-function renderDash() {
+function renderDash({ vesselDemo = false }: { vesselDemo?: boolean } = {}) {
   return render(
     <I18nProvider>
-      <LiveDashboard />
+      <LiveDashboard vesselDemo={vesselDemo} />
     </I18nProvider>,
   );
 }
@@ -229,5 +229,25 @@ describe("LiveDashboard interaction", () => {
     const action = box.querySelector("button") as HTMLButtonElement;
     fireEvent.click(action);
     expect(Number(screen.getByTestId("fit-nonce").textContent)).toBeGreaterThan(Number(before));
+  });
+
+  it("opens and visibly labels the deterministic vessel scenario only when opted in", async () => {
+    renderDash({ vesselDemo: true });
+
+    expect(await screen.findByTestId("vessel-demo-mode")).toHaveTextContent(
+      DICTIONARIES["zh-Hant"].demoIllustrativeLabel,
+    );
+    expect(screen.getByTestId("demo-banner")).toHaveTextContent(
+      DICTIONARIES["zh-Hant"].demoIllustrativeLabel,
+    );
+  });
+
+  it("does not expose or open the vessel scenario without explicit opt-in", async () => {
+    renderDash();
+    await screen.findByTestId("map");
+
+    expect(screen.queryByTestId("vessel-demo-mode")).toBeNull();
+    expect(screen.queryByTestId("demo-banner")).toBeNull();
+    expect(screen.queryByTestId("demo-entry")).toBeNull();
   });
 });

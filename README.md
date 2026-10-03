@@ -253,3 +253,11 @@ client and offline map machinery, and consumes Phase 8 only through the stable,
 read-only `/resilience/status` contract. The SENSE → SURVIVE → RESPOND
 demonstration runs fully offline; the live-RF Edge hardware path remains
 **pending real-hardware validation**.
+
+### Demo readiness
+
+- [Bounded demo startup and readiness runbook](docs/demo-readiness-runbook.md)
+
+The Windows entry point is `start_demo.ps1`. It preserves explicit live-ingest
+configuration, requires the existing stable live/historical identity key, and
+serves the opt-in illustrative vessel scenario only at `?demo=vessel`.

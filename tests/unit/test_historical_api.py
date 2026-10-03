@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import threading
 
 from fastapi.testclient import TestClient
 import pytest
@@ -69,6 +70,132 @@ def _client_with_store(monkeypatch, store) -> TestClient:
         lambda: store,
     )
     return TestClient(create_app())
+
+
+def _client_with_health_store(monkeypatch, store) -> TestClient:
+    from apps.api.seawatch.api import health as health_api
+
+    monkeypatch.setattr(
+        health_api,
+        "get_historical_baseline_store",
+        lambda: store,
+    )
+    return TestClient(create_app())
+
+
+def test_health_reports_historical_not_initialized_before_builder_runs(
+    monkeypatch,
+) -> None:
+    from apps.api.seawatch.historical.store import HistoricalBaselineStore
+
+    calls = 0
+
+    def build() -> dict[str, VesselBaseline]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    store = HistoricalBaselineStore(build)
+    client = _client_with_health_store(monkeypatch, store)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["historical"] == "not_initialized"
+    assert calls == 0
+
+
+def test_health_does_not_infer_historical_readiness_from_config_or_files(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from apps.api.seawatch.historical import store as store_module
+
+    daily = tmp_path / "ais" / "historical" / "processed" / "daily"
+    daily.mkdir(parents=True)
+    (daily / "present.parquet").touch()
+    monkeypatch.setenv("SEAWATCH_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("SEAWATCH_IDENTITY_KEY", "configured-stable-key")
+    store_module.reset_historical_baseline_store()
+
+    response = TestClient(create_app()).get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["historical"] == "not_initialized"
+
+
+def test_health_reports_historical_available_only_after_successful_initialization(
+    monkeypatch,
+) -> None:
+    from apps.api.seawatch.historical.store import HistoricalBaselineStore
+
+    store = HistoricalBaselineStore(lambda: {})
+    client = _client_with_health_store(monkeypatch, store)
+
+    assert client.get("/health").json()["historical"] == "not_initialized"
+    assert store.get(PUBLIC_ID) is None
+    assert client.get("/health").json()["historical"] == "available"
+
+
+def test_health_reports_historical_unavailable_after_cached_failure(monkeypatch) -> None:
+    from apps.api.seawatch.historical.store import (
+        HistoricalBaselineStore,
+        HistoricalBaselineUnavailableError,
+    )
+
+    calls = 0
+
+    def fail() -> dict[str, VesselBaseline]:
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("sensitive initialization detail")
+
+    store = HistoricalBaselineStore(fail)
+    client = _client_with_health_store(monkeypatch, store)
+
+    with pytest.raises(HistoricalBaselineUnavailableError):
+        store.get(PUBLIC_ID)
+
+    assert client.get("/health").json()["historical"] == "unavailable"
+    assert client.get("/health").json()["historical"] == "unavailable"
+    assert calls == 1
+
+
+def test_historical_status_does_not_block_while_initialization_is_running() -> None:
+    from apps.api.seawatch.historical.store import HistoricalBaselineStore
+
+    build_started = threading.Event()
+    release_build = threading.Event()
+    read_finished = threading.Event()
+    observed: list[str] = []
+
+    def build() -> dict[str, VesselBaseline]:
+        build_started.set()
+        assert release_build.wait(timeout=5)
+        return {}
+
+    store = HistoricalBaselineStore(build)
+    initializer = threading.Thread(target=store.get, args=(PUBLIC_ID,))
+    initializer.start()
+    assert build_started.wait(timeout=1)
+
+    def read_status() -> None:
+        observed.append(store.status)
+        read_finished.set()
+
+    reader = threading.Thread(target=read_status)
+    reader.start()
+    try:
+        assert read_finished.wait(timeout=0.5), "status blocked behind initialization"
+        assert observed == ["not_initialized"]
+    finally:
+        release_build.set()
+        initializer.join(timeout=2)
+        reader.join(timeout=2)
+
+    assert not initializer.is_alive()
+    assert not reader.is_alive()
+    assert store.status == "available"
 
 
 def test_valid_opaque_id_returns_sufficient_baseline(monkeypatch) -> None:

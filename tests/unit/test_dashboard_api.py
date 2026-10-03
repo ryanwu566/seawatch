@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from apps.api.seawatch.main import create_app
+from apps.api.seawatch.historical.store import reset_historical_baseline_store
 from apps.api.seawatch.services import artifacts
 
 
@@ -83,10 +84,21 @@ def client_without_artifacts(tmp_path: Path, monkeypatch) -> TestClient:
     artifacts.reset_cache()
 
 
+@pytest.fixture(autouse=True)
+def _reset_historical_store() -> None:
+    reset_historical_baseline_store()
+    yield
+    reset_historical_baseline_store()
+
+
 def test_health_endpoint_returns_ok_payload(client_without_artifacts: TestClient) -> None:
     response = client_without_artifacts.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "seawatch-api"}
+    assert response.json() == {
+        "status": "ok",
+        "service": "seawatch-api",
+        "historical": "not_initialized",
+    }
 
 
 def test_alerts_schema_shape_and_slim_list(client_with_artifacts: TestClient) -> None:

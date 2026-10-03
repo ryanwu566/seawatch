@@ -110,6 +110,13 @@ describe("Vessel Intelligence Card in DEMO mode", () => {
     expect(screen.getByText(zh.intelligenceHumanReview)).toBeInTheDocument();
   });
 
+  it("does not fabricate historical-baseline or satellite evidence", () => {
+    renderDemoCard();
+    const historical = screen.getByTestId("historical-baseline");
+    expect(historical).toHaveTextContent(zh.historicalUnavailable);
+    expect(screen.queryByTestId("satellite-evidence")).toBeNull();
+  });
+
   it("never renders dangerous/suspicious/threat/illegal wording", () => {
     renderDemoCard();
     const text = (document.body.textContent ?? "").toLowerCase();

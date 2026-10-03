@@ -30,19 +30,14 @@ import { getDemoScenario } from "../features/intelligence/demoScenario";
 const POLL_MS = 8000;
 const VIEWPORT_DEBOUNCE_MS = 400;
 
-function isDemoMode(): boolean {
-  return String(import.meta.env?.VITE_DEMO_MODE ?? "false").toLowerCase() === "true";
-}
-
 /**
  * Taiwan-first, map-first live maritime awareness experience. The map dominates;
  * a compact header, floating status chip, floating search + layer controls, and
  * a right-side vessel drawer sit over it. Vessels poll by viewport bbox with
  * debounce; motion is smoothed on the client via visual interpolation.
  */
-export function LiveDashboard() {
+export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) {
   const { t } = useI18n();
-  const demo = isDemoMode();
 
   const [vessels, setVessels] = useState<LiveVesselFeature[]>([]);
   const [health, setHealth] = useState<LiveHealth | null>(null);
@@ -60,9 +55,10 @@ export function LiveDashboard() {
   const [loadedOnce, setLoadedOnce] = useState(false);
 
   // DEMO fixture (frontend-only, illustrative). The demo vessel is NEVER added
-  // to the live `vessels` array; it is held entirely separately and only shown
-  // when the judge explicitly opens it. Live polling/selection is unaffected.
-  const [demoOpen, setDemoOpen] = useState(false);
+  // to the live `vessels` array; it is held entirely separately and opens only
+  // after the exact `?demo=vessel` route sets this prop. Live polling/selection
+  // and source status remain unaffected.
+  const [demoOpen, setDemoOpen] = useState(vesselDemo);
   const demoScenario = useMemo(() => getDemoScenario(), []);
   const openDemo = useCallback(() => {
     setSelectedId(null); // ensure no live vessel is selected simultaneously
@@ -193,13 +189,13 @@ export function LiveDashboard() {
       ? null
       : vessels.reduce((min, v) => Math.min(min, v.properties.data_age_seconds), Infinity);
 
-  const status = deriveLiveStatus({ demo, health, vesselCount: vessels.length });
+  const status = deriveLiveStatus({ demo: false, health, vesselCount: vessels.length });
   const effectiveResilience: ResilienceStatus =
     resilience ??
     ({
-      mode: demo ? "OFFLINE_DEMO" : status === "live" ? "CLOUD_LIVE" : "NO_LIVE_SOURCE",
-      coverage: demo ? "demo" : status === "live" ? "taiwan_wide_network_feed" : "none",
-      simulated: demo,
+      mode: status === "live" ? "CLOUD_LIVE" : "NO_LIVE_SOURCE",
+      coverage: status === "live" ? "taiwan_wide_network_feed" : "none",
+      simulated: false,
       internet_available: status === "live",
       power_mode: "external",
       cloud: health?.cloud ?? {
@@ -242,6 +238,15 @@ export function LiveDashboard() {
       <AppHeader presentation={presentation} />
       <ResilienceBanner status={effectiveResilience} previousMode={previousMode} />
 
+      {vesselDemo && (
+        <div
+          className="offline-banner vessel-demo-banner"
+          data-testid="vessel-demo-mode"
+          role="note"
+        >
+          {t.demoIllustrativeLabel}
+        </div>
+      )}
       {effectiveResilience.mode === "OFFLINE_DEMO" && <div className="offline-banner">{t.offlineDemoNote}</div>}
       {status === "reconnecting" && <div className="warn-banner">{t.reconnectingAis}</div>}
       {error && (
@@ -281,7 +286,7 @@ export function LiveDashboard() {
             freshestAgeSeconds={freshestAge}
             source={sourceLabel}
           />
-          {demo && !demoOpen && (
+          {vesselDemo && !demoOpen && (
             <button
               type="button"
               className="demo-entry-btn"
@@ -336,7 +341,7 @@ export function LiveDashboard() {
             vessel={panelVessel}
             track={track}
             trackLoading={trackLoading}
-            demo={demo}
+            demo={false}
             missing={selectedMissing}
             onClose={handleDeselect}
           />

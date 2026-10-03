@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi.testclient import TestClient
 
 from apps.api.seawatch import live as live_pkg
@@ -86,3 +88,26 @@ def test_startup_starts_and_stops_exact_cloud_consumer_when_enabled(
         assert starts == [runtime.cloud.consumer]
 
     assert stops == [runtime.cloud.consumer]
+
+
+def test_live_provider_start_failure_warns_but_api_still_runs(
+    monkeypatch,
+    caplog,
+) -> None:
+    monkeypatch.setenv("SEAWATCH_LIVE_INGEST", "true")
+
+    def fail_to_start(_consumer) -> None:
+        raise OSError("provider unreachable")
+
+    monkeypatch.setattr(
+        "apps.api.seawatch.live.ingest.AisIngestConsumer.start",
+        fail_to_start,
+    )
+
+    with caplog.at_level(logging.WARNING, logger="seawatch.main"):
+        with TestClient(create_app()) as client:
+            response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+    assert "Failed to start live AIS ingest" in caplog.text

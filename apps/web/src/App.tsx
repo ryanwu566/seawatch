@@ -25,11 +25,17 @@ export function isResilienceDemo(search: string): boolean {
   return new URLSearchParams(search).get("demo") === "resilience";
 }
 
+export function isVesselDemo(search: string): boolean {
+  return new URLSearchParams(search).get("demo") === "vessel";
+}
+
 function MainNav() {
   const { t } = useI18n();
   const L = t.logistics;
-  const demoMode = typeof window !== "undefined" && isResilienceDemo(window.location.search);
-  const [view, setView] = useState<View>(demoMode ? "logistics" : "live");
+  const search = typeof window === "undefined" ? "" : window.location.search;
+  const resilienceDemo = isResilienceDemo(search);
+  const vesselDemo = isVesselDemo(search);
+  const [view, setView] = useState<View>(resilienceDemo ? "logistics" : "live");
 
   return (
     <>
@@ -52,11 +58,11 @@ function MainNav() {
         </button>
       </nav>
       {view === "live" ? (
-        <LiveDashboard />
+        <LiveDashboard vesselDemo={vesselDemo} />
       ) : (
         <LogisticsView
-          demoMode={demoMode}
-          initialScenarioId={demoMode ? "kaohsiung-disruption" : undefined}
+          demoMode={resilienceDemo}
+          initialScenarioId={resilienceDemo ? "kaohsiung-disruption" : undefined}
           renderResult={({ context, brief }) => (
             <LogisticsPanel context={context} brief={brief} />
           )}

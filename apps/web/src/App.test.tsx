@@ -2,7 +2,11 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./pages/Dashboard", () => ({ Dashboard: () => <div>research</div> }));
-vi.mock("./pages/LiveDashboard", () => ({ LiveDashboard: () => <div>live-view</div> }));
+vi.mock("./pages/LiveDashboard", () => ({
+  LiveDashboard: (props: { vesselDemo?: boolean }) => (
+    <div data-testid="live-view" data-vessel-demo={String(Boolean(props.vesselDemo))} />
+  ),
+}));
 vi.mock("./features/logistics/LogisticsPanel", () => ({ LogisticsPanel: () => null }));
 vi.mock("./features/logistics/LogisticsView", () => ({
   LogisticsView: (props: { demoMode?: boolean; initialScenarioId?: string }) => (
@@ -14,7 +18,7 @@ vi.mock("./features/logistics/LogisticsView", () => ({
   ),
 }));
 
-import App, { isResilienceDemo } from "./App";
+import App, { isResilienceDemo, isVesselDemo } from "./App";
 
 afterEach(() => window.history.replaceState({}, "", "/"));
 
@@ -31,5 +35,33 @@ describe("resilience demo entry", () => {
     const view = screen.getByTestId("logistics-view");
     expect(view).toHaveAttribute("data-demo", "true");
     expect(view).toHaveAttribute("data-scenario", "kaohsiung-disruption");
+  });
+});
+
+describe("vessel demo entry", () => {
+  it("recognizes only the explicit vessel demo query", () => {
+    expect(isVesselDemo("?demo=vessel")).toBe(true);
+    expect(isVesselDemo("")).toBe(false);
+    expect(isVesselDemo("?demo=resilience")).toBe(false);
+    expect(isVesselDemo("?demo=other")).toBe(false);
+  });
+
+  it("opts the live dashboard into the illustrative vessel scenario", () => {
+    window.history.replaceState({}, "", "/?demo=vessel");
+    render(<App />);
+
+    expect(screen.getByTestId("live-view")).toHaveAttribute(
+      "data-vessel-demo",
+      "true",
+    );
+  });
+
+  it("does not silently enter the vessel scenario without the query", () => {
+    render(<App />);
+
+    expect(screen.getByTestId("live-view")).toHaveAttribute(
+      "data-vessel-demo",
+      "false",
+    );
   });
 });

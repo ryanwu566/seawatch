@@ -34,8 +34,21 @@ class HistoricalBaselineStore:
     def __init__(self, builder: BaselineBuilder = _build_process_baselines) -> None:
         self._builder = builder
         self._lock = threading.RLock()
+        self._status_lock = threading.Lock()
+        self._status = "not_initialized"
         self._baselines: dict[str, VesselBaseline] | None = None
         self._unavailable = False
+
+    @property
+    def status(self) -> str:
+        """Report observed initialization state without triggering a build."""
+
+        with self._status_lock:
+            return self._status
+
+    def _set_status(self, value: str) -> None:
+        with self._status_lock:
+            self._status = value
 
     def get(self, public_id: str) -> VesselBaseline | None:
         with self._lock:
@@ -47,6 +60,7 @@ class HistoricalBaselineStore:
                 try:
                     self._baselines = dict(self._builder())
                 except Exception:  # noqa: BLE001 - sanitize every init failure
+                    self._set_status("unavailable")
                     self._unavailable = True
                     logger.warning(
                         "Historical baseline initialization failed; "
@@ -55,6 +69,7 @@ class HistoricalBaselineStore:
                     raise HistoricalBaselineUnavailableError(
                         "Historical baseline unavailable"
                     ) from None
+                self._set_status("available")
             return self._baselines.get(public_id)
 
 
