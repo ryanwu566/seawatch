@@ -10,11 +10,67 @@ classification.
 
 from __future__ import annotations
 
+from enum import Enum
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Query, status
+from fastapi.responses import FileResponse
 
 from ..context.gis import resolve_geographic_context
 
 router = APIRouter(prefix="/context", tags=["context"])
+
+
+class MaritimeReferenceAsset(str, Enum):
+    """Public route names for the strictly allowlisted reference artifacts."""
+
+    EEZ = "eez-reference.geojson"
+    TERRITORIAL_SEA_12NM = "territorial-sea-12nm-reference.geojson"
+    CONTIGUOUS_ZONE_24NM = "contiguous-zone-24nm-reference.geojson"
+
+
+_MARITIME_REFERENCE_ROOT = (
+    Path(__file__).resolve().parents[4]
+    / "data"
+    / "gis"
+    / "taiwan_maritime_reference"
+)
+_MARITIME_REFERENCE_FILES = {
+    MaritimeReferenceAsset.EEZ: _MARITIME_REFERENCE_ROOT / "eez_reference_areas.geojson",
+    MaritimeReferenceAsset.TERRITORIAL_SEA_12NM: (
+        _MARITIME_REFERENCE_ROOT / "territorial_sea_12nm_reference_polygon.geojson"
+    ),
+    MaritimeReferenceAsset.CONTIGUOUS_ZONE_24NM: (
+        _MARITIME_REFERENCE_ROOT / "contiguous_zone_12_24nm_reference_band.geojson"
+    ),
+}
+
+
+@router.get(
+    "/maritime-reference/{asset}",
+    summary="Canonical maritime reference geometry (read-only)",
+    response_class=FileResponse,
+)
+def maritime_reference(asset: MaritimeReferenceAsset) -> FileResponse:
+    """Serve one fixed canonical reference file without transforming geometry.
+
+    The 12 NM polygon and 12–24 NM band are derived reference geometry. All
+    three assets are reference-only and are not for navigation or legal
+    adjudication. ``asset`` is an enum lookup; request text is never resolved as
+    a filesystem path.
+    """
+
+    path = _MARITIME_REFERENCE_FILES[asset]
+    if not path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Maritime reference layer is unavailable",
+        )
+    return FileResponse(
+        path,
+        media_type="application/geo+json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.get(

@@ -7,6 +7,9 @@ export interface LayerState {
   liveVessels: boolean;
   vesselTracks: boolean;
   ports: boolean;
+  eezReference: boolean;
+  territorialSea12NmReference: boolean;
+  contiguousZone24NmReference: boolean;
   navReference: boolean;
   restrictedAirspace: boolean;
   publicAirspace: boolean;
@@ -22,6 +25,9 @@ export const DEFAULT_LAYER_STATE: LayerState = {
   liveVessels: true,
   vesselTracks: false,
   ports: true,
+  eezReference: true,
+  territorialSea12NmReference: true,
+  contiguousZone24NmReference: true,
   navReference: false,
   restrictedAirspace: false,
   publicAirspace: false,

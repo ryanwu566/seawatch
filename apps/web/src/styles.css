@@ -830,6 +830,14 @@ body {
   color: var(--sw-muted);
   font-size: 0.72rem;
 }
+.layer-note-block {
+  display: block;
+  margin-top: 0.05rem;
+}
+.maritime-reference-note {
+  margin: 0.35rem 0 0;
+  line-height: 1.35;
+}
 
 .vessel-type-legend {
   width: min(260px, calc(100vw - 2rem));

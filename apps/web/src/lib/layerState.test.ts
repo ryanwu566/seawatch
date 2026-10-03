@@ -15,6 +15,12 @@ describe("DEFAULT_LAYER_STATE (live mode defaults)", () => {
     expect(DEFAULT_LAYER_STATE.ports).toBe(true);
   });
 
+  it("shows all three maritime reference boundaries by default", () => {
+    expect(DEFAULT_LAYER_STATE.eezReference).toBe(true);
+    expect(DEFAULT_LAYER_STATE.territorialSea12NmReference).toBe(true);
+    expect(DEFAULT_LAYER_STATE.contiguousZone24NmReference).toBe(true);
+  });
+
   it("keeps airspace and analysis overlays OFF by default", () => {
     expect(DEFAULT_LAYER_STATE.restrictedAirspace).toBe(false);
     expect(DEFAULT_LAYER_STATE.publicAirspace).toBe(false);

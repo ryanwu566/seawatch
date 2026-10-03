@@ -67,6 +67,41 @@ export function LayerControl({ layers, onChange }: LayerControlProps) {
           </fieldset>
 
           <fieldset>
+            <legend>{t.maritimeBoundaries}</legend>
+            <label>
+              <input
+                type="checkbox"
+                checked={layers.eezReference}
+                onChange={toggle("eezReference")}
+              />
+              {t.layerEezReference}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={layers.territorialSea12NmReference}
+                onChange={toggle("territorialSea12NmReference")}
+              />
+              <span>
+                {t.layerTerritorialSea12NmReference}
+                <span className="layer-note layer-note-block">{t.derivedReferencePolygon}</span>
+              </span>
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={layers.contiguousZone24NmReference}
+                onChange={toggle("contiguousZone24NmReference")}
+              />
+              <span>
+                {t.layerContiguousZone24NmReference}
+                <span className="layer-note layer-note-block">{t.derivedReferenceBand}</span>
+              </span>
+            </label>
+            <p className="layer-note maritime-reference-note">{t.maritimeReferenceCaveat}</p>
+          </fieldset>
+
+          <fieldset>
             <legend>{t.airspace}</legend>
             <label>
               <input

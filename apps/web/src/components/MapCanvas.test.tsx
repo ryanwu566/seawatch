@@ -11,6 +11,7 @@ const state: {
   images: string[];
   layers: any[];
   sources: string[];
+  sourceSpecs: Record<string, any>;
   layoutProps: Array<{ layer: string; prop: string; value: unknown }>;
   featureStates: Array<{ id: unknown; state: Record<string, unknown> }>;
   flyToCalls: any[];
@@ -35,6 +36,7 @@ const state: {
   images: [],
   layers: [],
   sources: [],
+  sourceSpecs: {},
   layoutProps: [],
   featureStates: [],
   flyToCalls: [],
@@ -115,8 +117,9 @@ vi.mock("maplibre-gl", () => {
         },
       };
     }
-    addSource(id: string) {
+    addSource(id: string, spec: any) {
       state.sources.push(id);
+      state.sourceSpecs[id] = spec;
     }
     getLayer(id: string) {
       return state.layers.find((l) => l.id === id);
@@ -135,6 +138,7 @@ vi.mock("maplibre-gl", () => {
       state.styles.push(style);
       state.layers = [];
       state.sources = [];
+      state.sourceSpecs = {};
       state.images = [];
     }
     getStyle() {
@@ -290,6 +294,7 @@ describe("MapCanvas", () => {
     state.images = [];
     state.layers = [];
     state.sources = [];
+    state.sourceSpecs = {};
     state.layoutProps = [];
     state.featureStates = [];
     state.flyToCalls = [];
@@ -324,6 +329,215 @@ describe("MapCanvas", () => {
 
     const portLabels = state.layers.find((layer) => layer.id === "ports-label");
     expect(portLabels?.layout?.["text-field"]).toEqual(["get", "nameEn"]);
+  });
+
+  it("registers the three maritime sources against allowlisted context routes", () => {
+    render(<MapCanvas {...baseProps()} />);
+
+    expect(state.sources).toEqual(expect.arrayContaining([
+      "seawatch-eez-reference",
+      "seawatch-territorial-sea-12nm",
+      "seawatch-contiguous-zone-24nm",
+    ]));
+    expect(state.sourceSpecs["seawatch-eez-reference"]).toEqual(expect.objectContaining({
+      type: "geojson",
+      data: expect.stringMatching(/\/context\/maritime-reference\/eez-reference\.geojson$/),
+      attribution: expect.stringMatching(/Marine Regions.*World EEZ v12.*CC BY 4\.0/),
+    }));
+    expect(state.sourceSpecs["seawatch-territorial-sea-12nm"]).toEqual(expect.objectContaining({
+      type: "geojson",
+      data: expect.stringMatching(
+        /\/context\/maritime-reference\/territorial-sea-12nm-reference\.geojson$/,
+      ),
+      attribution: expect.stringMatching(/Taiwan Ministry of the Interior.*derived polygon/),
+    }));
+    expect(state.sourceSpecs["seawatch-contiguous-zone-24nm"]).toEqual(expect.objectContaining({
+      type: "geojson",
+      data: expect.stringMatching(
+        /\/context\/maritime-reference\/contiguous-zone-24nm-reference\.geojson$/,
+      ),
+      attribution: expect.stringMatching(/Taiwan Ministry of the Interior.*derived band/),
+    }));
+    for (const sourceId of [
+      "seawatch-eez-reference",
+      "seawatch-territorial-sea-12nm",
+      "seawatch-contiguous-zone-24nm",
+    ]) {
+      expect(state.sourceSpecs[sourceId].data).not.toMatch(/^[A-Za-z]:[\\/]|^file:/);
+    }
+  });
+
+  it("draws subtle maritime fills and boundaries below Area Scan and vessel layers", () => {
+    render(<MapCanvas {...baseProps()} />);
+
+    const ids = state.layers.map((layer) => layer.id);
+    const maritimeLayerIds = [
+      "seawatch-eez-reference-fill",
+      "seawatch-territorial-sea-12nm-fill",
+      "seawatch-contiguous-zone-24nm-fill",
+      "seawatch-eez-reference-line",
+      "seawatch-territorial-sea-12nm-line",
+      "seawatch-contiguous-zone-24nm-line",
+    ];
+    expect(ids).toEqual(expect.arrayContaining(maritimeLayerIds));
+    for (const layerId of maritimeLayerIds) {
+      expect(ids.indexOf(layerId)).toBeLessThan(ids.indexOf("live-vessels-symbols"));
+      expect(ids.indexOf(layerId)).toBeLessThan(ids.indexOf("area-scan-fill"));
+    }
+    for (const layerId of maritimeLayerIds.filter((id) => id.endsWith("-fill"))) {
+      expect(state.layers.find((layer) => layer.id === layerId)?.paint?.["fill-opacity"])
+        .toBeLessThanOrEqual(0.1);
+    }
+  });
+
+  it("applies independent visibility to every maritime reference group", () => {
+    const { rerender } = render(<MapCanvas {...baseProps()} />);
+
+    rerender(
+      <MapCanvas
+        {...baseProps({
+          layers: {
+            ...DEFAULT_LAYER_STATE,
+            eezReference: false,
+            territorialSea12NmReference: true,
+            contiguousZone24NmReference: true,
+          },
+        })}
+      />,
+    );
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-eez-reference-fill"))?.value)
+      .toBe("none");
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-territorial-sea-12nm-fill"))?.value)
+      .toBe("visible");
+
+    rerender(
+      <MapCanvas
+        {...baseProps({
+          layers: {
+            ...DEFAULT_LAYER_STATE,
+            eezReference: true,
+            territorialSea12NmReference: false,
+            contiguousZone24NmReference: true,
+          },
+        })}
+      />,
+    );
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-territorial-sea-12nm-line"))?.value)
+      .toBe("none");
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-contiguous-zone-24nm-line"))?.value)
+      .toBe("visible");
+
+    rerender(
+      <MapCanvas
+        {...baseProps({
+          layers: {
+            ...DEFAULT_LAYER_STATE,
+            eezReference: true,
+            territorialSea12NmReference: true,
+            contiguousZone24NmReference: false,
+          },
+        })}
+      />,
+    );
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-contiguous-zone-24nm-fill"))?.value)
+      .toBe("none");
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-eez-reference-line"))?.value)
+      .toBe("visible");
+  });
+
+  it("restores enabled maritime layers idempotently after a basemap style reload", () => {
+    const { rerender } = render(<MapCanvas {...baseProps()} />);
+
+    rerender(
+      <MapCanvas
+        {...baseProps({ layers: { ...DEFAULT_LAYER_STATE, baseMap: "nlsc-photo" } })}
+      />,
+    );
+    expect(typeof state.styledataCb).toBe("function");
+    act(() => state.styledataCb?.());
+    act(() => state.styledataCb?.());
+
+    for (const sourceId of [
+      "seawatch-eez-reference",
+      "seawatch-territorial-sea-12nm",
+      "seawatch-contiguous-zone-24nm",
+    ]) {
+      expect(state.sources.filter((id) => id === sourceId)).toHaveLength(1);
+    }
+    for (const layerId of [
+      "seawatch-eez-reference-fill",
+      "seawatch-territorial-sea-12nm-fill",
+      "seawatch-contiguous-zone-24nm-fill",
+      "seawatch-eez-reference-line",
+      "seawatch-territorial-sea-12nm-line",
+      "seawatch-contiguous-zone-24nm-line",
+    ]) {
+      expect(state.layers.filter((layer) => layer.id === layerId)).toHaveLength(1);
+    }
+    expect(state.layers.find((layer) => layer.id === "live-vessels-symbols")).toBeTruthy();
+    expect(state.layers.find((layer) => layer.id === "area-scan-fill")).toBeTruthy();
+  });
+
+  it("restores the latest maritime visibility after a fallback style reload", () => {
+    const { rerender } = render(<MapCanvas {...baseProps()} />);
+    rerender(
+      <MapCanvas
+        {...baseProps({
+          layers: { ...DEFAULT_LAYER_STATE, eezReference: false },
+        })}
+      />,
+    );
+
+    act(() => state.handlers.error?.({ error: new Error("online style fetch failed") }));
+    act(() => state.styledataCb?.());
+
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-eez-reference-fill"))?.value)
+      .toBe("none");
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-territorial-sea-12nm-fill"))?.value)
+      .toBe("visible");
+  });
+
+  it("uses a toggle changed while a basemap style is still loading", () => {
+    const { rerender } = render(<MapCanvas {...baseProps()} />);
+    rerender(
+      <MapCanvas
+        {...baseProps({ layers: { ...DEFAULT_LAYER_STATE, baseMap: "nlsc-photo" } })}
+      />,
+    );
+    rerender(
+      <MapCanvas
+        {...baseProps({
+          layers: {
+            ...DEFAULT_LAYER_STATE,
+            baseMap: "nlsc-photo",
+            contiguousZone24NmReference: false,
+          },
+        })}
+      />,
+    );
+
+    act(() => state.styledataCb?.());
+
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-contiguous-zone-24nm-line"))?.value)
+      .toBe("none");
+    expect(last(state.layoutProps.filter((p) => p.layer === "seawatch-eez-reference-line"))?.value)
+      .toBe("visible");
+  });
+
+  it("does not turn a maritime source failure into a basemap failure", () => {
+    const onBaseMapError = vi.fn();
+    render(<MapCanvas {...baseProps({ onBaseMapError })} />);
+    const styleCount = state.styles.length;
+
+    act(() => state.handlers.error?.({
+      sourceId: "seawatch-eez-reference",
+      error: new Error("GeoJSON source fetch failed"),
+    }));
+
+    expect(state.styles).toHaveLength(styleCount);
+    expect(onBaseMapError).not.toHaveBeenCalled();
+    expect(state.layers.find((layer) => layer.id === "live-vessels-symbols")).toBeTruthy();
+    expect(state.layers.find((layer) => layer.id === "area-scan-fill")).toBeTruthy();
   });
 
   it("finishes polygon drawing as closed longitude-latitude GeoJSON", () => {
@@ -1301,6 +1515,9 @@ describe("MapCanvas", () => {
     render(<MapCanvas {...baseProps()} />);
     // Only built-in sources, including the dedicated Area Scan paths, exist.
     const builtInSources = [
+      "seawatch-eez-reference",
+      "seawatch-territorial-sea-12nm",
+      "seawatch-contiguous-zone-24nm",
       "live-vessels",
       "selected-track",
       "ports",
