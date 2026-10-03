@@ -92,7 +92,7 @@ def assess(tr: Track) -> Declared:
         parts.append(0.5)  # a class derived by the feed provider (noisy: tankers and support ships carry it); not a broadcast self-description
         d.reasons.append("the feed classes it as a 'seismic survey vessel' (a derived class, not something the vessel broadcast)")
     sub = ((tr.extra or {}).get("subtype") or "").lower()
-    if sub in ("research", "seismic surveyor", "fishery research", "survey", "hydrographic"):
+    if any(k in sub for k in ("research", "seismic", "survey", "hydrograph", "oceanograph")):
         parts.append(0.7)
         d.reasons.append(f"the vessel register behind the feed lists it as '{(tr.extra or {}).get('subtype')}' (a registry class, not a live broadcast)")
     dest = (tr.extra or {}).get("destination", "") if getattr(tr, "extra", None) else ""

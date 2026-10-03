@@ -19,6 +19,7 @@ from pyproj import CRS, Geod, Transformer
 from shapely.geometry import Point, Polygon, box
 from shapely.ops import transform
 
+from .provider_codes import nav_status_code, vessel_type_code
 from .datalastic import RadiusQuery
 from .datalastic import (
     DatalasticAreaScanProvider,
@@ -396,12 +397,13 @@ class AreaScanService:
                         sog_knots=candidate.speed_knots,
                         cog_deg=candidate.course_deg,
                         heading_deg=candidate.heading_deg,
-                        nav_status=None,
-                        vessel_type=None,
+                        nav_status=nav_status_code(candidate.navigation_status),
+                        vessel_type=vessel_type_code(candidate.vessel_type, candidate.vessel_type_specific),
                         name=candidate.name,
                         destination=candidate.destination,
                         synthesized=False,
                         mmsi=trusted_mmsi,
+                        vessel_subtype=candidate.vessel_type_specific or candidate.vessel_type,
                     ),
                     provider_observed_at=candidate.observed_at,
                     provider_vessel_type=candidate.vessel_type,

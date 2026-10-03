@@ -219,3 +219,12 @@ incremental engine.
   context is an explicit degraded mode, not a substitute for regional history.
 - The adapter does not itself publish results through `/detection/*`; that later
   hook belongs where the live region is wired into the existing service/API.
+
+## Fields Area Scan now passes to Detection (fix/live-detection-fields)
+
+Area Scan used to set `nav_status` and `vessel_type` to `None` when normalising Datalastic vessels, so Detection saw every live vessel as ship type `other` with
+no navigation status. `live/provider_codes.py` now maps the provider text to AIS codes (navigation status 0-8; ship type 30 fishing, 52 tug, 60 passenger,
+70 cargo, 80 tanker, 90 other, ...), and the provider's free-text class travels in the internal-only `vessel_subtype`. The adapter puts it in `Track.extra["subtype"]`
+and the times at which the destination announced towing in `Track.extra["tow_t"]`. With these, the restricted-manoeuvre factor, the towing rule (R7), the registry
+declaration, fishing-type handling and the survey-pattern exemptions work on live data. A vessel that announces towing or survey work is now analysed from its first
+report (`engine.eligibility`), because the declaration rules need no path; any other single report still returns insufficient history.

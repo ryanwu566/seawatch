@@ -105,6 +105,13 @@ def eligibility(tr: Track, density: str) -> dict[str, str | None]:
             out[name] = "insufficient_data"
         else:
             out[name] = None
+    # A vessel that announces towing / survey work in its own AIS is worth a look from its very first report: the declaration rules need no path.
+    if out.get("survey_threat") == "insufficient_data" and density in REQUIREMENTS["survey_threat"]["densities"]:
+        from .declared import assess
+
+        d = assess(tr)
+        if d.towing or d.score >= 0.6 or d.state_class is not None:
+            out["survey_threat"] = None
     return out
 
 

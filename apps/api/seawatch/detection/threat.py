@@ -82,9 +82,11 @@ def detect_survey_threat(tracks: list[Track], ctx: DetectionContext, cfg: Detect
     lo, hi = cfg.threat_speed_lo_kn, cfg.threat_speed_hi_kn
     out: list[Event] = []
     for tr in tracks:
-        if len(tr) < 4:
-            continue
         decl = assess(tr)
+        # A vessel that announces towing / survey work in its own AIS needs no trajectory to be worth a look: declaration rules run on short live
+        # tracks too. Everything that needs a path (patterns, speed shares) still needs the usual 4 fixes.
+        if len(tr) < 4 and not (decl.towing or decl.score >= DECLARED_MIN or decl.state_class is not None):
+            continue
         wins = [] if is_exempt(tr) else survey_windows(tr, cfg, ctx.benign_mask)
         if decl.score < DECLARED_MIN and not wins and decl.state_class is None:
             ctx.skip("survey_threat", "no declaration, no pattern, not a state vessel")
@@ -140,14 +142,14 @@ def detect_survey_threat(tracks: list[Track], ctx: DetectionContext, cfg: Detect
             tw = (tr.extra or {}).get("tow_t")
             span = None
             kind7 = None
-            if tw is not None and len(tw) >= 3:
+            if tw is not None and len(tw) >= min(3, len(tr)):
                 span = (int(np.searchsorted(tr.t, tw.min(), "left")), min(len(tr) - 1, int(np.searchsorted(tr.t, tw.max(), "right")) - 1))
                 kind7 = "tow"
             elif tr.status is not None and decl.score >= DECLARED_MIN and decl.restricted >= 0.2:
                 rs = np.where((np.asarray(tr.status) == 3) & (np.nan_to_num(tr.sog, nan=0.0) <= hi))[0]
                 if len(rs) >= (10 if cfg.grid_s <= 600 else 3):
                     span, kind7 = (int(rs[0]), int(rs[-1])), "restricted"
-            if span is not None and span[1] > span[0]:
+            if span is not None and span[1] >= span[0]:
                 a, b = span
                 z = _zones(terr, tr, a, b, edge)
                 share, med = _band_share(tr.sog[a:b + 1], lo, hi)

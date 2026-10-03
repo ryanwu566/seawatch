@@ -66,6 +66,9 @@ class LiveVesselObservation:
     # Carried internally for dedup only; not required by the public UI.
     mmsi: int | None = None
 
+    # Internal only (never in the public bag): the provider's free-text vessel class, e.g. a registry 'Research vessel'. Detection uses it as a declaration.
+    vessel_subtype: str | None = None
+
     def age_seconds(self, *, now: datetime | None = None) -> float:
         """Seconds since the position was reported upstream."""
 

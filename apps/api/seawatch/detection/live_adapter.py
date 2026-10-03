@@ -19,6 +19,7 @@ from .config import DetectionConfig
 from .context import DetectionContext
 from .engine import AnalysisResult
 from .history import ship_category
+from .declared import is_towing_text
 from .models import Track
 
 
@@ -88,6 +89,7 @@ def _fingerprint(observation: LiveVesselObservation) -> tuple[Any, ...]:
         observation.vessel_type,
         observation.name,
         observation.destination,
+        getattr(observation, 'vessel_subtype', None),
         observation.synthesized,
         (type(observation.mmsi).__name__, repr(observation.mmsi)),
     )
@@ -360,6 +362,13 @@ class DetectionTrackAdapter:
         }
         if destination:
             extra["destination"] = destination
+        subtype = last_text("vessel_subtype")
+        if subtype:
+            extra["subtype"] = subtype  # provider's free-text class (e.g. a registry 'Research vessel'): a declaration, not a broadcast
+        # Times at which the destination field announced towing / cable work: the survey-threat rule R7 reads these (see detection.declared)
+        tow_times = [o.observed_at.timestamp() for o in selected if o.destination and is_towing_text(o.destination)]
+        if tow_times:
+            extra["tow_t"] = np.asarray(tow_times, dtype=float)
         return Track(
             mmsi=buffered.identity.mmsi,
             name=last_text("name") or buffered.identity.mmsi,
