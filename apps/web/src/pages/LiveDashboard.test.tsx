@@ -1,12 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
-import type { LiveVesselFeature } from "../api/live";
+import type { DatalasticProviderStatus, LiveHealth, LiveVesselFeature } from "../api/live";
 import { DICTIONARIES } from "../i18n/dictionaries";
 
 // --- Mock the live API --------------------------------------------------- //
 let currentVessels: LiveVesselFeature[] = [];
 let currentScanVessels: LiveVesselFeature[] = [];
-let currentHealth: Record<string, unknown>;
+let currentHealth: LiveHealth;
 let currentResilience: Record<string, unknown>;
 
 function vessel(id: string, name: string): LiveVesselFeature {
@@ -30,6 +30,47 @@ function vessel(id: string, name: string): LiveVesselFeature {
     },
   };
 }
+
+const healthyDatalasticStatus: DatalasticProviderStatus = {
+  provider: "datalastic",
+  configured: true,
+  reachable: true,
+  key_status: "valid",
+  addons: true,
+  requests_remaining: 999_999_999,
+  rate_limit_remaining: 599,
+  last_success_at: "2026-10-03T10:00:00Z",
+  last_error_category: null,
+};
+
+function datalasticHealth(
+  providerPatch: Partial<DatalasticProviderStatus> = {},
+): LiveHealth {
+  return {
+    status: "online",
+    provider: "datalastic",
+    connected: true,
+    subscribed: false,
+    last_message_at: null,
+    message_age_seconds: null,
+    vessel_count: 0,
+    reconnect_attempts: 0,
+    last_error: null,
+    mode: "NO_LIVE_SOURCE",
+    live_ingest_enabled: false,
+    provider_status: { ...healthyDatalasticStatus, ...providerPatch },
+  };
+}
+
+const noLiveSourceResilience = {
+  mode: "NO_LIVE_SOURCE",
+  coverage: "none",
+  simulated: false,
+  internet_available: false,
+  power_mode: "external",
+  cloud: { source: "open_waters", fresh: false, message_age_seconds: null, vessel_count: 0, connected: false, input_kind: null },
+  edge: { source: "edge_ais", fresh: false, message_age_seconds: null, vessel_count: 0, connected: false, input_kind: "disabled" },
+};
 
 vi.mock("../api/live", () => ({
   fetchLiveVessels: vi.fn(async () => ({
@@ -195,6 +236,7 @@ describe("LiveDashboard interaction", () => {
       reconnect_attempts: 0,
       last_error: null,
       live_ingest_enabled: true,
+      provider_status: healthyDatalasticStatus,
     };
     currentResilience = {
       mode: "CLOUD_LIVE",
@@ -251,38 +293,12 @@ describe("LiveDashboard interaction", () => {
 
   it("presents Datalastic Area Scan cleanly when continuous ingest is disabled", async () => {
     currentVessels = [];
-    currentHealth = {
-      status: "online",
-      provider: "datalastic",
-      connected: true,
-      subscribed: false,
-      last_message_at: null,
-      message_age_seconds: null,
-      vessel_count: 0,
-      reconnect_attempts: 0,
-      last_error: null,
-      live_ingest_enabled: false,
-      provider_status: {
-        provider: "datalastic",
-        configured: true,
-        reachable: true,
-        key_status: "valid",
-        addons: true,
-        requests_remaining: 100,
-        rate_limit_remaining: 10,
-        last_success_at: "2026-10-03T10:00:00Z",
-        last_error_category: null,
-      },
-    };
-    currentResilience = {
-      mode: "NO_LIVE_SOURCE",
-      coverage: "none",
-      simulated: false,
-      internet_available: false,
-      power_mode: "external",
-      cloud: { source: "open_waters", fresh: false, message_age_seconds: null, vessel_count: 0, connected: false, input_kind: null },
-      edge: { source: "edge_ais", fresh: false, message_age_seconds: null, vessel_count: 0, connected: false, input_kind: "disabled" },
-    };
+    currentHealth = datalasticHealth();
+    currentResilience = noLiveSourceResilience;
+    vi.mocked(establishAreaScanSession).mockResolvedValueOnce({
+      authenticated: true,
+      expires_in_seconds: 900,
+    });
     renderDash();
     const t = DICTIONARIES.en;
 
@@ -292,6 +308,81 @@ describe("LiveDashboard interaction", () => {
     expect(screen.queryByText(t.reconnectingAis)).toBeNull();
     expect(screen.queryByText(t.modeNoSource)).toBeNull();
     expect(screen.queryByText(t.corsNote)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
+    fireEvent.click(screen.getByTestId("finish-area"));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: t.scanArea })).toBeEnabled();
+    });
+    expect(screen.queryByText(t.datalasticUnavailable)).toBeNull();
+    expect(vi.mocked(planLiveArea)).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["not configured", { configured: false, reachable: false, key_status: "unknown" }],
+    ["using an invalid key", { reachable: false, key_status: "invalid" }],
+    ["unreachable", { reachable: false }],
+    ["out of quota", { requests_remaining: 0 }],
+  ] as const)("keeps Area Scan unavailable when Datalastic is %s", async (_label, patch) => {
+    currentVessels = [];
+    currentHealth = datalasticHealth(patch);
+    currentResilience = noLiveSourceResilience;
+    vi.mocked(establishAreaScanSession).mockResolvedValueOnce({
+      authenticated: true,
+      expires_in_seconds: 900,
+    });
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
+    fireEvent.click(screen.getByTestId("finish-area"));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
+    });
+    expect(vi.mocked(planLiveArea)).not.toHaveBeenCalled();
+  });
+
+  it("keeps Scan Area unauthorized while the provider is healthy but the session is inactive", async () => {
+    currentVessels = [];
+    currentHealth = datalasticHealth();
+    currentResilience = noLiveSourceResilience;
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    expect(await screen.findByLabelText(t.areaScanOperatorCredential)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
+    fireEvent.click(screen.getByTestId("finish-area"));
+
+    expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
+    expect(vi.mocked(planLiveArea)).not.toHaveBeenCalled();
+  });
+
+  it("keeps a real Area Scan planning failure visible and blocking for investigation", async () => {
+    currentVessels = [];
+    currentHealth = datalasticHealth();
+    currentResilience = noLiveSourceResilience;
+    vi.mocked(establishAreaScanSession).mockResolvedValueOnce({
+      authenticated: true,
+      expires_in_seconds: 900,
+    });
+    vi.mocked(planLiveArea).mockRejectedValueOnce(
+      new AreaScanApiError(503, "Area Scan unavailable", null),
+    );
+    renderDash();
+    const t = DICTIONARIES.en;
+
+    fireEvent.click(screen.getByRole("button", { name: t.areaScan }));
+    expect(await screen.findByText(t.areaScanAuthenticated)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: t.areaScanPolygon }));
+    fireEvent.click(screen.getByTestId("finish-area"));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(t.datalasticUnavailable);
+    expect(screen.getByRole("button", { name: t.scanArea })).toBeDisabled();
   });
 
   it("keeps the Datalastic-primary presentation when legacy vessel polling fails", async () => {

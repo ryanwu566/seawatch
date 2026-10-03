@@ -15,6 +15,7 @@ interface AreaScanPanelProps {
   error: string | null;
   authenticated: boolean;
   authenticating: boolean;
+  providerAvailable: boolean;
   operatorAuthenticationRequired: boolean;
   onDrawMode: (mode: Exclude<AreaDrawMode, null>) => void;
   onOpen: () => void;
@@ -33,6 +34,7 @@ export function AreaScanPanel({
   error,
   authenticated,
   authenticating,
+  providerAvailable,
   operatorAuthenticationRequired,
   onDrawMode,
   onOpen,
@@ -45,7 +47,12 @@ export function AreaScanPanel({
   const [operatorCredential, setOperatorCredential] = useState("");
   const categoryCounts = result ? countVesselCategories(result.vessels) : [];
   const canScan = Boolean(
-    geometry && authenticated && !loading && !planning && plan?.can_scan,
+    geometry &&
+    authenticated &&
+    providerAvailable &&
+    !loading &&
+    !planning &&
+    plan?.can_scan,
   );
 
   const authenticate = () => {

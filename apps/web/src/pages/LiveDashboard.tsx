@@ -36,6 +36,7 @@ import { friendlySource } from "../lib/display";
 import { LOCATION_PRESETS } from "../config/taiwanMap";
 import { getDemoScenario } from "../features/intelligence/demoScenario";
 import { classifyAreaScanError, type AreaScanErrorKind } from "../lib/areaScanError";
+import { deriveAreaScanReadiness } from "../lib/areaScanReadiness";
 
 const POLL_MS = 8000;
 const VIEWPORT_DEBOUNCE_MS = 400;
@@ -77,6 +78,8 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   const [areaOperatorAuthenticationRequired, setAreaOperatorAuthenticationRequired] =
     useState(false);
   const [areaAutoAuthenticated, setAreaAutoAuthenticated] = useState(false);
+  const areaScanReadiness = deriveAreaScanReadiness(health?.provider_status);
+  const areaScanProviderAvailable = areaScanReadiness === "available";
 
   // DEMO fixture (frontend-only, illustrative). The demo vessel is NEVER added
   // to the live `vessels` array; it is held entirely separately and opens only
@@ -328,7 +331,7 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
   useEffect(() => {
     areaPlanAbortRef.current?.abort();
     areaPlanAbortRef.current = null;
-    if (!areaGeometry || !areaAuthenticated) {
+    if (!areaGeometry || !areaAuthenticated || !areaScanProviderAvailable) {
       setAreaPlanning(false);
       setAreaPlan(null);
       return;
@@ -358,7 +361,13 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
         }
       });
     return () => controller.abort();
-  }, [areaAuthenticated, areaAutoAuthenticated, areaErrorMessage, areaGeometry]);
+  }, [
+    areaAuthenticated,
+    areaAutoAuthenticated,
+    areaErrorMessage,
+    areaGeometry,
+    areaScanProviderAvailable,
+  ]);
 
   const handleAreaGeometryInvalid = useCallback(() => {
     setAreaError(t.areaScanInvalidPolygon);
@@ -368,6 +377,7 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
     if (
       !areaGeometry ||
       !areaAuthenticated ||
+      !areaScanProviderAvailable ||
       !areaPlan?.can_scan ||
       areaLoading ||
       areaScanPendingRef.current
@@ -409,6 +419,7 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
     areaGeometry,
     areaLoading,
     areaPlan,
+    areaScanProviderAvailable,
     areaErrorMessage,
     establishAutomaticAreaSession,
     t,
@@ -564,9 +575,11 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
               <span>{t.datalasticPrimaryTitle}</span>
               <strong>{t.datalasticAreaScan}</strong>
               <span className="datalastic-primary-ready">
-                {health?.provider_status?.reachable === false
-                  ? t.datalasticUnavailable
-                  : t.datalasticPrimaryReady}
+                {areaScanProviderAvailable
+                  ? t.datalasticPrimaryReady
+                  : areaScanReadiness === "quota_exhausted"
+                    ? t.areaScanQuotaUnavailable
+                    : t.datalasticUnavailable}
               </span>
               <p>{t.datalasticPrimaryHint}</p>
             </aside>
@@ -583,6 +596,7 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
             error={areaError}
             authenticated={areaAuthenticated}
             authenticating={areaAuthenticating}
+            providerAvailable={areaScanProviderAvailable}
             operatorAuthenticationRequired={areaOperatorAuthenticationRequired}
             onDrawMode={handleAreaDrawMode}
             onOpen={handleAreaPanelOpen}
