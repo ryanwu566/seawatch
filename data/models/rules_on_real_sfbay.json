@@ -6,20 +6,19 @@
    "position_jump": 1,
    "rendezvous": 24,
    "ais_gap": 14,
-   "status_mismatch": 23,
-   "cluster": 2
+   "status_mismatch": 23
   },
-  "alerts": 61,
-  "alerts_per_100_vessel_days": 5.4
+  "alerts": 63,
+  "alerts_per_100_vessel_days": 5.6
  },
  "injected": {
-  "alerts": 103,
-  "true": 68,
-  "false": 35,
+  "alerts": 114,
+  "true": 74,
+  "false": 40,
   "truth": 91,
   "det": 81,
   "recall": 0.89,
-  "alert_precision": 0.66,
+  "alert_precision": 0.649,
   "recall_by_kind": {
    "dark_gap": "24/24",
    "loitering": "18/24",

@@ -38,7 +38,7 @@ the same code runs on a new coast with no hand-built zones.
 
 ## Measured results
 
-* `scripts/evaluate_rules_on_real.py` - rules on real SF AIS: ~4-5 alerts / 100 vessel-days on untouched traffic; recall of
+* `scripts/evaluate_rules_on_real.py` - rules on real SF AIS: ~5-6 alerts / 100 vessel-days (none HIGH) on untouched traffic; recall of
   injected behaviours ~89% (dark gap 24/24, jump 23/23, clone 16/17, loitering 18/24).
 * `scripts/train_region_ml.py` - trained on 1-2 Jan, tested on held-out 3 Jan (includes behaviours the models never saw):
   rules recall 0.89; gradient boosting ROC-AUC 0.96 but finds none of the unseen behaviour types; Isolation Forest ROC-AUC 0.94.

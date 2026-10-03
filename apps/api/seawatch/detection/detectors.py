@@ -219,10 +219,13 @@ def _loiter_event(tr: Track, i: int, j: int, dur: float, med_sog: float, ctx: De
     elif tr.ship_type == "fishing":
         sev -= 15
         ev.append("Fishing-type vessels often idle; weighting reduced.")
-    elif tr.ship_type in SERVICE_TYPES:
+    elif tr.ship_type in SERVICE_TYPES and port_nm < 0.5:
         sev -= 22
         ev.append(f"A {tr.ship_type} vessel - waiting around is routine for this type; weighting reduced.")
-    elif tr.ship_type == "pleasure":
+    elif tr.ship_type in ("passenger", "ferry") and port_nm < 0.5:
+        sev -= 12
+        ev.append("Passenger vessels lay over at terminals between runs; weighting reduced.")
+    elif tr.ship_type == "pleasure" and port_nm < 0.5:
         sev -= 10
         ev.append("Recreational craft often drift or idle; weighting reduced.")
     conf = 0.35 + 0.45 * _data_quality(tr, i, j, ctx)

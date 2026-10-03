@@ -34,14 +34,14 @@
   "positive_windows": 96,
   "methods": {
    "Rules": {
-    "roc_auc": 0.867,
-    "pr_auc": 0.469,
-    "flagged_vessels": 47,
+    "roc_auc": 0.868,
+    "pr_auc": 0.482,
+    "flagged_vessels": 45,
     "true": 25,
-    "false": 22,
-    "precision": 0.532,
+    "false": 20,
+    "precision": 0.556,
     "recall": 0.893,
-    "f1": 0.667
+    "f1": 0.685
    },
    "Isolation Forest (unsupervised)": {
     "roc_auc": 0.937,
@@ -54,8 +54,8 @@
     "f1": 0.375
    },
    "Gradient boosting (supervised)": {
-    "roc_auc": 0.956,
-    "pr_auc": 0.487,
+    "roc_auc": 0.955,
+    "pr_auc": 0.486,
     "flagged_vessels": 61,
     "true": 17,
     "false": 44,
@@ -66,12 +66,12 @@
    "Rules confirmed by ML": {
     "roc_auc": null,
     "pr_auc": null,
-    "flagged_vessels": 27,
+    "flagged_vessels": 25,
     "true": 15,
-    "false": 12,
-    "precision": 0.556,
+    "false": 10,
+    "precision": 0.6,
     "recall": 0.536,
-    "f1": 0.545
+    "f1": 0.566
    }
   },
   "by_kind": {
