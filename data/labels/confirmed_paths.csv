@@ -1,0 +1,12 @@
+# Confirmed tracks used to train / test the path model (overrides the weak "announced survey" labels).
+# mmsi,t_start,t_end,label,source          label: 1 = confirmed unauthorised / survey activity, 0 = confirmed ordinary
+# Times are UTC (position_time_local equals position_time_utc in the supplied files).
+# These five were pointed out by the analyst after reviewing the Research_AIS files in kepler.gl; each timestamp is a moment inside the
+# activity, so a window of +-12 h around it is labelled. They are examples of: survey lines under tow (BAHAO, XIANG YANG HONG 01),
+# station-keeping in restricted-manoeuvre status (LIAO YUE, DONG FANG HONG 3) and a tow followed by transit (TAN SUO ER HAO).
+mmsi,t_start,t_end,label,source
+413491890,2026-04-10T23:01:35Z,2026-04-11T23:01:35Z,1,analyst example HAIYANGDIZHI BAHAO 2026-04-11 11:01:35
+413332930,2026-04-05T15:01:22Z,2026-04-06T15:01:22Z,1,analyst example DONG FANG HONG 3 2026-04-06 03:01:22
+413330890,2026-04-03T03:18:03Z,2026-04-04T03:18:03Z,1,analyst example XIANG YANG HONG 01 2026-04-03 15:18:03
+413529490,2026-04-16T00:21:54Z,2026-04-17T00:21:54Z,1,analyst example LIAO YUE 2026-04-16 12:21:54
+413229620,2026-04-03T17:05:23Z,2026-04-04T17:05:23Z,1,analyst example TAN SUO ER HAO 2026-04-04 05:05:23
