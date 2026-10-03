@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./pages/Dashboard", () => ({ Dashboard: () => <div>research</div> }));
 vi.mock("./pages/LiveDashboard", () => ({ LiveDashboard: () => <div>live-view</div> }));
+vi.mock("./features/watch/WatchFloor", () => ({ WatchFloor: () => <div>watch-floor</div> }));
 vi.mock("./features/logistics/LogisticsPanel", () => ({ LogisticsPanel: () => null }));
 vi.mock("./features/logistics/LogisticsView", () => ({
   LogisticsView: (props: { demoMode?: boolean; initialScenarioId?: string }) => (

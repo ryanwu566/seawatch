@@ -4,6 +4,7 @@ import { LiveDashboard } from "./pages/LiveDashboard";
 import { LogisticsView } from "./features/logistics/LogisticsView";
 import { LogisticsPanel } from "./features/logistics/LogisticsPanel";
 import { I18nProvider, useI18n } from "./i18n/I18nContext";
+import { WatchFloor } from "./features/watch/WatchFloor";
 
 /**
  * SeaWatch — Taiwan Maritime Awareness Platform.
@@ -19,7 +20,7 @@ function wantsResearch(): boolean {
   return new URLSearchParams(window.location.search).has("research");
 }
 
-type View = "live" | "logistics";
+type View = "watch" | "live" | "logistics";
 
 export function isResilienceDemo(search: string): boolean {
   return new URLSearchParams(search).get("demo") === "resilience";
@@ -29,11 +30,19 @@ function MainNav() {
   const { t } = useI18n();
   const L = t.logistics;
   const demoMode = typeof window !== "undefined" && isResilienceDemo(window.location.search);
-  const [view, setView] = useState<View>(demoMode ? "logistics" : "live");
+  const [view, setView] = useState<View>(demoMode ? "logistics" : "watch");
 
   return (
     <>
       <nav className="app-nav" aria-label="SeaWatch primary navigation">
+        <button
+          type="button"
+          className={view === "watch" ? "active" : ""}
+          aria-pressed={view === "watch"}
+          onClick={() => setView("watch")}
+        >
+          WATCH FLOOR
+        </button>
         <button
           type="button"
           className={view === "live" ? "active" : ""}
@@ -51,7 +60,9 @@ function MainNav() {
           {L.navLogistics}
         </button>
       </nav>
-      {view === "live" ? (
+      {view === "watch" ? (
+        <WatchFloor />
+      ) : view === "live" ? (
         <LiveDashboard />
       ) : (
         <LogisticsView
