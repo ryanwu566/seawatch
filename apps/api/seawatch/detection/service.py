@@ -288,6 +288,153 @@ class DetectionService:
         out["real_background"] = self.info["data_kind"] == "real_plus_injected"
         return out
 
+
+    # -- compact historical runtime ---------------------------------------- #
+
+    def historical_summary(self) -> dict[str, Any]:
+        """Metadata for the compact historical runtime, when available."""
+
+        from . import historical_runtime
+
+        if not historical_runtime.available():
+            return {
+                "available": False,
+                "reason": "historical_runtime_not_available",
+            }
+
+        return historical_runtime.summary()
+
+    def historical_context(
+        self,
+        mmsi: str,
+        lat: float | None = None,
+        lon: float | None = None,
+    ) -> dict[str, Any]:
+        """Historical baseline and coarse traffic context for a live vessel.
+
+        MMSI joins are conservative: only Runtime rows marked
+        unique_9digit_candidate are returned.
+        """
+
+        from . import historical_runtime
+
+        if not historical_runtime.available():
+            return {
+                "available": False,
+                "joined": False,
+                "reason": "historical_runtime_not_available",
+                "baseline": None,
+                "traffic": None,
+            }
+
+        baseline = historical_runtime.lookup_mmsi(mmsi)
+
+        traffic = None
+
+        if lat is not None and lon is not None:
+            traffic = historical_runtime.traffic_at(
+                lat,
+                lon,
+            )
+
+        return {
+            "available": True,
+            "joined": baseline is not None,
+            "join_status": (
+                baseline.get("mmsi_join_status")
+                if baseline is not None
+                else "not_joinable_or_not_found"
+            ),
+            "baseline": baseline,
+            "traffic": traffic,
+        }
+
+
+    def historical_for_alert(
+        self,
+        alert: Alert,
+    ) -> dict[str, Any]:
+        """Safe historical context for an alert.
+
+        Raw MMSI and GFW vesselId are used internally for lookup only and are
+        intentionally not added to this historical-context payload.
+        """
+
+        from . import historical_runtime
+
+        if not historical_runtime.available():
+            return {
+                "available": False,
+                "matched_vessels": 0,
+                "total_vessels": len(alert.mmsis),
+                "vessels": [],
+                "traffic": None,
+            }
+
+        vessels = []
+
+        for index, mmsi in enumerate(alert.mmsis):
+            baseline = historical_runtime.lookup_mmsi(mmsi)
+
+            if baseline is None:
+                vessels.append({
+                    "live_index": index,
+                    "joined": False,
+                    "join_status": "not_joinable_or_not_found",
+                })
+                continue
+
+            vessels.append({
+                "live_index": index,
+                "joined": True,
+                "join_status": baseline.get("mmsi_join_status"),
+                "observed_days": baseline.get("observed_days"),
+                "observation_count": baseline.get("observation_count"),
+                "coverage_band": baseline.get("coverage_band"),
+                "dataset_day_fraction": baseline.get("dataset_day_fraction"),
+                "dominant_cell": [
+                    baseline.get("dominant_cell_lat"),
+                    baseline.get("dominant_cell_lon"),
+                ],
+                "dominant_cell_observation_share":
+                    baseline.get("dominant_cell_observation_share"),
+            })
+
+        traffic = historical_runtime.traffic_at(
+            alert.lat,
+            alert.lon,
+        )
+
+        if traffic is not None:
+            traffic = {
+                "cell_lat": traffic.get("cell_lat"),
+                "cell_lon": traffic.get("cell_lon"),
+                "observation_count": traffic.get("observation_count"),
+                "unique_vessel_count": traffic.get("unique_vessel_count"),
+                "observed_days": traffic.get("observed_days"),
+                "active_hour_buckets": traffic.get("active_hour_buckets"),
+                "cell_active_hour_fraction":
+                    traffic.get("cell_active_hour_fraction"),
+                "avg_vessels_per_active_hour":
+                    traffic.get("avg_vessels_per_active_hour"),
+                "context_warning": traffic.get("context_warning"),
+            }
+
+        return {
+            "available": True,
+            "matched_vessels": sum(
+                1 for item in vessels
+                if item["joined"]
+            ),
+            "total_vessels": len(vessels),
+            "vessels": vessels,
+            "traffic": traffic,
+            "source_note": (
+                "GFW standardized hourly presence; "
+                "coarse historical context, not raw AIS."
+            ),
+        }
+
     # -- path-analysis agent (advisory) ---------------------------------------- #
     def path_reviews(self):
         """Research-gate -> speed-gate -> shape features -> reviewer, for message-level regions. Cached; decisions come from the ReviewStore."""
