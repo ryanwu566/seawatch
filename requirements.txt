@@ -5,9 +5,11 @@ shapely==2.1.2
 pyproj==3.8.0
 pytest==9.1.1
 scikit-learn==1.9.1
+joblib==1.6.0
 
 # Phase 4 read-only dashboard API
 fastapi==0.115.6
+uvicorn==0.54.0
 starlette==0.41.3
 pydantic==2.13.5
 httpx==0.28.1

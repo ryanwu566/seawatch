@@ -23,8 +23,14 @@ const mockApi = vi.hoisted(() => ({
   truth: vi.fn(),
   resetFeedback: vi.fn(),
 }));
+const mockHistorical = vi.hoisted(() => ({
+  summary: vi.fn(),
+}));
 
 vi.mock("./api", () => ({ watchApi: mockApi }));
+vi.mock("../../api/historicalRuntime", () => ({
+  getHistoricalRuntimeSummary: mockHistorical.summary,
+}));
 vi.mock("./WatchMap", () => ({
   WatchMap: () => <section aria-label="Watch map" />,
 }));
@@ -150,6 +156,17 @@ const scenarioDetail = {
 describe("Watch Floor live source", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockHistorical.summary.mockResolvedValue({
+      available: true,
+      runtime: "SeaWatch_Runtime_Taiwan_2026_v2",
+      data_model: "standardized_hourly_vessel_presence",
+      date_range: { start: "2026-01-01", end: "2026-09-29" },
+      row_count: 33_200_000,
+      unique_vessel_count: 400_800,
+      traffic_cell_count: 2457,
+      dataset_hour_buckets: 6528,
+      mmsi_join_status_counts: { unique_9digit_candidate: 66_043 },
+    });
     mockApi.scenario.mockImplementation(async (source = "scenario") => source === "live" ? liveScenario : scenario);
     mockApi.tracks.mockImplementation(async (source = "scenario") => source === "live"
       ? [{ mmsi: "v_opaque_live_vessel", public_id: "v_opaque_live_vessel", name: "LIVE SHIP", type: "cargo", flag: "", t: [liveScenario.t0, liveScenario.t1], lat: [22.5, 22.6], lon: [120.5, 120.6], sog: [8, 8] }]
@@ -228,5 +245,88 @@ describe("Watch Floor live source", () => {
 
     expect(await screen.findByText("Select an alert")).toBeInTheDocument();
     expect(screen.queryByText(/416000999/)).not.toBeInTheDocument();
+  });
+
+  it("renders_historical_card_once_across_source_and_selection_changes", async () => {
+    mockApi.alerts.mockImplementation(async (_asOf?: number, source = "scenario") =>
+      source === "live" ? [liveAlert] : [scenarioAlert],
+    );
+    mockApi.alert.mockImplementation(async (_id: string, source = "scenario") =>
+      source === "live" ? liveDetail : scenarioDetail,
+    );
+
+    render(<WatchFloor />);
+    expect(await screen.findByText("Historical context available")).toBeInTheDocument();
+    expect(await screen.findByText("Scenario review candidate")).toBeInTheDocument();
+    expect(mockHistorical.summary).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Detection source" }), {
+      target: { value: "live" },
+    });
+    expect(await screen.findByText("Position anomaly - LIVE SHIP")).toBeInTheDocument();
+    expect(mockHistorical.summary).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Position anomaly - LIVE SHIP/i }),
+    );
+    expect(await screen.findByText(/Vessel ID v_opaque_live_vessel/i)).toBeInTheDocument();
+    expect(mockHistorical.summary).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a neutral loading shell without stale scenario metadata during source changes", async () => {
+    let resolveLiveScenario: (value: typeof liveScenario) => void = () => undefined;
+    const pendingLiveScenario = new Promise<typeof liveScenario>((resolve) => {
+      resolveLiveScenario = resolve;
+    });
+    mockApi.scenario.mockImplementation(async (source = "scenario") =>
+      source === "live" ? pendingLiveScenario : scenario,
+    );
+
+    render(<WatchFloor />);
+    expect(await screen.findByText("Historical context available")).toBeInTheDocument();
+    expect(await screen.findByText(/Taiwan scenario/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Detection source" }), {
+      target: { value: "live" },
+    });
+
+    expect(await screen.findByText("Loading Live Area Scan…")).toBeInTheDocument();
+    expect(screen.queryByText(/Taiwan scenario/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1 vessels/)).not.toBeInTheDocument();
+    expect(mockHistorical.summary).toHaveBeenCalledTimes(1);
+
+    resolveLiveScenario(liveScenario);
+    await waitFor(() =>
+      expect(document.querySelector(".wf-brand span")).toHaveTextContent("Live Datalastic Area Scan"),
+    );
+    expect(mockHistorical.summary).toHaveBeenCalledTimes(1);
+  });
+
+  it("historical_failure_does_not_break_live_watch_floor", async () => {
+    let rejectHistory: (reason: Error) => void = () => undefined;
+    mockHistorical.summary.mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectHistory = reject;
+      }),
+    );
+
+    render(<WatchFloor />);
+    await waitFor(() => expect(mockApi.scenario).toHaveBeenCalledWith("scenario"));
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Detection source" }), {
+      target: { value: "live" },
+    });
+    rejectHistory(new Error("optional historical endpoint failed"));
+
+    expect(await screen.findByText("Historical context unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Detection source" })).toHaveValue("live");
+    expect(await screen.findByText("Position anomaly - LIVE SHIP")).toBeInTheDocument();
+    expect(screen.getByText(/Live detection.*Insufficient history/i)).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Position anomaly - LIVE SHIP/i }),
+    );
+    expect(await screen.findByText(/Vessel ID v_opaque_live_vessel/i)).toBeInTheDocument();
+    expect(mockHistorical.summary).toHaveBeenCalledTimes(1);
   });
 });

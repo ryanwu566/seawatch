@@ -7,7 +7,12 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from ..detection.service import available_regions, get_service, set_region
+from ..detection.service import (
+    available_regions,
+    get_historical_summary,
+    get_service,
+    set_region,
+)
 from ..detection.state import STATUSES
 from ..live.runtime import get_live_runtime
 
@@ -47,6 +52,11 @@ def _require(alert_id: str, source: DetectionSource = "scenario"):
 
 class RegionBody(BaseModel):
     id: str
+
+
+@router.get("/historical", summary="Optional aggregate Historical Runtime context")
+def historical() -> dict[str, Any]:
+    return get_historical_summary()
 
 
 @router.get("/regions", summary="Regions the console can monitor, and which is active")

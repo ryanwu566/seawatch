@@ -52,6 +52,36 @@ REGIONS: dict[str, dict[str, Any]] = {
     },
 }
 
+_HISTORICAL_PUBLIC_FIELDS = (
+    "available",
+    "runtime",
+    "data_model",
+    "date_range",
+    "row_count",
+    "unique_vessel_count",
+    "traffic_cell_count",
+    "dataset_hour_buckets",
+    "mmsi_join_status_counts",
+)
+_HISTORICAL_UNAVAILABLE = {
+    "available": False,
+    "reason": "Historical context unavailable",
+}
+
+
+def get_historical_summary() -> dict[str, Any]:
+    """Return optional aggregate context without affecting Detection runtimes."""
+
+    try:
+        from . import historical_runtime
+
+        if not historical_runtime.available():
+            return dict(_HISTORICAL_UNAVAILABLE)
+        source = historical_runtime.validate_summary(historical_runtime.summary())
+        return {field: source.get(field) for field in _HISTORICAL_PUBLIC_FIELDS}
+    except Exception:  # noqa: BLE001 - optional artifacts must never block monitoring
+        return dict(_HISTORICAL_UNAVAILABLE)
+
 
 def available_regions() -> list[dict[str, Any]]:
     from pathlib import Path
