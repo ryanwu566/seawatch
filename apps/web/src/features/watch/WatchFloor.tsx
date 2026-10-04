@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "./watch.css";
 import { AlertPanel } from "./AlertPanel";
 import { AlertQueue } from "./AlertQueue";
+import { HistoricalRuntimeCard } from "./HistoricalRuntimeCard";
 import { Insight } from "./Insight";
 import { ReplayBar } from "./ReplayBar";
 import { TuningLab } from "./TuningLab";
@@ -23,6 +24,9 @@ export function WatchFloor() {
   const [insight, setInsight] = useState(false);
   const [showTruth, setShowTruth] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const scenario = w.scenario;
+  const config = w.config;
+  const ready = !!scenario && !!config;
 
   useEffect(() => {
     if (showTruth && w.truth.length === 0) void w.loadTruth();
@@ -46,10 +50,10 @@ export function WatchFloor() {
     return c;
   }, [w.alerts]);
 
-  const liveStatus = (w.scenario?.detection_status ?? "waiting_for_scan")
+  const liveStatus = (scenario?.detection_status ?? "waiting_for_scan")
     .replace(/_/g, " ")
     .replace(/^./, (letter) => letter.toUpperCase());
-  const analysisTime = w.scenario?.analysis_at ? Date.parse(w.scenario.analysis_at) / 1000 : null;
+  const analysisTime = scenario?.analysis_at ? Date.parse(scenario.analysis_at) / 1000 : null;
 
   if (w.error && !w.ready) {
     return (
@@ -60,15 +64,6 @@ export function WatchFloor() {
       </div>
     );
   }
-  if (!w.ready || !w.scenario || !w.config) {
-    return (
-      <div className="wf wf-fatal">
-        <div className="wf-spin big" aria-label="Loading" />
-        <p>Loading simulated Taiwan-waters picture…</p>
-      </div>
-    );
-  }
-
   return (
     <div className="wf">
       <header className="wf-top">
@@ -81,21 +76,35 @@ export function WatchFloor() {
           </svg>
           <div>
             <strong>SeaWatch</strong>
-            <span>Maritime behaviour analytics · {w.scenario.region_label}</span>
+            <span>
+              {ready
+                ? `Maritime behaviour analytics · ${scenario.region_label}`
+                : w.source === "live"
+                  ? "Loading Live Area Scan…"
+                  : "Loading Scenario replay…"}
+            </span>
           </div>
         </div>
 
         <div className="wf-summary" aria-label="Alert summary">
-          {(["HIGH", "MEDIUM", "LOW"] as const).map((l) => (
-            <span key={l} className={`wf-count ${counts[l] ? "has" : ""}`} style={{ ["--c" as string]: LEVEL_COLOR[l] }}>
-              <i />
-              <b>{counts[l]}</b> {l[0] + l.slice(1).toLowerCase()}
+          {ready ? (
+            <>
+              {(["HIGH", "MEDIUM", "LOW"] as const).map((l) => (
+                <span key={l} className={`wf-count ${counts[l] ? "has" : ""}`} style={{ ["--c" as string]: LEVEL_COLOR[l] }}>
+                  <i />
+                  <b>{counts[l]}</b> {l[0] + l.slice(1).toLowerCase()}
+                </span>
+              ))}
+              <span className="wf-sep" />
+              <span className="wf-stat">
+                <b>{scenario.vessels}</b> vessels · <b>{scenario.fixes.toLocaleString()}</b> AIS reports
+              </span>
+            </>
+          ) : (
+            <span className="wf-source-loading" role="status">
+              Loading detection source…
             </span>
-          ))}
-          <span className="wf-sep" />
-          <span className="wf-stat">
-            <b>{w.scenario.vessels}</b> vessels · <b>{w.scenario.fixes.toLocaleString()}</b> AIS reports
-          </span>
+          )}
         </div>
 
         <div className="wf-top-right">
@@ -108,87 +117,116 @@ export function WatchFloor() {
             <option value="scenario">Scenario replay</option>
             <option value="live">Live Area Scan</option>
           </select>
-          {w.source === "scenario" && w.regions.filter((r) => r.available).length > 1 && (
-            <select className="wf-region" value={w.region} onChange={(e) => void w.switchRegion(e.target.value)} aria-label="Monitored region">
-              {w.regions.filter((r) => r.available).map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.label}
-                </option>
-              ))}
-            </select>
-          )}
-          {w.source === "live" ? (
-            <span className="wf-sim" title={w.scenario.note}>Live detection · {liveStatus}</span>
-          ) : (
-            <span className="wf-sim" title={w.scenario.note}>
-              {w.scenario.data_kind === "simulated" ? "SIMULATED DATA" : w.scenario.data_kind === "real" ? "REAL AIS" : "REAL AIS + INJECTED EVENTS"}
-            </span>
-          )}
-          {w.source === "live" ? (
-            <span className="wf-clock" aria-label="Analysis time" title={w.scenario.analysis_at ?? undefined}>
-              {analysisTime !== null && Number.isFinite(analysisTime) ? `Analysed ${fmtClock(analysisTime)}` : "Not analysed"}
-            </span>
-          ) : (
-            <span className="wf-clock">{fmtClock(w.clock)}</span>
-          )}
-          {w.source === "scenario" && (
+          {ready && (
             <>
-              <button className={`wf-lab-btn ${insight ? "on" : ""}`} onClick={() => setInsight((v) => !v)} aria-pressed={insight}>
-                ◎ Rules &amp; accuracy
-              </button>
-              <button className={`wf-lab-btn ${lab ? "on" : ""}`} onClick={() => setLab((v) => !v)} aria-pressed={lab}>
-                ⚙ Tuning lab
-              </button>
+              {w.source === "scenario" && w.regions.filter((r) => r.available).length > 1 && (
+                <select className="wf-region" value={w.region} onChange={(e) => void w.switchRegion(e.target.value)} aria-label="Monitored region">
+                  {w.regions.filter((r) => r.available).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {w.source === "live" ? (
+                <span className="wf-sim" title={scenario.note}>Live detection · {liveStatus}</span>
+              ) : (
+                <span className="wf-sim" title={scenario.note}>
+                  {scenario.data_kind === "simulated" ? "SIMULATED DATA" : scenario.data_kind === "real" ? "REAL AIS" : "REAL AIS + INJECTED EVENTS"}
+                </span>
+              )}
+              {w.source === "live" ? (
+                <span className="wf-clock" aria-label="Analysis time" title={scenario.analysis_at ?? undefined}>
+                  {analysisTime !== null && Number.isFinite(analysisTime) ? `Analysed ${fmtClock(analysisTime)}` : "Not analysed"}
+                </span>
+              ) : (
+                <span className="wf-clock">{fmtClock(w.clock)}</span>
+              )}
+              {w.source === "scenario" && (
+                <>
+                  <button className={`wf-lab-btn ${insight ? "on" : ""}`} onClick={() => setInsight((v) => !v)} aria-pressed={insight}>
+                    ◎ Rules &amp; accuracy
+                  </button>
+                  <button className={`wf-lab-btn ${lab ? "on" : ""}`} onClick={() => setLab((v) => !v)} aria-pressed={lab}>
+                    ⚙ Tuning lab
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
       </header>
 
-      {w.source === "scenario" && insight && <Insight onClose={() => setInsight(false)} />}
+      {ready && w.source === "scenario" && insight && <Insight onClose={() => setInsight(false)} />}
       <main className="wf-main">
-        <AlertQueue source={w.source} alerts={w.alerts} dismissed={w.dismissed} selectedId={w.selectedId} clock={w.clock} onSelect={w.select} />
+        <div className="wf-queue-column">
+          {ready ? (
+            <AlertQueue source={w.source} alerts={w.alerts} dismissed={w.dismissed} selectedId={w.selectedId} clock={w.clock} onSelect={w.select} />
+          ) : (
+            <aside className="wf-queue" aria-label="Alert queue">
+              <header className="wf-panel-head">
+                <h2>Alert queue</h2>
+              </header>
+              <p className="wf-empty wf-source-loading-queue">Waiting for source data…</p>
+            </aside>
+          )}
+          <HistoricalRuntimeCard />
+        </div>
 
-        <WatchMap
-          scenario={w.scenario}
-          tracks={w.tracks}
-          alerts={w.alerts}
-          detail={w.detail}
-          selectedId={w.selectedId}
-          clock={w.clock}
-          truth={w.truth}
-          showTruth={showTruth}
-          onSelect={w.select}
-        />
-
-        {w.source === "scenario" && lab ? (
-          <TuningLab
-            config={w.config}
-            evaluation={w.evaluation}
-            alertCount={w.alerts.length}
-            busy={w.busy}
+        {ready ? (
+          <WatchMap
+            scenario={scenario}
+            tracks={w.tracks}
+            alerts={w.alerts}
+            detail={w.detail}
+            selectedId={w.selectedId}
+            clock={w.clock}
+            truth={w.truth}
             showTruth={showTruth}
-            onShowTruth={setShowTruth}
-            onChange={w.changeConfig}
-            onReset={w.resetConfig}
-            onResetFeedback={w.resetFeedback}
-            onClose={() => setLab(false)}
+            onSelect={w.select}
           />
         ) : (
-          <AlertPanel
-            source={w.source}
-            detail={w.detail}
-            loading={loadingDetail}
-            busy={w.busy}
-            onStatus={(s, n) => (w.selectedId ? w.setStatus(w.selectedId, s, n) : Promise.resolve())}
-            onNote={(t) => (w.selectedId ? w.addNote(w.selectedId, t) : Promise.resolve())}
-            onClose={() => w.select(null)}
-          />
+          <section className="wf-map wf-source-placeholder" aria-label="Watch map">
+            <div className="wf-spin big" aria-hidden />
+            <p>Preparing map…</p>
+          </section>
+        )}
+
+        {ready ? (
+          w.source === "scenario" && lab ? (
+            <TuningLab
+              config={config}
+              evaluation={w.evaluation}
+              alertCount={w.alerts.length}
+              busy={w.busy}
+              showTruth={showTruth}
+              onShowTruth={setShowTruth}
+              onChange={w.changeConfig}
+              onReset={w.resetConfig}
+              onResetFeedback={w.resetFeedback}
+              onClose={() => setLab(false)}
+            />
+          ) : (
+            <AlertPanel
+              source={w.source}
+              detail={w.detail}
+              loading={loadingDetail}
+              busy={w.busy}
+              onStatus={(s, n) => (w.selectedId ? w.setStatus(w.selectedId, s, n) : Promise.resolve())}
+              onNote={(t) => (w.selectedId ? w.addNote(w.selectedId, t) : Promise.resolve())}
+              onClose={() => w.select(null)}
+            />
+          )
+        ) : (
+          <aside className="wf-detail wf-detail-empty" aria-label="Alert detail">
+            <p className="wf-empty">Preparing alert details…</p>
+          </aside>
         )}
       </main>
 
-      {w.source === "scenario" && (
+      {ready && w.source === "scenario" && (
         <ReplayBar
-          scenario={w.scenario}
+          scenario={scenario}
           clock={w.clock}
           playing={w.playing}
           speed={w.speed}

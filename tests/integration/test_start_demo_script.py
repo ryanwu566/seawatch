@@ -268,7 +268,13 @@ def test_demo_start_removes_backend_secrets_from_frontend_build_child(
 
 def test_example_environment_keeps_loopback_autoauth_disabled_by_default() -> None:
     lines = (ROOT / ".env.example").read_text(encoding="utf-8").splitlines()
-    assert lines == [
-        "DATALASTIC_API_KEY=",
-        "SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK=false",
-    ]
+    settings = dict(
+        line.split("=", 1)
+        for line in lines
+        if line and not line.startswith("#")
+    )
+
+    assert settings["DATALASTIC_API_KEY"] == ""
+    assert settings["SEAWATCH_AREA_SCAN_AUTOAUTH_LOOPBACK"] == "false"
+    assert settings["SEAWATCH_HISTORICAL_RUNTIME"] == ""
+    assert settings["SEAWATCH_DATA_ROOT"] == ""
