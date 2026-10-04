@@ -54,6 +54,19 @@ def select_region(body: RegionBody) -> dict[str, Any]:
     return {"active": body.id}
 
 
+
+@router.get(
+    "/historical",
+    summary="Compact historical runtime status and coverage",
+)
+def historical_summary() -> dict[str, Any]:
+    """Historical Runtime metadata only.
+
+    No raw MMSI, IMO, provider UUID, or GFW vesselId is exposed here.
+    """
+    return get_service().historical_summary()
+
+
 @router.get("/scenario", summary="Scenario metadata: zones, receivers, time range")
 def scenario() -> dict[str, Any]:
     return get_service().meta()
@@ -77,6 +90,11 @@ def alerts(
 def alert_detail(alert_id: str) -> dict[str, Any]:
     a = _require(alert_id)
     d = a.detail()
+
+    # Read-only historical context from the compact Runtime bundle.
+    # The historical block intentionally contains no raw MMSI or GFW vesselId.
+    d["historical"] = get_service().historical_for_alert(a)
+
     try:  # advisory path reviews of the same vessels in the same period (message-level regions only)
         revs, _, _ = get_service().path_reviews()
         d["path_reviews"] = [r.to_dict() for r in revs if r.mmsi in a.mmsis and r.flag and r.t1 >= a.t_start - 86400 and r.t0 <= a.t_end + 86400][:12]
