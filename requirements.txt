@@ -9,6 +9,7 @@ joblib==1.6.0
 
 # Phase 4 read-only dashboard API
 fastapi==0.115.6
+uvicorn==0.54.0
 starlette==0.41.3
 pydantic==2.13.5
 httpx==0.28.1
