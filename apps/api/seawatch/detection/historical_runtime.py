@@ -206,7 +206,7 @@ def summary() -> dict[str, Any]:
 
     return {
         "available": True,
-        "bundle": str(data["root"]),
+        "runtime": BUNDLE_NAME,
         "data_model": data["metadata"].get("dataModel"),
         "date_range": data["metadata"].get("dateRange"),
         "row_count": data["metadata"].get("rowCount"),
