@@ -53,6 +53,16 @@ _DATA_MODELS = frozenset(
 _MMSI_JOIN_STATUSES = frozenset(
     {"unique_9digit_candidate", "shared_9digit", "non_9digit", "missing"}
 )
+_PUBLIC_TRAFFIC_FIELDS = (
+    "cell_lat",
+    "cell_lon",
+    "observation_count",
+    "unique_vessel_count",
+    "observed_days",
+    "active_hour_buckets",
+    "cell_active_hour_fraction",
+    "avg_vessels_per_active_hour",
+)
 _LOAD_LOCK = Lock()
 
 
@@ -197,6 +207,34 @@ def _nonnegative_int(value: Any, field: str) -> int:
     return cleaned
 
 
+def _finite_number(
+    value: Any,
+    field: str,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    cleaned = _clean(value)
+    if type(cleaned) not in (int, float) or not math.isfinite(cleaned):
+        raise ValueError(f"Historical Runtime {field} must be a finite number")
+    number = float(cleaned)
+    if minimum is not None and number < minimum:
+        raise ValueError(f"Historical Runtime {field} is below its minimum")
+    if maximum is not None and number > maximum:
+        raise ValueError(f"Historical Runtime {field} exceeds its maximum")
+    return number
+
+
+def _coarse_coordinate(value: Any, field: str, limit: float) -> float:
+    number = _finite_number(value, field, minimum=-limit, maximum=limit)
+    rounded = round(number, 1)
+    if not math.isclose(number, rounded, abs_tol=1e-9):
+        raise ValueError(
+            f"Historical Runtime {field} must remain on the 0.1-degree grid"
+        )
+    return rounded
+
+
 def _iso_date_range(value: Any) -> dict[str, str]:
     if not isinstance(value, Mapping):
         raise ValueError("Historical Runtime date range must be an object")
@@ -281,6 +319,46 @@ def summary() -> dict[str, Any]:
             context["identity_policy"]["mmsi_join_status_counts"]
         ),
     })
+
+
+def traffic_cells() -> list[dict[str, int | float]]:
+    """Return a strict aggregate allowlist for coarse traffic cells."""
+
+    traffic = _load()["traffic"]
+    missing = set(_PUBLIC_TRAFFIC_FIELDS).difference(traffic.columns)
+    if missing:
+        raise ValueError("Historical Runtime traffic schema is incomplete")
+
+    cells: list[dict[str, int | float]] = []
+    for _index, row in traffic.iterrows():
+        cells.append({
+            "cell_lat": _coarse_coordinate(row["cell_lat"], "cell latitude", 90),
+            "cell_lon": _coarse_coordinate(row["cell_lon"], "cell longitude", 180),
+            "observation_count": _nonnegative_int(
+                row["observation_count"], "observation count"
+            ),
+            "unique_vessel_count": _nonnegative_int(
+                row["unique_vessel_count"], "unique vessel count"
+            ),
+            "observed_days": _nonnegative_int(
+                row["observed_days"], "observed days"
+            ),
+            "active_hour_buckets": _nonnegative_int(
+                row["active_hour_buckets"], "active hour buckets"
+            ),
+            "cell_active_hour_fraction": _finite_number(
+                row["cell_active_hour_fraction"],
+                "cell active hour fraction",
+                minimum=0,
+                maximum=1,
+            ),
+            "avg_vessels_per_active_hour": _finite_number(
+                row["avg_vessels_per_active_hour"],
+                "average vessels per active hour",
+                minimum=0,
+            ),
+        })
+    return cells
 
 
 def lookup_mmsi(mmsi: str) -> dict[str, Any] | None:

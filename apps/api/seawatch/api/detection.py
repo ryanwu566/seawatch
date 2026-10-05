@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from ..detection.service import (
     available_regions,
     get_historical_summary,
+    get_historical_traffic,
     get_service,
     set_region,
 )
@@ -57,6 +58,14 @@ class RegionBody(BaseModel):
 @router.get("/historical", summary="Optional aggregate Historical Runtime context")
 def historical() -> dict[str, Any]:
     return get_historical_summary()
+
+
+@router.get(
+    "/historical/traffic",
+    summary="Optional aggregate historical traffic cells",
+)
+def historical_traffic() -> dict[str, Any]:
+    return get_historical_traffic()
 
 
 @router.get("/regions", summary="Regions the console can monitor, and which is active")

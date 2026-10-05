@@ -83,6 +83,19 @@ def get_historical_summary() -> dict[str, Any]:
         return dict(_HISTORICAL_UNAVAILABLE)
 
 
+def get_historical_traffic() -> dict[str, Any]:
+    """Return optional coarse traffic cells without initializing DetectionService."""
+
+    try:
+        from . import historical_runtime
+
+        if not historical_runtime.available():
+            return {"available": False, "cells": []}
+        return {"available": True, "cells": historical_runtime.traffic_cells()}
+    except Exception:  # noqa: BLE001 - optional artifacts must never block monitoring
+        return {"available": False, "cells": []}
+
+
 def available_regions() -> list[dict[str, Any]]:
     from pathlib import Path
 

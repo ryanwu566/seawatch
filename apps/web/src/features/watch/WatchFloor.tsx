@@ -8,6 +8,7 @@ import { ReplayBar } from "./ReplayBar";
 import { TuningLab } from "./TuningLab";
 import { WatchMap } from "./WatchMap";
 import { LEVEL_COLOR, fmtClock } from "./lib";
+import { useHistoricalTraffic } from "../../lib/useHistoricalTraffic";
 import { useWatch } from "./useWatch";
 
 /**
@@ -20,6 +21,7 @@ import { useWatch } from "./useWatch";
  */
 export function WatchFloor() {
   const w = useWatch();
+  const historicalTraffic = useHistoricalTraffic();
   const [lab, setLab] = useState(false);
   const [insight, setInsight] = useState(false);
   const [showTruth, setShowTruth] = useState(false);
@@ -183,6 +185,8 @@ export function WatchFloor() {
             clock={w.clock}
             truth={w.truth}
             showTruth={showTruth}
+            historicalTraffic={historicalTraffic.data}
+            historicalTrafficStatus={historicalTraffic.status}
             onSelect={w.select}
           />
         ) : (

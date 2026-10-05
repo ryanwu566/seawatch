@@ -8,6 +8,7 @@ let currentVessels: LiveVesselFeature[] = [];
 let currentScanVessels: LiveVesselFeature[] = [];
 let currentHealth: LiveHealth;
 let currentResilience: Record<string, unknown>;
+const mockHistoricalTraffic = vi.hoisted(() => ({ use: vi.fn() }));
 
 function vessel(id: string, name: string): LiveVesselFeature {
   return {
@@ -123,6 +124,10 @@ vi.mock("../api/live", () => ({
   },
 }));
 
+vi.mock("../lib/useHistoricalTraffic", () => ({
+  useHistoricalTraffic: mockHistoricalTraffic.use,
+}));
+
 // --- Mock MapCanvas: expose select/deselect via buttons ------------------ //
 vi.mock("../components/MapCanvas", () => {
   return {
@@ -135,6 +140,12 @@ vi.mock("../components/MapCanvas", () => {
           <div data-testid="fit-bounds">{props.fitBounds ? props.fitBounds.join(",") : ""}</div>
           <div data-testid="fit-nonce">{String(props.fitBoundsNonce ?? 0)}</div>
           <div data-testid="online-basemap">{String(props.onlineBasemap)}</div>
+          <div data-testid="historical-cell-count">
+            {String(props.historicalTraffic?.features.length ?? 0)}
+          </div>
+          <div data-testid="historical-visible">
+            {String(props.layers.historicalTraffic)}
+          </div>
           {props.vessels.map((v: LiveVesselFeature) => (
             <button key={v.id} data-testid={`sel-${v.id}`} onClick={() => props.onSelectVessel(v)}>
               {v.id}
@@ -251,6 +262,10 @@ describe("LiveDashboard interaction", () => {
     };
     window.localStorage.clear();
     vi.clearAllMocks();
+    mockHistoricalTraffic.use.mockReturnValue({
+      status: "unavailable",
+      data: null,
+    });
     vi.mocked(authenticateAreaScan).mockResolvedValue({
       authenticated: true,
       expires_in_seconds: 900,
@@ -276,6 +291,58 @@ describe("LiveDashboard interaction", () => {
       total: currentScanVessels.length,
       vessels: currentScanVessels,
     }));
+  });
+
+  it("renders available historical traffic through a default-off local toggle", async () => {
+    mockHistoricalTraffic.use.mockReturnValue({
+      status: "available",
+      data: {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          geometry: {
+            type: "Polygon",
+            coordinates: [[[121.45, 24.95], [121.55, 24.95], [121.55, 25.05], [121.45, 25.05], [121.45, 24.95]]],
+          },
+          properties: {
+            cell_lat: 25,
+            cell_lon: 121.5,
+            observation_count: 1200,
+            unique_vessel_count: 80,
+            observed_days: 40,
+            active_hour_buckets: 300,
+            cell_active_hour_fraction: 0.25,
+            avg_vessels_per_active_hour: 4,
+            log_observation_count: Math.log1p(1200),
+            density: 1,
+          },
+        }],
+      },
+    });
+    renderDash();
+    await screen.findByTestId("sel-v1");
+
+    expect(screen.getByTestId("historical-cell-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("historical-visible")).toHaveTextContent("false");
+    expect(screen.queryByLabelText("Historical presence legend")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open layer menu" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Historical Traffic Density" }));
+
+    expect(screen.getByTestId("historical-visible")).toHaveTextContent("true");
+    expect(screen.getByLabelText("Historical presence legend")).toBeInTheDocument();
+  });
+
+  it("keeps the live map working when historical traffic is unavailable", async () => {
+    renderDash();
+    expect(await screen.findByTestId("sel-v1")).toBeInTheDocument();
+    expect(screen.getByTestId("historical-cell-count")).toHaveTextContent("0");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open layer menu" }));
+    expect(screen.getByRole("checkbox", {
+      name: /Historical Traffic Density.*Historical traffic unavailable/,
+    })).toBeDisabled();
+    expect(screen.queryByLabelText("Historical presence legend")).toBeNull();
   });
 
   it("auto-establishes a loopback session without showing an operator password", async () => {

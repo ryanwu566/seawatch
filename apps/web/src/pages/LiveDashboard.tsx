@@ -26,6 +26,7 @@ import { OperatingStatusPanel } from "../components/OperatingStatusPanel";
 import { StatusCards } from "../components/StatusCards";
 import { LayerControl } from "../components/LayerControl";
 import { VesselTypeLegend } from "../components/VesselTypeLegend";
+import { HistoricalTrafficLegend } from "../components/HistoricalTrafficLegend";
 import { SearchControl } from "../components/SearchControl";
 import { VesselPanel } from "../components/VesselPanel";
 import { MapCanvas, type Viewport } from "../components/MapCanvas";
@@ -38,6 +39,7 @@ import { LOCATION_PRESETS } from "../config/taiwanMap";
 import { getDemoScenario } from "../features/intelligence/demoScenario";
 import { classifyAreaScanError, type AreaScanErrorKind } from "../lib/areaScanError";
 import { deriveAreaScanReadiness } from "../lib/areaScanReadiness";
+import { useHistoricalTraffic } from "../lib/useHistoricalTraffic";
 
 const POLL_MS = 8000;
 const VIEWPORT_DEBOUNCE_MS = 400;
@@ -51,6 +53,7 @@ type VesselSelectionSource = "live" | "datalastic";
  */
 export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) {
   const { t } = useI18n();
+  const historicalTraffic = useHistoricalTraffic();
 
   const [vessels, setVessels] = useState<LiveVesselFeature[]>([]);
   const [health, setHealth] = useState<LiveHealth | null>(null);
@@ -623,6 +626,7 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
           areaVessels={areaVessels}
           onAreaGeometryChange={handleAreaGeometryChange}
           onAreaGeometryInvalid={handleAreaGeometryInvalid}
+          historicalTraffic={historicalTraffic.data}
         />
 
         <div className="map-overlay-top-left">
@@ -692,7 +696,18 @@ export function LiveDashboard({ vesselDemo = false }: { vesselDemo?: boolean }) 
         </div>
 
         <div className="map-overlay-right">
-          <LayerControl layers={layers} onChange={setLayers} />
+          <LayerControl
+            layers={layers}
+            onChange={setLayers}
+            historicalTrafficAvailable={
+              historicalTraffic.status === "loading"
+                ? undefined
+                : historicalTraffic.status === "available"
+            }
+          />
+          {layers.historicalTraffic && historicalTraffic.status === "available" && (
+            <HistoricalTrafficLegend />
+          )}
           <VesselTypeLegend />
         </div>
 

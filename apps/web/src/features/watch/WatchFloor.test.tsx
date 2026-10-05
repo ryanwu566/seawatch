@@ -25,14 +25,24 @@ const mockApi = vi.hoisted(() => ({
 }));
 const mockHistorical = vi.hoisted(() => ({
   summary: vi.fn(),
+  traffic: vi.fn(),
 }));
 
 vi.mock("./api", () => ({ watchApi: mockApi }));
 vi.mock("../../api/historicalRuntime", () => ({
   getHistoricalRuntimeSummary: mockHistorical.summary,
 }));
+vi.mock("../../api/historicalTraffic", () => ({
+  getHistoricalTraffic: mockHistorical.traffic,
+}));
 vi.mock("./WatchMap", () => ({
-  WatchMap: () => <section aria-label="Watch map" />,
+  WatchMap: (props: { historicalTraffic?: GeoJSON.FeatureCollection | null }) => (
+    <section aria-label="Watch map">
+      <span data-testid="watch-map-historical-cells">
+        {props.historicalTraffic?.features.length ?? 0}
+      </span>
+    </section>
+  ),
 }));
 
 import { WatchFloor } from "./WatchFloor";
@@ -167,6 +177,19 @@ describe("Watch Floor live source", () => {
       dataset_hour_buckets: 6528,
       mmsi_join_status_counts: { unique_9digit_candidate: 66_043 },
     });
+    mockHistorical.traffic.mockResolvedValue({
+      available: true,
+      cells: [{
+        cell_lat: 25,
+        cell_lon: 121.5,
+        observation_count: 1200,
+        unique_vessel_count: 80,
+        observed_days: 40,
+        active_hour_buckets: 300,
+        cell_active_hour_fraction: 0.25,
+        avg_vessels_per_active_hour: 4,
+      }],
+    });
     mockApi.scenario.mockImplementation(async (source = "scenario") => source === "live" ? liveScenario : scenario);
     mockApi.tracks.mockImplementation(async (source = "scenario") => source === "live"
       ? [{ mmsi: "v_opaque_live_vessel", public_id: "v_opaque_live_vessel", name: "LIVE SHIP", type: "cargo", flag: "", t: [liveScenario.t0, liveScenario.t1], lat: [22.5, 22.6], lon: [120.5, 120.6], sog: [8, 8] }]
@@ -258,19 +281,23 @@ describe("Watch Floor live source", () => {
     render(<WatchFloor />);
     expect(await screen.findByText("Historical context available")).toBeInTheDocument();
     expect(await screen.findByText("Scenario review candidate")).toBeInTheDocument();
+    expect(await screen.findByTestId("watch-map-historical-cells")).toHaveTextContent("1");
     expect(mockHistorical.summary).toHaveBeenCalledTimes(1);
+    expect(mockHistorical.traffic).toHaveBeenCalledTimes(1);
 
     fireEvent.change(screen.getByRole("combobox", { name: "Detection source" }), {
       target: { value: "live" },
     });
     expect(await screen.findByText("Position anomaly - LIVE SHIP")).toBeInTheDocument();
     expect(mockHistorical.summary).toHaveBeenCalledTimes(1);
+    expect(mockHistorical.traffic).toHaveBeenCalledTimes(1);
 
     fireEvent.click(
       screen.getByRole("button", { name: /Position anomaly - LIVE SHIP/i }),
     );
     expect(await screen.findByText(/Vessel ID v_opaque_live_vessel/i)).toBeInTheDocument();
     expect(mockHistorical.summary).toHaveBeenCalledTimes(1);
+    expect(mockHistorical.traffic).toHaveBeenCalledTimes(1);
   });
 
   it("shows a neutral loading shell without stale scenario metadata during source changes", async () => {

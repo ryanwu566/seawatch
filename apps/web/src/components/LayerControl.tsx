@@ -5,10 +5,15 @@ import type { LayerState } from "../lib/layerState";
 interface LayerControlProps {
   layers: LayerState;
   onChange: (next: LayerState) => void;
+  historicalTrafficAvailable?: boolean;
 }
 
 /** Friendly grouped layer control: Base Maps / Maritime / Airspace / Analysis. */
-export function LayerControl({ layers, onChange }: LayerControlProps) {
+export function LayerControl({
+  layers,
+  onChange,
+  historicalTrafficAvailable,
+}: LayerControlProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
 
@@ -116,6 +121,27 @@ export function LayerControl({ layers, onChange }: LayerControlProps) {
 
           <fieldset>
             <legend>{t.analysis}</legend>
+            <label>
+              <input
+                type="checkbox"
+                checked={layers.historicalTraffic}
+                disabled={historicalTrafficAvailable !== true}
+                onChange={toggle("historicalTraffic")}
+              />
+              <span>
+                Historical Traffic Density
+                {historicalTrafficAvailable === false && (
+                  <span className="layer-note layer-note-block">
+                    Historical traffic unavailable
+                  </span>
+                )}
+                {historicalTrafficAvailable === undefined && (
+                  <span className="layer-note layer-note-block">
+                    Loading historical traffic
+                  </span>
+                )}
+              </span>
+            </label>
             <label>
               <input
                 type="checkbox"

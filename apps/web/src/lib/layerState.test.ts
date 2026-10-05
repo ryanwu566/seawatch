@@ -26,5 +26,6 @@ describe("DEFAULT_LAYER_STATE (live mode defaults)", () => {
     expect(DEFAULT_LAYER_STATE.publicAirspace).toBe(false);
     expect(DEFAULT_LAYER_STATE.reviewCandidates).toBe(false);
     expect(DEFAULT_LAYER_STATE.navReference).toBe(false);
+    expect(DEFAULT_LAYER_STATE.historicalTraffic).toBe(false);
   });
 });
