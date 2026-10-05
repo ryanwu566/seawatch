@@ -1,7 +1,8 @@
 # SeaWatch
 
-Explainable maritime anomaly review combining live vessel feeds, historical
-traffic context, geospatial reference layers, and human-in-the-loop detection.
+Explainable maritime anomaly review combining deterministic behavior detection,
+machine-learning second opinions, historical traffic context, geospatial
+reference layers, and human analyst review.
 
 ## Overview
 
@@ -15,6 +16,26 @@ opinions in an analyst-facing Watch Floor.
 SeaWatch is decision support, not an autonomous enforcement system. Alerts are
 candidates for human review; they are not findings of hostile intent,
 illegality, or authorization status.
+
+## Try the Demo
+
+### Detection / Watch Floor Demo
+
+**[Launch the interactive Detection Demo](https://seawatch-demo.vercel.app/?clean=1)**
+
+Explore the scenario/replay Watch Floor, explainable alerts, analyst decisions,
+and optional machine-learning second-opinion evidence. This standalone demo does
+not require the currently disabled paid live-data provider. ML evidence appears
+only when the demo has compatible model artifacts available.
+
+### Integrated Public Frontend
+
+**[Open the integrated SeaWatch frontend](https://seawatch-web.vercel.app/)**
+
+Explore the final live/historical integration architecture. Paid
+provider-backed scans may be unavailable, and the optional Historical Runtime
+bundle may not be mounted in the public deployment. Neither deployment has
+guaranteed uptime.
 
 ## Key Features
 
@@ -45,6 +66,31 @@ illegality, or authorization status.
 - Human review workflow for status decisions, notes, allow-list feedback, and
   path-review decisions.
 - Scenario and Live operating modes in the Watch Floor.
+
+### Machine-learning second opinion
+
+SeaWatch implements two advisory models over the same vessel behavior-window
+feature pipeline:
+
+- **Isolation Forest** provides unsupervised anomaly detection. It asks whether
+  a behavior window differs from learned normal traffic, then calibrates the raw
+  anomaly score as a percentile against training or reference windows.
+- **`HistGradientBoostingClassifier`** is a supervised behavior classifier. It
+  produces a behavior-match score indicating how closely a window resembles the
+  labelled target behaviors represented in its training data.
+
+The model-training and benchmark workflow evaluates both methods on held-out
+prototype scenarios rather than the scenarios used for fitting. In the running
+application, deterministic rules create and explain alerts; compatible regional
+model artifacts can add an `agree` or `rules_only` statistical second opinion,
+model scores, and the strongest feature deviations for analyst review. ML does
+not replace the rules, create an autonomous threat verdict, or estimate criminal
+intent.
+
+If a compatible model artifact is absent—or background window scoring has not
+completed—the application does not fabricate a model result. ML evidence is not
+available for every region, scenario, live vessel, or deployment, and all model
+output remains advisory and subject to human review.
 
 ### Historical context
 
@@ -85,14 +131,24 @@ flowchart LR
     Provider[Live provider<br/>credentials required] --> AreaScan[Area Scan]
     AreaScan --> Validation[Validation, normalization,<br/>exact AOI filtering]
     Validation --> Adapter[Live Detection Adapter]
-    Adapter --> Engine[Detection Engine]
-    Engine --> Review[Rules, fusion,<br/>optional ML second opinion]
-    Review --> WatchFloor[Watch Floor<br/>human review]
+    Adapter --> Tracks[Tracks]
+    Scenario[Scenario / replay tracks] --> Tracks
+
+    Tracks --> Detectors[Deterministic detectors]
+    Detectors --> Fusion[Fusion / explanation]
+    Fusion --> WatchFloor[Watch Floor<br/>human review]
+
+    Tracks --> Features[Shared window features]
+    Features --> IF[Isolation Forest]
+    Features --> GB[HistGradientBoosting<br/>Classifier]
+    IF --> Opinion[Statistical second opinion]
+    GB --> Opinion
+    Opinion --> WatchFloor
 
     Historical[Historical Runtime v2] --> HistoricalUI[Historical Context<br/>Traffic Density]
     HistoricalUI --> WatchFloor
 
-    DetectionGIS[Approximate territory context<br/>used by detection] --> Engine
+    DetectionGIS[Approximate territory context<br/>used by detection] --> Detectors
     GIS[Canonical reference overlays<br/>EEZ / 12 NM / 12-24 NM] --> WatchFloor
 ```
 
@@ -100,12 +156,26 @@ Historical hourly presence supplies coarse context; it does not create raw live
 tracks. The live provider path and the historical context path remain separate
 until they are presented to detection and analyst-review surfaces. Canonical
 maritime reference overlays are map context; detection uses its separately
-documented approximate territory context.
+documented approximate territory context. The deterministic path remains the
+alerting path; the parallel ML branch is an optional second opinion when
+compatible artifacts are available.
 
 ## Demo / Service Status
 
-**Public frontend:** [seawatch-web.vercel.app](https://seawatch-web.vercel.app/)
-(live provider scans may be unavailable; public uptime is not guaranteed).
+### Detection / Watch Floor Demo
+
+[seawatch-demo.vercel.app/?clean=1](https://seawatch-demo.vercel.app/?clean=1)
+provides the scenario/replay detection, explanation, human-review, and optional
+model-second-opinion experience. The standalone Watch Floor demo remains useful
+when paid live provider access is disabled because it does not depend on that
+provider. Model evidence is shown only when compatible artifacts are available.
+
+### Integrated Public Frontend
+
+[seawatch-web.vercel.app](https://seawatch-web.vercel.app/) presents the final
+live/historical integration architecture. Paid provider-backed scans may be
+unavailable, and the optional Historical Runtime bundle may not be mounted
+publicly. Public uptime is not guaranteed.
 
 > Public demo note: live provider-backed vessel scans may be unavailable because
 > the paid API subscription is currently disabled. Historical Runtime features
