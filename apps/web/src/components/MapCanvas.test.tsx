@@ -124,8 +124,22 @@ vi.mock("maplibre-gl", () => {
     getLayer(id: string) {
       return state.layers.find((l) => l.id === id);
     }
-    addLayer(layer: any) {
-      state.layers.push(layer);
+    addLayer(layer: any, beforeId?: string) {
+      const beforeIndex = beforeId
+        ? state.layers.findIndex((candidate) => candidate.id === beforeId)
+        : -1;
+      if (beforeIndex >= 0) state.layers.splice(beforeIndex, 0, layer);
+      else state.layers.push(layer);
+    }
+    moveLayer(id: string, beforeId?: string) {
+      const currentIndex = state.layers.findIndex((layer) => layer.id === id);
+      if (currentIndex < 0) return;
+      const [layer] = state.layers.splice(currentIndex, 1);
+      const beforeIndex = beforeId
+        ? state.layers.findIndex((candidate) => candidate.id === beforeId)
+        : -1;
+      if (beforeIndex >= 0) state.layers.splice(beforeIndex, 0, layer);
+      else state.layers.push(layer);
     }
     setLayoutProperty(layer: string, prop: string, value: unknown) {
       state.layoutProps.push({ layer, prop, value });
@@ -211,6 +225,20 @@ vi.mock("../lib/shipIcon", () => ({
 
 import { MapCanvas } from "./MapCanvas";
 import { DEFAULT_LAYER_STATE } from "../lib/layerState";
+import { buildHistoricalTrafficGeoJson } from "../lib/historicalTraffic";
+
+const historicalTraffic = buildHistoricalTrafficGeoJson([
+  {
+    cell_lat: 25,
+    cell_lon: 121.5,
+    observation_count: 1200,
+    unique_vessel_count: 80,
+    observed_days: 40,
+    active_hour_buckets: 300,
+    cell_active_hour_fraction: 0.25,
+    avg_vessels_per_active_hour: 4,
+  },
+]);
 
 const vessels: LiveVesselFeature[] = [
   {
@@ -1595,6 +1623,135 @@ describe("MapCanvas", () => {
     expect(state.sources.filter((s) => s === "ext-points")).toHaveLength(1);
     expect(state.layers.filter((l) => l.id === "ext-points-layer")).toHaveLength(1);
     expect(state.layers.filter((l) => l.id === "ext-lines-layer")).toHaveLength(1);
+  });
+
+  // --- Historical traffic context --------------------------------------- //
+
+  it("installs default-hidden historical cells below boundaries and vessels", () => {
+    render(<MapCanvas {...baseProps({ historicalTraffic })} />);
+
+    expect(state.sources).toContain("historical-traffic-cells");
+    expect(state.sourceSpecs["historical-traffic-cells"].data.features).toHaveLength(1);
+    const ids = state.layers.map((layer) => layer.id);
+    expect(ids.indexOf("historical-traffic-density-fill"))
+      .toBeLessThan(ids.indexOf("seawatch-eez-reference-line"));
+    expect(ids.indexOf("historical-traffic-density-fill"))
+      .toBeLessThan(ids.indexOf("live-vessels-symbols"));
+    expect(ids.indexOf("historical-traffic-density-fill"))
+      .toBeLessThan(ids.indexOf("area-scan-vessels-symbols"));
+    expect(last(state.layoutProps.filter(
+      (entry) => entry.layer === "historical-traffic-density-fill",
+    ))?.value).toBe("none");
+  });
+
+  it("keeps delayed historical data below boundaries and operational overlays", () => {
+    const { rerender } = render(<MapCanvas {...baseProps({ historicalTraffic: null })} />);
+
+    rerender(<MapCanvas {...baseProps({ historicalTraffic })} />);
+
+    const ids = state.layers.map((layer) => layer.id);
+    expect(ids.indexOf("historical-traffic-density-fill"))
+      .toBeLessThan(ids.indexOf("seawatch-eez-reference-fill"));
+    expect(ids.indexOf("historical-traffic-cell-outline"))
+      .toBeLessThan(ids.indexOf("live-vessels-symbols"));
+    expect(ids.indexOf("historical-traffic-density-fill"))
+      .toBeLessThan(ids.indexOf("area-scan-vessels-symbols"));
+  });
+
+  it("shows and hides historical traffic without disturbing live layers", () => {
+    const { rerender } = render(<MapCanvas {...baseProps({ historicalTraffic })} />);
+
+    rerender(<MapCanvas {...baseProps({
+      historicalTraffic,
+      layers: { ...DEFAULT_LAYER_STATE, historicalTraffic: true },
+    })} />);
+    expect(last(state.layoutProps.filter(
+      (entry) => entry.layer === "historical-traffic-density-fill",
+    ))?.value).toBe("visible");
+
+    rerender(<MapCanvas {...baseProps({ historicalTraffic })} />);
+    expect(last(state.layoutProps.filter(
+      (entry) => entry.layer === "historical-traffic-density-fill",
+    ))?.value).toBe("none");
+    expect(state.layers.find((layer) => layer.id === "live-vessels-symbols")).toBeTruthy();
+  });
+
+  it("restores historical traffic once after repeated styledata events", () => {
+    const { rerender } = render(<MapCanvas {...baseProps({
+      historicalTraffic,
+      layers: { ...DEFAULT_LAYER_STATE, historicalTraffic: true },
+    })} />);
+
+    rerender(<MapCanvas {...baseProps({
+      historicalTraffic,
+      layers: {
+        ...DEFAULT_LAYER_STATE,
+        historicalTraffic: true,
+        baseMap: "nlsc-photo",
+      },
+    })} />);
+    act(() => state.styledataCb?.());
+    act(() => state.styledataCb?.());
+
+    expect(state.sources.filter((id) => id === "historical-traffic-cells")).toHaveLength(1);
+    expect(state.layers.filter(
+      (layer) => layer.id === "historical-traffic-density-fill",
+    )).toHaveLength(1);
+    expect(last(state.layoutProps.filter(
+      (entry) => entry.layer === "historical-traffic-density-fill",
+    ))?.value).toBe("visible");
+  });
+
+  it("shows only aggregate historical values on hover", () => {
+    render(<MapCanvas {...baseProps({
+      historicalTraffic,
+      layers: { ...DEFAULT_LAYER_STATE, historicalTraffic: true },
+    })} />);
+
+    act(() => state.layerHandlers["mousemove:historical-traffic-density-fill"]?.({
+      features: [{ properties: historicalTraffic.features[0].properties }],
+      lngLat: { lng: 121.5, lat: 25 },
+    }));
+
+    const html = last(state.popupHtml) ?? "";
+    expect(html).toContain("Historical traffic");
+    expect(html).toContain("1,200");
+    expect(html).toContain("standardized hourly vessel presence");
+    expect(html).toContain("not raw/message-level AIS");
+    expect(html).not.toMatch(/MMSI|IMO|vesselId|shipName|credential|local.path/i);
+  });
+
+  it("does not let historical hover cover an operational map feature", () => {
+    render(<MapCanvas {...baseProps({
+      historicalTraffic,
+      layers: { ...DEFAULT_LAYER_STATE, historicalTraffic: true },
+    })} />);
+    state.queryHits = [{ layer: { id: "live-vessels-symbols" } }];
+
+    act(() => state.layerHandlers["mousemove:historical-traffic-density-fill"]?.({
+      features: [{ properties: historicalTraffic.features[0].properties }],
+      lngLat: { lng: 121.5, lat: 25 },
+      point: { x: 100, y: 100 },
+    }));
+
+    expect(state.popupHtml).toHaveLength(0);
+  });
+
+  it("keeps drawing interaction above historical hover", () => {
+    render(<MapCanvas {...baseProps({
+      historicalTraffic,
+      layers: { ...DEFAULT_LAYER_STATE, historicalTraffic: true },
+      areaDrawMode: "polygon",
+    })} />);
+
+    act(() => state.layerHandlers["mousemove:historical-traffic-density-fill"]?.({
+      features: [{ properties: historicalTraffic.features[0].properties }],
+      lngLat: { lng: 121.5, lat: 25 },
+      point: { x: 100, y: 100 },
+    }));
+
+    expect(state.popupHtml).toHaveLength(0);
+    expect(state.canvas?.style.cursor).toBe("crosshair");
   });
 
   it("updates overlay source data via setData when overlays change (no new source)", () => {

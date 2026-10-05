@@ -793,7 +793,15 @@ body {
   border-radius: 8px;
   overflow: hidden;
 }
+.layer-control.open {
+  max-height: max(300px, calc(100vh - 10rem));
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
 .layer-control-toggle {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: transparent;
   color: var(--sw-text);
   border: none;
@@ -801,6 +809,9 @@ body {
   cursor: pointer;
   font-weight: 600;
   width: 100%;
+}
+.layer-control.open .layer-control-toggle {
+  background: rgba(11, 31, 51, 0.98);
 }
 .layer-control-panel {
   padding: 0.5rem 0.8rem 0.8rem;
@@ -833,6 +844,68 @@ body {
 .layer-note-block {
   display: block;
   margin-top: 0.05rem;
+}
+
+.historical-traffic-legend {
+  width: min(260px, calc(100vw - 32px));
+  padding: 9px 11px;
+  border: 1px solid rgba(103, 232, 249, 0.28);
+  border-radius: 8px;
+  background: rgba(4, 18, 31, 0.9);
+  color: #e2e8f0;
+  box-shadow: 0 8px 24px rgba(2, 8, 23, 0.32);
+  backdrop-filter: blur(6px);
+  font-size: 11px;
+}
+
+.historical-traffic-legend strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #cffafe;
+  font-size: 12px;
+}
+
+.historical-traffic-scale {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.historical-traffic-scale i {
+  height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(22, 78, 99, 0.3), rgba(14, 116, 144, 0.65), #67e8f9);
+}
+
+.historical-traffic-legend p {
+  margin: 6px 0 0;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.historical-traffic-popup dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  margin: 7px 0;
+}
+
+.historical-traffic-popup dt,
+.historical-traffic-popup dd {
+  margin: 0;
+}
+
+.historical-traffic-popup dd {
+  color: #cffafe;
+  font-weight: 650;
+  text-align: right;
+}
+
+.historical-traffic-popup span {
+  color: #94a3b8;
+  font-size: 10px;
+  line-height: 1.35;
 }
 .maritime-reference-note {
   margin: 0.35rem 0 0;

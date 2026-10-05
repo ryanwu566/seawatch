@@ -5,6 +5,14 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import emergencyGeographyRaw from "../../assets/taiwan-emergency.geojson?raw";
 import type { AlertDetail, AlertSummary, Scenario, TrackDto, TruthEvent } from "./api";
 import { LEVEL_COLOR } from "./lib";
+import { HistoricalTrafficLegend } from "../../components/HistoricalTrafficLegend";
+import {
+  formatHistoricalTrafficPopup,
+  HISTORICAL_TRAFFIC_FILL_LAYER_ID,
+  installHistoricalTrafficLayers,
+  setHistoricalTrafficVisibility,
+  type HistoricalTrafficFeatureCollection,
+} from "../../lib/historicalTraffic";
 import {
   alertRingsFC,
   allTracksFC,
@@ -55,6 +63,8 @@ interface Props {
   clock: number;
   truth: TruthEvent[];
   showTruth: boolean;
+  historicalTraffic: HistoricalTrafficFeatureCollection | null;
+  historicalTrafficStatus: "loading" | "available" | "unavailable";
   onSelect: (id: string | null) => void;
 }
 
@@ -64,14 +74,30 @@ function setData(map: maplibregl.Map, id: string, data: GeoJSON.FeatureCollectio
   (map.getSource(id) as GeoJSONSource | undefined)?.setData(data);
 }
 
-export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, truth, showTruth, onSelect }: Props) {
+export function WatchMap({
+  scenario,
+  tracks,
+  alerts,
+  detail,
+  selectedId,
+  clock,
+  truth,
+  showTruth,
+  historicalTraffic,
+  historicalTrafficStatus,
+  onSelect,
+}: Props) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [ready, setReady] = useState(false);
-  const [layers, setLayers] = useState({ coverage: false, tracks: true, zones: true, cables: true, limits: true });
+  const [layers, setLayers] = useState({ historical: false, coverage: false, tracks: true, zones: true, cables: true, limits: true });
   const markers = useRef<maplibregl.Marker[]>([]);
   const onSelectRef = useRef(onSelect);
+  const historicalTrafficRef = useRef(historicalTraffic);
+  const historicalVisibleRef = useRef(layers.historical);
   onSelectRef.current = onSelect;
+  historicalTrafficRef.current = historicalTraffic;
+  historicalVisibleRef.current = layers.historical;
 
   const flagged = useMemo(() => levelByMmsi(alerts), [alerts]);
   const selectedMmsis = useMemo(() => new Set(detail?.mmsis ?? []), [detail]);
@@ -91,6 +117,9 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
     map.on("load", () => {
+      // Historical context sits immediately above the basemap. Every watch
+      // reference, vessel, and interaction layer is added after it.
+      installHistoricalTrafficLayers(map, historicalTrafficRef.current, "limits-line");
       for (const id of SRC) map.addSource(id, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
 
       map.addLayer({
@@ -153,7 +182,39 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
         paint: { "text-color": "#e8f0ff", "text-halo-color": "#050b14", "text-halo-width": 1.6 },
       });
 
+      // Alerts and selection cues are interaction foreground, so keep them
+      // above vessel symbols while preserving their internal casing/ring order.
+      for (const id of ["ev-lines-casing", "ev-lines", "ev-lines-dashed", "pulse", "rings"]) {
+        map.moveLayer(id);
+      }
+
       const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, className: "wf-popup" });
+      const historicalPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, className: "wf-popup" });
+      map.on("mousemove", HISTORICAL_TRAFFIC_FILL_LAYER_ID, (e) => {
+        const operationalLayers = [
+          "tracks-all", "trails", "truth-fill", "ev-lines-casing", "ev-lines",
+          "ev-lines-dashed", "pulse", "rings", "vessels", "vessel-labels",
+        ].filter((id) => map.getLayer(id));
+        if (
+          e.point
+          && operationalLayers.length > 0
+          && map.queryRenderedFeatures(e.point, { layers: operationalLayers }).length > 0
+        ) {
+          historicalPopup.remove();
+          return;
+        }
+        const feature = e.features?.[0];
+        if (!feature) return;
+        map.getCanvas().style.cursor = "pointer";
+        historicalPopup
+          .setLngLat(e.lngLat)
+          .setHTML(formatHistoricalTrafficPopup(feature.properties ?? {}))
+          .addTo(map);
+      });
+      map.on("mouseleave", HISTORICAL_TRAFFIC_FILL_LAYER_ID, () => {
+        map.getCanvas().style.cursor = "";
+        historicalPopup.remove();
+      });
       map.on("mousemove", "vessels", (e) => {
         const f = e.features?.[0];
         if (!f) return;
@@ -182,6 +243,10 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
         const hit = map.queryRenderedFeatures(e.point, { layers: ["vessels", "rings"] });
         if (!hit.length) onSelectRef.current(null);
       });
+      map.on("styledata", () => {
+        installHistoricalTrafficLayers(map, historicalTrafficRef.current, "limits-line");
+        setHistoricalTrafficVisibility(map, historicalVisibleRef.current);
+      });
       setReady(true);
     });
 
@@ -204,6 +269,13 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
       mapRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    installHistoricalTrafficLayers(map, historicalTraffic, "limits-line");
+    setHistoricalTrafficVisibility(map, layers.historical);
+  }, [historicalTraffic, layers.historical, ready]);
 
   // ---- static data ---------------------------------------------------------
   useEffect(() => {
@@ -234,6 +306,7 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
     for (const id of ["zones-fill", "zones-line", "zones-label"]) map.setLayoutProperty(id, "visibility", vis(layers.zones));
     for (const id of ["cables-line", "cables-label", "landing-pt"]) map.setLayoutProperty(id, "visibility", vis(layers.cables));
     map.setLayoutProperty("limits-line", "visibility", vis(layers.limits));
+    setHistoricalTrafficVisibility(map, layers.historical);
   }, [ready, layers]);
 
   // ---- dynamic data (clock / alerts) --------------------------------------
@@ -298,6 +371,16 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
     <div className="wf-map">
       <div ref={host} className="wf-map-canvas" />
       <div className="wf-layers" role="group" aria-label="Map layers">
+        <button
+          type="button"
+          className={layers.historical ? "on" : ""}
+          aria-pressed={layers.historical}
+          disabled={historicalTrafficStatus !== "available"}
+          title={historicalTrafficStatus === "loading" ? "Loading historical context" : historicalTrafficStatus === "unavailable" ? "Historical context unavailable" : undefined}
+          onClick={() => setLayers((current) => ({ ...current, historical: !current.historical }))}
+        >
+          Historical Traffic Density
+        </button>
         {(
           [
             ["zones", "Zones"],
@@ -312,6 +395,11 @@ export function WatchMap({ scenario, tracks, alerts, detail, selectedId, clock, 
           </button>
         ))}
       </div>
+      {layers.historical && historicalTrafficStatus === "available" && (
+        <div className="wf-history-legend">
+          <HistoricalTrafficLegend />
+        </div>
+      )}
       <div className="wf-legend" aria-label="Legend">
         <span><i style={{ background: LEVEL_COLOR.HIGH }} />High</span>
         <span><i style={{ background: LEVEL_COLOR.MEDIUM }} />Medium</span>

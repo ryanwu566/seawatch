@@ -150,13 +150,15 @@
 .wf-map { position: relative; min-width: 0; min-height: 0; }
 .wf-source-placeholder { display: grid; place-content: center; justify-items: center; gap: 10px; color: var(--muted); }
 .wf-map-canvas { position: absolute; inset: 0; }
-.wf-layers { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; z-index: 2; }
-.wf-layers button { background: rgba(8,17,31,.88); border: 1px solid var(--line); color: var(--muted); border-radius: 7px; padding: 5px 10px; font-size: 12px; backdrop-filter: blur(4px); }
+.wf-layers { position: absolute; top: 12px; left: 12px; max-width: calc(100% - 24px); display: flex; flex-wrap: wrap; gap: 6px; z-index: 2; }
+.wf-layers button { background: rgba(8,17,31,.88); border: 1px solid var(--line); color: var(--muted); border-radius: 7px; padding: 5px 10px; font-size: 12px; white-space: nowrap; backdrop-filter: blur(4px); }
 .wf-layers button.on { color: var(--text); border-color: #2b4a73; }
+.wf-layers button:disabled { cursor: not-allowed; opacity: .58; }
 .wf-legend { position: absolute; left: 12px; bottom: 26px; z-index: 2; display: flex; gap: 12px; padding: 6px 11px; border-radius: 8px; background: rgba(8,17,31,.88); border: 1px solid var(--line); font-size: 11.5px; color: var(--muted); }
 .wf-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .wf-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .wf-legend i.norm { background: #7a8ba3; } .wf-legend i.hollow { background: #08111f; border: 2px solid #7a8ba3; }
+.wf-history-legend { position: absolute; right: 12px; bottom: 78px; z-index: 2; }
 .wf-badge { --c: #fff; display: inline-flex; align-items: center; gap: 6px; pointer-events: none; }
 .wf-badge b { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: var(--c); color: #06101d; font-size: 12px; border: 2px solid #06101d; box-shadow: 0 0 0 2px var(--c); }
 .wf-badge span { background: rgba(6,16,29,.9); color: var(--c); border: 1px solid var(--c); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 800; letter-spacing: .08em; }

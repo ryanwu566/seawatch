@@ -33,6 +33,15 @@ import { normalizeOrientation } from "../lib/orientation";
 import { makeShipIcon } from "../lib/shipIcon";
 import { VESSEL_CATEGORY_COLORS, categoryForVessel } from "../lib/vesselCategory";
 import { finalizePolygonPoints } from "../lib/areaGeometry";
+import {
+  HISTORICAL_TRAFFIC_FILL_LAYER_ID,
+  HISTORICAL_TRAFFIC_SOURCE_ID,
+  formatHistoricalTrafficPopup,
+  installHistoricalTrafficLayers,
+  setHistoricalTrafficVisibility,
+  type HistoricalTrafficFeatureCollection,
+  type HistoricalTrafficProperties,
+} from "../lib/historicalTraffic";
 import type { AreaDrawMode } from "./AreaScanPanel";
 
 export interface Viewport {
@@ -70,6 +79,7 @@ interface MapCanvasProps {
   areaVessels?: LiveVesselFeature[];
   onAreaGeometryChange?: (geometry: GeoJSON.Polygon) => void;
   onAreaGeometryInvalid?: () => void;
+  historicalTraffic?: HistoricalTrafficFeatureCollection | null;
   /**
    * Optional, generic GeoJSON overlay layer groups rendered ABOVE the built-in
    * overlays. This is a logistics-agnostic seam: the caller supplies named
@@ -192,6 +202,7 @@ export function MapCanvas({
   areaVessels = [],
   onAreaGeometryChange,
   onAreaGeometryInvalid,
+  historicalTraffic = null,
   overlays = null,
 }: MapCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -211,6 +222,9 @@ export function MapCanvas({
     onlineBasemap ?? operatingMode === "CLOUD_LIVE",
   );
   const overlaysRef = useRef<MapOverlays | null>(overlays);
+  const historicalTrafficRef = useRef<HistoricalTrafficFeatureCollection | null>(
+    historicalTraffic,
+  );
   const areaDrawModeRef = useRef<AreaDrawMode>(areaDrawMode);
   const areaGeometryRef = useRef<GeoJSON.Polygon | null>(areaGeometry);
   const areaVesselsRef = useRef<LiveVesselFeature[]>(areaVessels);
@@ -232,6 +246,7 @@ export function MapCanvas({
   followRef.current = follow;
   onlineBasemapRef.current = prefersOnlineBasemap;
   overlaysRef.current = overlays;
+  historicalTrafficRef.current = historicalTraffic;
   areaDrawModeRef.current = areaDrawMode;
   areaGeometryRef.current = areaGeometry;
   areaVesselsRef.current = areaVessels;
@@ -252,7 +267,11 @@ export function MapCanvas({
     map.addControl(new maplibregl.NavigationControl(), "top-right");
 
     map.on("error", (e) => {
-      if (isMaritimeReferenceSourceId((e as { sourceId?: unknown }).sourceId)) return;
+      const sourceId = (e as { sourceId?: unknown }).sourceId;
+      if (
+        isMaritimeReferenceSourceId(sourceId) ||
+        sourceId === HISTORICAL_TRAFFIC_SOURCE_ID
+      ) return;
       const msg = (e?.error && (e.error as Error).message) || "";
       const basemapFailed =
         stageRef.current === "pmtiles" || /tile|source|network|fetch|response code/i.test(msg);
@@ -279,6 +298,7 @@ export function MapCanvas({
               selectedSourceRef.current,
               areaGeometryRef.current,
               areaVesselsRef.current,
+              historicalTrafficRef.current,
               overlaysRef.current,
             ),
           );
@@ -308,13 +328,14 @@ export function MapCanvas({
             selectedSourceRef.current,
             areaGeometryRef.current,
             areaVesselsRef.current,
+            historicalTrafficRef.current,
             overlaysRef.current,
           ),
         );
         emitViewport(map, onViewportChange);
         return;
       }
-      installOverlays(map, overlaysRef.current);
+      installOverlays(map, historicalTrafficRef.current, overlaysRef.current);
       applyVessels(
         map,
         vesselsRef.current,
@@ -524,6 +545,53 @@ export function MapCanvas({
       popupRef.current?.remove();
     });
 
+    const historicalPopup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+      className: "historical-traffic-map-popup",
+    });
+    map.on("mousemove", HISTORICAL_TRAFFIC_FILL_LAYER_ID, (e) => {
+      if (areaDrawModeRef.current !== null) {
+        map.getCanvas().style.cursor = "crosshair";
+        historicalPopup.remove();
+        return;
+      }
+      const operationalLayers = existingLayers(map, [
+        TRACK_LAYER,
+        HALO_LAYER,
+        VESSEL_LAYER,
+        AREA_FILL_LAYER,
+        AREA_LINE_LAYER,
+        AREA_DRAFT_PATH_LAYER,
+        AREA_DRAFT_VERTEX_LAYER,
+        AREA_VESSEL_HALO_LAYER,
+        AREA_VESSEL_LAYER,
+        ...(overlaysRef.current?.layers.map((layer) => layer.id) ?? []),
+      ]);
+      if (
+        e.point
+        && operationalLayers.length > 0
+        && map.queryRenderedFeatures(e.point, { layers: operationalLayers }).length > 0
+      ) {
+        historicalPopup.remove();
+        return;
+      }
+      const feature = e.features?.[0];
+      if (!feature) return;
+      map.getCanvas().style.cursor = "pointer";
+      historicalPopup
+        .setLngLat(e.lngLat)
+        .setHTML(formatHistoricalTrafficPopup(
+          feature.properties as Partial<HistoricalTrafficProperties>,
+        ))
+        .addTo(map);
+    });
+    map.on("mouseleave", HISTORICAL_TRAFFIC_FILL_LAYER_ID, () => {
+      map.getCanvas().style.cursor = areaDrawModeRef.current === null ? "" : "crosshair";
+      historicalPopup.remove();
+    });
+
     mapRef.current = map;
     startAnimation();
 
@@ -531,6 +599,7 @@ export function MapCanvas({
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       loadedRef.current = false;
       popupRef.current?.remove();
+      historicalPopup.remove();
       window.removeEventListener("keydown", onEscape);
       canvas.removeEventListener("pointerdown", onRectanglePointerDown);
       canvas.removeEventListener("pointermove", onRectanglePointerMove);
@@ -572,6 +641,7 @@ export function MapCanvas({
         selectedSourceRef.current,
         areaGeometryRef.current,
         areaVesselsRef.current,
+        historicalTrafficRef.current,
         overlaysRef.current,
       ),
     );
@@ -588,7 +658,7 @@ export function MapCanvas({
     onBaseMapError?.(null);
     map.setStyle(onlineStyle(layers.baseMap));
     map.once("styledata", () => {
-      installOverlays(map, overlaysRef.current);
+      installOverlays(map, historicalTrafficRef.current, overlaysRef.current);
       applyVessels(map, vesselsRef.current, selectedIdRef.current, selectedSourceRef.current);
       applyAreaGeometry(map, areaGeometryRef.current);
       applyAreaVessels(
@@ -613,6 +683,17 @@ export function MapCanvas({
     applyPorts(map, layers);
     applyAirspace(map, layers);
   }, [vessels, layers, selectedId, selectedSource]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loadedRef.current) return;
+    installHistoricalTrafficLayers(
+      map,
+      historicalTraffic,
+      MARITIME_REFERENCE_LAYER_IDS.eez.fill,
+    );
+    setHistoricalTrafficVisibility(map, layers.historicalTraffic);
+  }, [historicalTraffic, layers.historicalTraffic]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -768,7 +849,16 @@ export function MapCanvas({
 
 // --- helpers (module scope so the animation loop can reuse them) ------------ //
 
-function installOverlays(map: maplibregl.Map, overlays?: MapOverlays | null) {
+function installOverlays(
+  map: maplibregl.Map,
+  historicalTraffic?: HistoricalTrafficFeatureCollection | null,
+  overlays?: MapOverlays | null,
+) {
+  installHistoricalTrafficLayers(
+    map,
+    historicalTraffic,
+    MARITIME_REFERENCE_LAYER_IDS.eez.fill,
+  );
   installMaritimeReferenceOverlays(map);
   if (!map.hasImage(SHIP_ICON)) {
     const icon = makeShipIcon();
@@ -1106,9 +1196,10 @@ function restoreOverlays(
   selectedSource: "live" | "datalastic" | null,
   areaGeometry: GeoJSON.Polygon | null,
   areaVessels: LiveVesselFeature[],
+  historicalTraffic?: HistoricalTrafficFeatureCollection | null,
   overlays?: MapOverlays | null,
 ) {
-  installOverlays(map, overlays);
+  installOverlays(map, historicalTraffic, overlays);
   applyVessels(map, vessels, selectedId, selectedSource);
   applyAreaGeometry(map, areaGeometry);
   applyAreaVessels(map, areaVessels, selectedId, selectedSource);
@@ -1399,6 +1490,7 @@ function applyLayerVisibility(map: maplibregl.Map, layers: LayerState, selectedI
   setVisible(map, PORT_LABEL, layers.ports);
   setVisible(map, AIRSPACE_FILL, layers.restrictedAirspace || layers.publicAirspace);
   setVisible(map, AIRSPACE_LINE, layers.restrictedAirspace || layers.publicAirspace);
+  setHistoricalTrafficVisibility(map, layers.historicalTraffic);
 }
 
 function applyPorts(map: maplibregl.Map, layers: LayerState) {

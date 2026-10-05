@@ -14,6 +14,7 @@ export interface LayerState {
   restrictedAirspace: boolean;
   publicAirspace: boolean;
   reviewCandidates: boolean;
+  historicalTraffic: boolean;
 }
 
 // Default live-mode state: the map must not look empty, so live vessels are ON.
@@ -32,4 +33,5 @@ export const DEFAULT_LAYER_STATE: LayerState = {
   restrictedAirspace: false,
   publicAirspace: false,
   reviewCandidates: false,
+  historicalTraffic: false,
 };
