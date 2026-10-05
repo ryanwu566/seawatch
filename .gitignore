@@ -44,6 +44,9 @@ data/raw/*
 data/processed/*
 !data/processed/.gitkeep
 
+# Optional local Historical Runtime v2 bundle
+/SeaWatch_Runtime_Taiwan_2026_v2/
+
 # Generated models
 models/*
 !models/.gitkeep
